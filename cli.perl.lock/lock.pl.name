@@ -1,1 +1,1 @@
-locking using atomic mkdir (procmail/lockfile compatible) or perl-flock (requires Flock.pm)
+locking using either atomic mkdir or perl-flock (REQ Flock.pm)
