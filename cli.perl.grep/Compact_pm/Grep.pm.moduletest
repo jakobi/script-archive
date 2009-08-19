@@ -1,0 +1,85 @@
+#!/usr/bin/perl
+
+# Grep.pm.moduletest                                        - use GREP as module
+# Grep.pm -binary -i anuurn /etc/hosts /etc/hosts /dev/null - use directly / see actual parser errors
+
+# use in do is ignored?
+use strict;
+use vars;
+use warnings;
+
+
+#do "Grep.pm";
+BEGIN{
+   do{my $p=$0; $0=~s@[^/]*$@@; unshift @INC, $p};
+   unshift @INC,  "$ENV{HOME}/bin", "$ENV{HOME}/bin/perl",  "$ENV{HOME}/bin/perl/Compact_pm"; 
+}
+use Grep; # Compact_pm::Grep
+
+
+my $dummy;
+$dummy=$Compact_pm::Grep::module_stderr;
+$dummy=$Compact_pm::Grep::module_stdout;
+
+# running the standard version like a system would
+Compact_pm::Grep::grep_p(qw@ -H jakobi /dev/null /etc/hosts /etc/passwd@);
+warn "1 returned $@" if $@;
+$Compact_pm::Grep::Me=$tcgrep2::Me="SomeOtherName";
+
+warn "# the next is an intentional option error, is available in \$@\n";
+Compact_pm::Grep::grep_p(qw@ -gdrud -H -e anuurn -e local /dev/null /etc/hosts /etc/passwd@);
+warn "2 returned $@" if $@;
+
+# now the same with an additional arrayref as input
+# plus output to arrayref
+my $somearrayref=[qw/aenuurn delta anuurn bravo/];
+my $somearrayref2=[qw/aenuurn delta anuurn_gr bravo/];
+Compact_pm::Grep::grep_np(qw@ -H -n -e anuurn -e local /dev/null /etc/hosts @, $somearrayref, "/etc/passwd");
+warn "3 returned $@" if $@;
+for(@$Compact_pm::Grep::module_stderr) {
+   warn "STDERR: $_";
+}
+for(@$Compact_pm::Grep::module_stdout) {
+   warn "STDOUT: $_";
+}
+
+warn "HERE\n";
+
+# the same, but splitted into initialization and multiple input arrays
+Compact_pm::Grep::grep_np_args(qw@ -H -n -e anuurn -e local@);
+warn "4 returned $@" if $@;
+if (not $@) {
+   Compact_pm::Grep::grep_np_match(qw@/dev/null /etc/hosts @, $somearrayref, "/etc/passwd");
+   warn "5 returned $@" if $@;
+   Compact_pm::Grep::grep_np_match($somearrayref2);
+   warn "6 returned $@" if $@;
+}
+
+for(@$Compact_pm::Grep::module_stderr) {
+   warn "STDERR: $_";
+}
+for(@$Compact_pm::Grep::module_stdout) {
+   warn "STDOUT: $_";
+}
+
+
+__END__
+
+the output should be something like this:
+
+#bash1 > GREPCALL  
+/etc/passwd:jakobi:x:1000:1000:Peter Jakobi,,,:/home/jakobi:/bin/bash
+Unknown option: g
+Unknown option: d
+Unknown option: d
+2 returned # moritz invalid options
+	...propagated at GREP line 1270.
+STDOUT: /etc/hosts:0001:127.0.0.1	localhost
+STDOUT: /etc/hosts:0002:192.168.10.6	anuurn.compact anuurn
+STDOUT: /etc/hosts:0015:::1     ip6-localhost ip6-loopback
+STDOUT: /etc/hosts:0016:fe00::0 ip6-localnet
+STDOUT: ARRAYREF0:0002:anuurn
+HERE
+STDOUT: ARRAYREF0:0002:anuurn_gr
+
+

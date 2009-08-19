@@ -1,0 +1,27 @@
+#!/usr/bin/perl
+
+# create or delete files abc, y # and check multiple instances. 
+# To make one sleep a bit to block other instances, use a non-null argument.
+
+#do "Flock.pm";
+BEGIN{
+   do{my $p=$0; $0=~s@[^/]*$@@; unshift @INC, $p};
+   unshift @INC,  "$ENV{HOME}/bin", "$ENV{HOME}/bin/perl",  "$ENV{HOME}/bin/perl/Compact_pm"; 
+}
+use Flock; # Compact_pm::Flock
+
+
+my($err,@FH);
+
+($err,@FH)=Compact_pm::Flock::openFH("abc","y");
+warn "open err $err, FHs @FH for files abc, y\n";
+
+warn "get shared lock: ". Compact_pm::Flock::flockFH('sh', @FH), "\n";
+
+sleep 300 if @ARGV; # so one will block the locking of other runs of this test
+
+warn "get excl   lock: ". Compact_pm::Flock::flockFH('ex', @FH), "\n";
+warn "get excl  -lock: ". Compact_pm::Flock::flockFH('-ex',@FH), "\n";
+warn "get excl   lock: ". Compact_pm::Flock::flockFH('ex', @FH), "\n";
+warn "unlock         : ". Compact_pm::Flock::flockFH('ex', @FH), "\n";
+
