@@ -1,0 +1,195 @@
+#!/bin/sh
+#!perl  # perl flags go here...
+eval 'exec perl -Sx $0 ${1:+"$@"}'
+         if 0;
+
+# dump links from a set of html pages (list from stdin or in ARGV)
+
+# 19970630 PJ   0.1  jakobi@acm.org initial version
+# 20081221 PJ   0.2  added -values
+# 20090717 PJ   0.21  
+# copyright:  (c) 1997-2009 jakobi@acm.org, GPL v2 or later
+my $version="0.21";
+
+
+# version 0.1 1997-06-30 jakobi@acm.org  
+
+# requires db_cgi.p for link translation
+
+# get the tags...
+$rurl1='(<IMG|<IFRAME|<LINK)(?:\s|\s[^<>]*\s)((?:HREF|SRC)[\s\n]*=[\s\n]*[\"\']?([^\"\'<>]*)[\"\']?)[^<>]*(>)';
+$rurl2='(<A)(?:\s|\s[^<>]*\s)((?:HREF|SRC)[\s\n]*=[\s\n]*[\"\']?([^\"\'<>]*)[\"\']?)[^<>]*(>)[\s\S]*?(</A>)';
+
+$mode="keeplocal";
+$sort=1;
+
+args: while (@ARGV) {
+   if ($ARGV[0] eq '-')           { shift; last args}
+   elsif ($ARGV[0] eq '-stdin')	  { shift; $stdin=1}
+   elsif ($ARGV[0] eq '-mode')    { shift; $mode=" ". scalar(shift) ." ";}
+   elsif ($ARGV[0] eq '-root')    { shift; $root=1; $rold=$ARGV[0]; shift; $rnew=$ARGV[0]; shift}
+   elsif ($ARGV[0] eq '-remote')  { shift; $remote=1}
+   elsif ($ARGV[0] eq '-html')    { shift; $html=1}
+   elsif ($ARGV[0] eq '-list')    { shift; $list=1}
+   elsif ($ARGV[0] eq '-files')   { shift; $list=2}
+   elsif ($ARGV[0] eq '-values')  { shift; $values=1}
+   elsif ($ARGV[0] eq '-unsorted'){ shift; $sort=0}
+   elsif ($ARGV[0] eq '-dupes')   { shift; $dupes=1}
+   elsif ($ARGV[0] eq '-v')       { shift; $verbose=1}
+   elsif ($ARGV[0] eq '-h')       { shift; &help; exit 1}
+   else{ last args; }
+}
+
+@files=@ARGV; @ARGV=();
+@tmp=<> if $stdin; 
+push @files, @tmp;
+
+if (not @files) {
+   @files=('-'); $dest=0;
+}
+
+$0=~/(.*)\/[^\/]+$/;
+push @INC, "$ENV{HOME}/bin", "$ENV{HOME}/cgi-bin", "/usr/proj/gi/cgi-bin/GIwais", "$1";
+require "db_cgi.p"; &db_cgi::setup;
+
+# root
+$h0=&db_cgi::parseurl($rnew);   
+
+# dest
+$old='^' if $old eq '';
+
+print "<HTML><BODY><PRE>\n" if not $list;
+
+$cnt=0;
+foreach(@files) {
+   s/\s*$//;      # strip whitespace
+   s/^\s*//;
+   next if /^#/;  # skip if comment in list of files...
+   # open input
+   next if -d $_; # skip dirs
+
+   open(fh, $_) || warn "Cannot open file to read $_\n";
+   undef $/; 
+   $lines=<fh>; 
+   $/="\n"; 
+   close fh;
+
+   # ugly hack: transform option value to bogus href's for reports later on; 
+   # keeping linecount intact
+   $lines=~s/(<option[^<>]+?value([^<>]+?)>)/do{$tmp1=$1; $tmp2=$2; $tmp2=~s@[\r\n\j]@ @go; "<a href$tmp2>VALUELINK $tmp1<\/a>"}/geoi if $values;
+
+   # url translations
+   $lines=&db_cgi::changeurls($h0, $lines, $_, $rold, $mode) if ($root);
+   study $lines;
+
+   # output...
+   $cnt++;
+   %url=(); 
+   sub add_url {
+      $url=$_[0]; 
+      pos $lines = 1 + pos $lines;
+      $url=~s/[\r\n\t ]+/ /g;
+      if ($remote and ( $url=~/$rurl1/oi or $url=~/$rurl2/io)) {
+#print stderr "1: $url\n";
+         $url=$3; $url=~s/#[\s\S]*//io   if $url;
+#print stderr "2: $url\n";
+         $url="<A HREF=\"$url#source_$_\"></A>" if $url;
+#print stderr "3: $url\n";
+      } elsif ($html and ( $url=~/$rurl1/oi or $url=~/$rurl2/io)) {
+         $url="<A HREF='$3'>$3</A>";
+      } elsif ($list and ( $url=~/$rurl1/oi or $url=~/$rurl2/io)) {
+         $url=$3;
+      }
+      if ($url) {
+         push @url,$url if $dupes or not $url{$url};
+         $url{$url}+=1
+      }
+   }
+
+   # caveat - embedded images in <a ...> are lost, so loop twice
+   while($lines=~/($rurl1)/gio) { add_url($1)}  # <.../>
+   while($lines=~/($rurl2)/gio) { add_url($1)}  # <...> ... </...>
+   
+   print "$_:\n" if $list!=2;
+   @url=sort keys %url if $sort;
+   foreach $line (@url) {
+      if ($remote or $html or $list) {
+         if (2==$list) {
+            $line=~s/#.*//g;
+            # probably should also urldecode if filename seems reasonable
+            $line=~s@file://@@gi;
+            print "$line\n" if not $url2{$line};
+            $url2{$line}++;
+         } else {
+            print "$line\n";
+         }
+      } else {
+         print "$_ ($url{$line}): $line\n"; 
+      }
+   }
+   
+   print main::STDERR "   done: $_\n" if $verbose;
+}
+
+print "</PRE></BODY></HTML>\n" if not $list;
+
+exit;
+
+
+################################################################
+
+sub help {
+      # print usage
+      print "
+$0 prints hrefs from a set of files.
+
+version: $version
+
+Options
+  -stdin                    read list of files from stdin
+  -dupes                    keep dupes (unless sorting)
+  -unsorted                 do not sort
+  -v                        verbosity
+
+  -root   olddir urlprefix  (html) filesystem (roots) of server (regexp), 
+                            prefix of corresponding url
+  -mode MODE		    set mode string directly (db_cgi.p - internal:
+                            uselocalfiles    - don't extend urls with root
+#NI  -dest   olddir newdir     target directory - perl s/// regexp components for 
+#NI                            path  translation (otherwise, output to stdout)
+
+by default, list links, def and images with their occurences, unless:
+  -files                    list filenames
+  -html                     html output
+  -list                     list urls, numbered
+  -remote                   html output for remote spidering (desturl#sourceurl)
+  -values                   consider option values as urls
+  
+Examples:
+- LINKS -v -root /usr/proj/gi http://kefk/gi /usr/proj/gi/gi.html | grep giko
+- # dump links of an html page with stats
+  lynx -source ... | $0 -
+- # list links of an html page
+  lynx -source http://www.heise.de/ | LINKS -list   -root / http://www.heise.de -
+- # html page instead of list
+  lynx -source http://www.heise.de/ | LINKS -html   -root / http://www.heise.de -
+- # html page usable for spidering, with source url: desturl#sourceurl
+  lynx -source http://www.heise.de/ | LINKS -remote -root / http://www.heise.de -
+- # get some grepped links from a webpage
+  lynx -source URL | LINKS -list - | sort -u | grep -i sound | wget -i /dev/stdin
+- # transforming option values to wget urls; duck example:
+".'
+  lynx -source URL | LINKS -list -root "" http://www.drunkduck.com/COMIC/index.php \
+  -values - | sed "s@index.php/@index.php?p=@"| fakewget -pi /dev/stdin
+  # and if necessary, cd www.drunkduck.com/COMIC (seems to be a problem in wget,
+  # as the source is still just plain html for the IMG tag)
+  cat * | LINKS -list - | grep /pages/ | ( cd ../.. && fakewget -p -i /dev/stdin )
+  # and in the image dir finally reorder chronologically: [or by datestamp of file]
+  d=../../../../../www.drunkduck.com/COMIC
+  for i in *; do a=$(fgrep -l -i $i $d/*|head -1); mv $i ${a##*=}.$i; done
+
+find /home/... -follow -type f -name \*.?htm -or -name \*.?html -or -name \*.htm -or -name \*.html | egrep -v -e ".-files" -e ".-mails" -e "OLD" -e "/tmp/" -e SCCS -e RCS | LINKS -root /home/... http://... -stdin
+';
+}
+
+__END__

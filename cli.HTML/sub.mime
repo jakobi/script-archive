@@ -1,0 +1,347 @@
+## PJ - demime routine (copied without changes from my ancient GI gbulkmail - no inclusion! -> standalone, majordomo/perl4 issues)
+
+
+$mime_do_not_sanitize;
+$mime_strip_headers;
+$mime_no_b64;
+$mime_dump_html;
+   
+$foldlf=80 if not  $foldlf;
+
+$B64STRIPPED="
+$bgon********************
+** BASE64 CONTENT **
+********************$bgoff
+";
+
+# some bugs: has latin1 vs uft-8 issues...
+# most of this should probably be done by calling
+# mimedecode, but that handles neither dump html nor 
+# remaining b64 stripping
+#
+# but it looks like there's no printfilter to
+# handle html or b64 stripping...
+
+sub unquote {
+   local($body)=@_;
+   $body=~s/=([\da-f][\da-f])/pack(C,hex($1))/eigo;
+   $body=~s/=(\n|$)//go;
+   $body=~s/\x0d\x0a/\x0a/go;
+   $body=~s/\x0d/\x0a/go;
+   return(&sanitize($body)) if not $mime_do_not_sanitize;
+   return($body);
+}
+
+sub german_umlaut_to_latin {
+   local($_)=@_;
+   # echo <latin1> | recode latin1..utf-8 | hd
+   # c3 a4 c3 b6 c3 bc c3 9f c3 84 c3 96 c3 9c
+   #                            "A
+   #                            A:
+   #                            Ae
+   #                            0xC4 # latin1
+   # man iso-8859-15, man utf-8
+   # utf8 umlauts (rest pretty much is latin1)
+   s/\xc3\xa4/ä/goi;
+   s/\xc3\xb6/ö/goi;
+   s/\xc3\xbc/ü/goi;
+   s/\xc3\x9f/ß/goi;
+   s/\xc3\x84/Ä/goi;
+   s/\xc3\x96/Ö/goi;
+   s/\xc3\x9c/Ü/goi;
+   # latin1
+   s/\x92/'/goi;
+   s/\x93/"/goi;
+   s/\x94/"/goi;
+   s/\x96/ /goi;
+   s/\205/... /goi; # windoof: something like -, ! 
+   s/\xa2/ :CENT: /goi;
+   s/\xa4/ :EUR: /goi;
+   return ($_);
+}
+
+sub strip_german_umlaut {
+   local($_)=@_;
+   # echo <latin1> | recode latin1..utf-8 | hd
+   # c3 a4 c3 b6 c3 bc c3 9f c3 84 c3 96 c3 9c
+   #                            "A
+   #                            A:
+   #                            Ae
+   #                            0xC4 # latin1
+   # man iso-8859-15, man utf-8
+   # utf8 umlauts (rest pretty much is latin1)
+   s/\xc3\xa4/ae/goi;
+   s/\xc3\xb6/oe/goi;
+   s/\xc3\xbc/ue/goi;
+   s/\xc3\x9f/ss/goi;
+   s/\xc3\x84/Ae/goi;
+   s/\xc3\x96/Oe/goi;
+   s/\xc3\x9c/Ue/goi;
+   # latin1
+   s/ä/ae/goi;
+   s/ö/oe/goi;
+   s/ü/ue/goi;
+   s/ß/ss/goi;
+   s/Ä/Ae/goi;
+   s/Ö/Oe/goi;
+   s/Ü/Ue/goi;
+   # latin1
+   s/\x92/'/goi;
+   s/\x93/"/goi;
+   s/\x94/"/goi;
+   s/\x96/ /goi;
+   s/\205/... /goi; # windoof: something like -, ! 
+   s/\xa2/ :CENT: /goi;
+   s/\xa4/ :EUR: /goi;
+   return ($_);
+}
+sub remcr {
+   local($_)=@_;
+   s/\x0d+\x0a/\x0a/g;
+   s/\x0a\x0d+/\x0a/g;
+   s/\x0d/\x0a/g;
+   return($_)
+}
+sub addcr { 
+   local($_)=@_;
+   s/\x0a/\x0d\x0a/go;
+   return($_)
+}
+sub addfinallf {
+   local($_)=@_;
+   $_.="\x0a" if not /\x0a\Z/o;
+   return($_)
+}
+sub compresslf {
+   local($_)=@_;
+   $_=~s/\x0a{3,}/\x0a\x0a/go;
+   return($_)
+}
+
+# some very basic line folding for displaying e.g. generated
+# html source with extremely long lines. html-safe, but NOT
+# css/<script>-safe!
+sub foldlf { # fold lines somewhat after $foldlf chars
+   local($_)=@_;
+   s{(?:\G|^)(.{$foldlf}[^\t ]*)[\t ]+}{$1\n}gim;
+   return($_);
+}
+sub foldlf2 { # foldlf plus end-of-paragraph-lf (windows line=par "format")
+   local($_)=@_;
+   s{^(.{$foldlf,}\n)(?!\s*?\n)}{$1\n}gim;
+   $_=&foldlf($_);
+   return($_);
+}
+sub foldlf3 { # foldlf plus <orig-ws>+3 entabbing
+   local($_)=@_;
+   local($tmp,$ws,$out);
+   s{^([\t ]*)(.{$foldlf,}\n)}{do{
+      $ws=$1;
+      $tmp=$2;
+      $tmp=~s{(?:\G|^)(.{$foldlf}[^\t ]*)[\t ]+}{$1\n$ws   }gim;
+   $ws.$tmp}}geim;
+   return($_);
+}
+
+sub sanitize{ # sane to display in 8 bit environments, mostly sane in utf8,
+              # allowing for a single mlnnprint header shading in pcl
+   local($tmp)=@_;
+   $tmp=&german_umlaut_to_latin($tmp);
+   # remove xterm bold markup
+   $f=~s/\x1b\x5b\x37\x6d|\x1b\x5b\x32\x37\x6d//g;
+   # line endings
+   $tmp=~s/\x0d\x0a/\x0a/go;
+   $tmp=~s/\x0d/\x0a/go;
+   # reencode, skipping display markup's \x00 and \x1b codes
+   # bugs: reencodes utf8 (well, most of it) if input is utf8
+   $tmp=~s/((?!\x00(bg)?(gr[ae]y|shade|\x1b\x5b\x37\x6d|\x1b\x5b\x32\x37\x6d))[^\x20-\x7e\x09\x08\x0d\x0a\x09äöüßÄÖÜ])/"=".unpack("H2",$1)/geoi;
+   return($tmp);
+}
+
+sub unbase64 {
+   local($body)=@_;
+   my($len, $len1, $newbody, $tmp, $i);
+   $body=~tr#A-Za-z0-9+/##cd;                   # remove non-base64 chars incl. newlines
+   $body=~tr#A-Za-z0-9+/# -_#;                  # convert to uuencoded format
+   $len1=length($body);
+   for($i=0;$i<=$len1;$i+=40) {
+      $tmp=substr($body,$i,40);                 # HACK I don't care now about the last (possibly incomplete) character...
+      $len = pack("c", 32 + 0.75*length($tmp)); # compute length byte
+      $newbody.=unpack("u", $len . $tmp);       # uudecode and print
+   }
+   return(&sanitize($newbody)) if not $mime_do_not_sanitize;
+   return($newbody);
+}
+
+sub mime {
+   local($level)=$level;
+   $level++;
+   local($_)=@_;
+   local($header, $body, $body_new, $tmp, $multipleb64, $ct, $cte, $b, $i, $l, $e, $r);
+#print main::STDERR "MIME\n";
+#print main::STDERR "OBJECT: $_\n";
+   if (/\n\n+/) {
+      $header=substr($_,0,$-[0]);
+      $body=substr($_,$+[0]);
+
+      # enforce single line headers, etc
+      $header=~s@[\x0d\x0a]+[\t ]+@ @; 
+      $header=~s@[\x0d\x0a]+@\x0a@;
+      $header=~s@[\t ]+$@@;
+      $header.="\n\n";
+      $cte=$2 if $header=~/(\n|^)Content-Transfer-Encoding:(.*)/io;
+      $ct=$2  if $header=~/(\n|^)Content-Type:(.*)/io;
+      $header=~s/^(Content-|Mime-).*\n([\t ]+.*\n)*//mgio if $mime_strip_headers;
+
+#print main::STDERR "HEADER:$header\n", length($header),"\n", length($body),"\n";
+#print main::STDERR "BODY:  $body\n";
+
+#print main::STDERR "cte($level): --$cte--\n";
+#print main::STDERR "ct ($level): --$ct--\n";
+
+      # decode encoded body
+      $body=&unquote($body) if ($cte=~/quoted-printable/io);
+      
+      # otherwise, we'd to pass 8bit upward ...
+      $header=~s/((\n|^)Content-Transfer-Encoding:(([^\n]|\n\s)*)(\n\S|$))/do {
+         $i=$1;
+         $i=~s!(quoted-printable|7-?bit)!8bit!io; #OBdA
+	 $i;
+      }/eio;
+      
+      # strip b64... (might be disabled; might be decoded, e.g. for message type)
+      #              (then again, Perl's pack doesn't do it (yet)
+      if ($mime_no_b64 and $cte=~/(b64|base64)/i && (!($cte=~/8-?bit/i))) {
+         if (not $ct=~/text.plain|text.html/i) {
+            $header="";
+            $body=$B64STRIPPED;
+         }  else {
+             $header=~s/((\n|^)Content-Transfer-Encoding:(([^\n]|\n\s)*)(\n\S|$))/do {
+                $i=$1;
+                $i=~s!(b64|base64)!8bit!io; #OBdA
+                $i;
+             }/eio;
+             $body=&unbase64($body);
+         }
+      }
+      
+      # "parse" body structure
+      $b="";
+      if      ($ct=~/message\/rfc822/io) {
+         # decode embedded eMail
+         $body=&mime($body)
+      } elsif ($ct=~/text\/html/) {
+         # decode html
+         if ($mime_dump_html) {
+            $tmp="/tmp/mlnnprintfilter.$$";
+            system "rm -f $tmp 2>/dev/null";
+            open(L, ">$tmp"); print L $body; close L;
+            $body=`lynx -force_html -dump $tmp; rm -f $tmp 2>/dev/null`;
+         }
+      } elsif ($ct=~/multipart[\s\S]*boundary *= *["']?([^\n"']+)["']?/io) {
+         # decode multipart of any type; get the boundary
+         $b=$1;
+      } elsif (0 and -x "/usr/bin/fmt") {
+# for now DO NOT FOLD HERE
+         # maybe ascii, maybe try folding the file
+         @longlines=$body=~/^.{90}/mg;
+         @verylonglines=$body=~/^.{180}/mg;
+         if ($#longlines > 50 or $#verylonglines > 10) {
+            $tmp="/tmp/mlnnprintfilter.$$";
+            system "rm -f $tmp 2>/dev/null";
+            open(L, ">$tmp"); print L $body; close L;
+            $body="*** FMT long lines: $#longlines/$#verylonglines " .
+                  "Len" . length($body) .
+                  "\n\n" .
+                  `fmt $tmp; rm -f $tmp 2>/dev/null`;
+# hmmm - what is with LONG LONG LINE, NL as 1line=1par?
+# for very huge lines, just add another query and duplicate newlines?
+#print main::STDERR "FOLDING: $#longlines/$#verylonglines\n";
+         }
+      }
+
+      # recurse
+      $b=quotemeta($b);
+
+      # multipart with boundary:
+      if ($b) {
+#print main::STDERR "ctb($level): --$b--\n";
+#$x=$body; print main::STDERR grep({s/^/ct1:/mg} substr($x,0,200)), "\n";
+         while($body=~/(^-?-?$b-?-?\n)/m) {
+            $l=substr($body,0,$-[0]);
+            $e=$1;
+            $r=substr($body,$+[0]);
+#print main::STDERR "ct-loop 1..n-1($level:$b:".length($l).")\n";
+#$x=$l; print main::STDERR grep({s/^/ct2:/mg} substr($x,0,200)), "\n";
+            $tmp=&mime($l).$e;
+            if (index($tmp,$B64STRIPPED)>=0) {
+               # compress long runs of stripped b64 elements into a single warning
+               $tmp="" if $multipleb64;
+               $multipleb64=1;
+            } else {
+               $multipleb64=0;
+            }
+            $body_new.=$tmp;
+            $body=$r;
+         }
+#print main::STDERR "ct-loop n($level:$b:".length($body).")\n";
+         $body_new.=&mime($body);
+         $body=$body_new;
+      }
+
+      $body=~s/[\t ]+\n/\n/go;
+      $body=~s/\n{3,}/\n\n\n/go;
+
+      $_=$header."\n".$body;
+   }
+   return $_;
+}
+
+# filename escaping for shell use
+sub sq{ # escape hack for single-quoting
+   my($tmp)=@_;
+   $tmp=~s/\n/\?/g;   # or just remove it?
+   $tmp=~s/'/'"'"'/g; # \\ doesn't work!?
+   return($tmp);
+}
+sub dq{ # escape hack for single-quoting
+   my($tmp)=@_;
+   $tmp=~s/\n/\?/g;   # or just remove it?
+   $tmp=~s/"/\\"/g; # \\ doesn't work!?
+   return($tmp);
+}
+sub escname {
+   my($tmp)=@_;
+   $tmp=quotemeta($tmp);
+   $tmp=~s@\\/@/@g;
+   return($tmp);
+}
+sub absname {
+   my($absname,$pwd)=@_;
+   # note that this may file when chdir is involved...
+   $absname=$pwd."/".$absname if ($absname=~/^[^\/]/); # absolute name, please
+   while ($absname=~s/\/\.\//\//g) {;}              # strip /./
+   while ($absname=~s/\/\//\//g) {;}                # strip //
+   while ($absname=~s/\/[^\/]+\/\.\.\//\//g) {;}    # strip /XXX/../
+   while ($absname=~s/\/\//\//g) {;}                # strip new //
+   while ($absname=~s/^\/\.\.\//\//g) {;}           # strip /../
+   return($absname);
+}
+sub arraytoshellstring {
+   # given @ARGV, return a safely quoted string
+   # untested; check with version in watchcmd
+   my($cmd,$tmp);
+   if (@_) {
+      foreach $_ (@_){  
+         $tmp=$_;
+         $cmd.=" " if $cmd;
+         # sq only if necessary
+         $tmp="'".sq($tmp)."'" if /[^A-Z0-9\.\-_\/~]/i;
+         $cmd.=$tmp;
+      }
+   }
+   return($cmd);
+}
+
+
+1;
