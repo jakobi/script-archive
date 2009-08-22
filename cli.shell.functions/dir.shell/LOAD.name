@@ -1,1 +1,1 @@
-loader for *.func; invoke from .bashrc
+** loader for *.func; invoked from .bashrc (actually the only line to change in .bashrc:))
