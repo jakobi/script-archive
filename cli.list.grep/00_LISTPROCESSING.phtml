@@ -25,12 +25,8 @@ pipeline 'line'-based text processing.</p>
        regular expressions or even arbitrary perl scraps. It can perform basic
        stemming and synonym-expansion in regular expressions (using expansyn). 
        It also handles \0-lines, paragraphs and file slurping, as well as
-       directory recursion and compressed files (both as in tcgrep). Dependencies: expansyn.<BR>
-       It can masquerade as a perl module. As the module rewrite is a bit fresh and
-       some ancient boxes might have "older" perl installations, this dir
-       also contains older perlish greps: rgrep0 (an earlier version of
-       Grep.pm), a current tcgrep, and hlgrep (both small fixes; hlgrep
-       is probably the most simple and likely to work an ancient systems). 
+       directory recursion and compressed files (both as in tcgrep). Dependencies: expansyn.
+       It can masquerade as a perl module.
    <li>How about a kind of emv not for mass-renaming filenames, but 
        for mass-editing file-contents? If <B>Grep.xchange</B> is given (edited)
        grep output, it applies a corresponding perl expression at each
@@ -38,13 +34,13 @@ pipeline 'line'-based text processing.</p>
        with editing grep output (or Grep.pm -C -LINES <i>marked grep context output</i>),
        the 3-Step <B>Grep.pm|vim.pipe|Grep.xchange</B> is a fairly safe way to 
        mass-edit files. See comments for two example perl one-liners that interactively
-       ask before each substitution. See also the ancient <b>xchange.pl</b>. Depenencies: 
+       ask before each substitution. See also the ancient <b>xchange.pl</b>. Dependencies: 
        For flock-locking edited files, you also need to copy Compact_pm::Flock.pm; otherwise you can disable
        it by commenting the use statement. 
    <li><b>expansyn</b> is the command implementing basic English stemming and synonym
        expansion for Grep.pm / tagls using a configuration file expansyn.cfg 
-       containing the synonymlists in perl syntax. It's mostly intended
-       to allow automatic expansion of some computer science terms I
+       containing the synonymlists in perl syntax. I wrote it for 
+       automatic expansion of some computer science terms I
        always seem to use in parallel.
 </ul>
 

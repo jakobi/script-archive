@@ -6,20 +6,26 @@
    } else {
 *]
 
-<p>Most  of  the stuff is too specific. Otherwise the stuff's  waiting
-for a rewrite before being again (while hoping to stay retired, when a
-suitable group-maintained pendant is can be found).</p>
+<p>Most of my old admin stuff is way too specific. Or else its waiting
+for  a rewrite before being using again (all the while hoping to  stay
+retired  as  soon  as a suitable group-maintained pendant  is  can  be
+found :)).</p>
 
-<p>sfre  is  a  slightly different case, it's an  itch  from  previous
-projects,  where being unable to ask (night-time, holidays,  whatever)
+<p>The system flight recorder editor project <B>sfre</b> is a slightly
+different  case,  it's  an itch from previous  projects,  where  being
+unable  to ask a collegue (night-time, holidays, whatever)  repeatedly
 lead  to time-consuming double-checks. Now wouldn't it be nice to find
 such   information   about   already  execute   tasks,   changes   and
-modifications  in  a single location on the system in  question?  Note
-that  sfre substitutes for a versioning system or a tool like cfengine
-only  in the most trivial of cases, it's real purpose is to complement
-proper  system  management tools, and in addition provide a  fail-safe
-for those dusty corners where use of proper tools like cfengine hasn't
-been  implemented yet.</p>
+modifications in a single location on the system in question; possibly
+regularly  also  archived on a central server by cron? Note that  sfre
+substitutes   for  a  versioning  system  or  a  tool  like   cfengine
+<i>only</i>  in  the  most trivial of cases; it's real purpose  is  to
+complement  proper system management tools, and in addition provide  a
+fail-safe  for those dusty corners for which use of proper tools  like
+cfengine  has been postponed and "will be implemented as soon when  we
+have some free time". Read: probably not before a fresh install of the
+problem  system  in question, and certainly not when doing that  in  a
+hurry...</p>
 
 <p><i>I'm currently using sfre as $EDITOR, $VISUAL
 and  as a replacement for vi (albeit with a call to the real vi  later
@@ -27,15 +33,17 @@ on); it's quite painful to be asked all the time for sane log messages
 when opening a vi without files or doing a git commit. This translates
 into  a growing list of changes like implementing a command  blacklist
 for file locking and journaling. For now it's still a bit too annoying
-to be used for accounts other than root.</i></p>
+to be used for accounts <B>other</b> than root.</i></p>
+
 
 
 <H3>Commands</H3>
 
 <ul>
-   <li><b>selectlines</b> , a version of the classic to select/deselect lines according
-       to embedded directives, while copying the sourcefile. Useful for trivial cases,
-       provided you switch to more suitable tools for heavier lifting.
+   <li><b>selectlines</b> , a version of the classic copy a file and select/deselect
+       lines according to embedded directives with variable expansion.
+       Useful for trivial cases, provided you switch to more suitable 
+       tools for heavier lifting.
    <li><B>systemflightrecorderedit (sfre)</B> - sfre tries to sequence file 
       edits and augment group memory in  concurrent  file change scenarios like
       multiple root users plus cron jobs. For each edit (or more generally
@@ -54,11 +62,12 @@ to be used for accounts other than root.</i></p>
 
 <p>See also:</p>
 <ul>
-   <li>vimsh as helper for system documentation / documentation creation taken
+   <li><b>vimsh</b> as helper for system documentation / documentation creation taken
       from session transcripts: see the vimsh script from vim.org for a non-typescript
       approach (non-interactive commands only, unless you use some kind
-      of pty splitter in combination with say urxvt -pty or screen; I've a demo
-      of both, but first I want to patch some more comfort into vimsh for this kind of usage).
+      of pty splitter in combination with say urxvt -pty or screen; I've a working demo
+      of both, but first I want to patch some more comfort into vimsh for this kind 
+      of vimsh usage).
 </ul>
 
 [*}*][# MUST BE AT EOF! #]

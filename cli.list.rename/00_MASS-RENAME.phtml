@@ -7,18 +7,18 @@
 *]
 
 <p>This  toolbox compartment offers two tools for mass renaming files,
-both of which also offering UNDO-loggings and more.</p>
+both of which also offer UNDO-loggings, link target editing and more.</p>
 
-<p>One  allows for way too much configurability and perl evals with an
+<p>One  allows  for  way too much configurability/perl evals  with  an
 optional  interactive  mode  that  acts  on  each  file  independently
-(myrename),  while the other shows all files at once in your  favorite
-editor  (emv). If the task is repetitive, use myrename; if you need to
-do  it  all the time, pre-define a small perl scrap for  myrename  and
-just say myrename &lt;NAME&gt; FILES. If you want to see all the files
-at once and want to think about their names while editing and changing
-whole  groups of files, use emv instead (when using vim, do read up on
-g//p,  sort, regex and visual blocks; note that emv is rather  useless
-when combined with a weak editor).</P>
+(<B>myrename</B>),  while  the other shows all files at once  in  your
+favorite editor (<B>emv</b>). If the task is repetitive, use myrename;
+if  you  need to do it all the time, pre-define a small perl scrap  in
+myrename.cfg and just say myrename &lt;NAME-OF-SCRAP&gt; FILES. If you
+want  to see all the files at once and want to think about their names
+while  editing  and  changing whole groups of files, use  emv  instead
+(when  using  vim, do read up on g//p, sort, regex and visual  blocks;
+emv thrives and wilts with the capability of the editor invoked).</P>
 
 <p>See also GREP.xchange, which is somewhat similar:</p>
 <ul>
@@ -37,8 +37,8 @@ when combined with a weak editor).</P>
       providing a perl expression for renaming files.
    <li><B>myrename</b> (perl): mass renaming using a perl expression like 
       e.g. s/old/new/, also allowing for predefined actions and extensive 
-      user customization of actions, e.g. things like myrename lc to lowercase 
-      all files that match the shell pattern *. With myrename '$l=~s/foo/bar' FILES
+      user customization of actions, e.g. things like <tt>myrename lc</tt> to lowercase 
+      all files that match the shell pattern *. With <tt>myrename '$l=~s/foo/bar' FILES</tt>
       all link matching link targets are modified. Way too many evaluation hooks for
       customization. Features a basic interactive mode. A configuration example
       is also provided.
@@ -52,7 +52,7 @@ when combined with a weak editor).</P>
    <li><b>myrename.mangle</B>: parse filelists using shell quoting rules and encode/decode
       names for e.g. sorting; from whitespace elimination to url-style-encoding.
    <li><b>myrename.quote</B>: allow the use of the quoting routines from emv/myrename 
-        for quoting filenames safely for use in shell commands.
+        for quoting a list of filenames.
 </ul>
 
 [*}*][# MUST BE AT EOF! #]

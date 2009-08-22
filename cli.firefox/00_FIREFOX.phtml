@@ -6,29 +6,41 @@
    } else {
 *]
 
-<p>Some  firefox command line support scripts. Usable to e.g. load all
-bookmarks  from a bookmarkfolder (have firefox or firefoxstdin  invoke
-firefoxgrep...)  .  In  a pinch, the scripts also offer  a  low  level
-method to copy a few changed bookmarks.</p>
+<p>Some   firefox  command  line  support  scripts  addressing   usage
+deficiencies  of  firefox.  Usable to e.g. load all bookmarks  from  a
+number  of  bookmarkfolders  (have  firefox  or  firefoxstdin   invoke
+firefoxgrep...) . In a pinch, the scripts below also offer a low level
+method to diff/copy a few changed bookmarks.<p>
+
+<p>Note  that  the  firefox wrapper should be rewritten in  perl  with
+firefoxstdin  folded  into the code. Currently thee two  scripts  call
+each other for a number of functions... . Thus I see the scripts (with
+the  possible exception of firefoxgrep* itself) not as a released  set
+of  scripts,  but  more  of a working  example  on  accessing/grepping
+bookmarks and interacting with firefox from the the command line.</p>
+
 
 <p>Some remarks:</p>
 <ul>
   <li>sqlite3 FILE.SQLIST vacuum can be used to clean a sqlite file when firefox is not running.
-  <li>a cheap trick on getting at sqlite content (read-only): ask the user to leave the browser 
+  <li>a cheap trick to get sqlite content (read-only): ask the user to leave the browser 
      idle for a few seconds, then just cp the sqlite file of interest. The data should have
      been flushed to disk, and copying will break locks and make the contents accessible again.
-  <li>userChrome.css contains a collection of settings to somewhat reduce the wasted
+     See e.g. firefoxgrep*sqlite in this section.
+  <li><b>userChrome.css</b> contains a collection of settings to somewhat reduce the wasted
      screen real estate. To further reduce wastage, hide navbar and bookmark bar and configure
      the menubar to show the url field and forward/back/stop/reload (small-icons/no-text).
      With above Chrome settings, even microfox(sp?) isn't able to reclaim much more space :).
-  <li>My required minimum of addons to start using firefox:
+     I've placed the file into this section.
+  <li>My required minimum of addons to get along with firefox:
   <ul>
      <li>System: Addblock Plus, Add N Edit Cookies (if necessary modify the jar and 
          edit the version number to allow installation; I've yet to see a worthwile substitute), 
          Noscript,  Secure Login, User Agent Switcher, ModifyHeaders, JSView.
-     <li>Usability: AOIS Sidebar, Tabkit.
+     <li>Usability: AOIS Sidebar, Tabkit (replaced tabmixplus; one pet-peeve: opening a 
+         bookmark folder from the menu also <i>replaces</i> the current tab)
      <li>Usability 2: AutoPager.
-     <li>Usability &amp; nice to have: SplitBrowser, ResurrectPager, GreaseMonkey
+     <li>Usability &amp; nice to have: SplitBrowser, ResurrectPage, GreaseMonkey
      <li>Information Overload: NewsFox (though firefoxgrep goes a long way to deal with
          periodic weekly or monthly site visits: create a folder like watch/news.weekly, and ask
          the wrapper with 'firefox -weekly' to grep for urls and folders ending in weekly. 
@@ -48,15 +60,20 @@ method to copy a few changed bookmarks.</p>
    <li><b>firefox</b> is a rather ugly script with grown warts; actually nowadays, 
        firefox 3.5 finally implements some of the features I'm using this wrapper
        for. Note that to directly load a set of urls from a file firefox.-NAME, 
-       you need to add -NAME to the list of shortcuts in the script (search for shortcut;
-       firefox.-example is an example file for this).
+       you need to add -NAME to the list of shortcuts in the script. If the file for
+       the shortcut doesn't exist, firefoxstdin is invoked instead with this option.
    <li><b>firefoxcookies</b> dumps cookies.sqlite.
-   <li><b>firefoxdelta</b> (differences in bookmarks)
-   <li><b>firefoxgrep*</b> (grep both html and sqlite bookmarks)
-   <li><b>firefoxstdin</b> (given urls or look up commands on stdin, mangles them and
-       uses firefox to forward them to the running firefox instance
-   <li><b>firefoxsessionlist</b> (dump info from xml-ish files like the firefox sessionstore,
-       with some grepping added)
+   <li><b>firefoxdelta</b> is a helper to show differences in bookmarks.
+   <li><b>firefoxgrep*</b> greps both html and sqlite bookmarks.
+   <li><b>firefoxstdin</b>: given urls or grep commands on stdin, get the urls, repair
+       them (e.g. urls pasted from email) and use the firefox wrapper to open them in
+       the running firefox instance. Some shortcuts
+       like -weekly are defined, which is translated to the input line "GREP 'weekly ::'",
+       which is expanded to the output of a firefoxgrep for all bookmarks ending with 
+       weekly or being in folders ending with the string weekly. This implements a way 
+       to open a number of folders straight from the command line.
+   <li><b>firefoxsessionlist</b> dumps xml-ish files like the firefox sessionstore
+       in a number of representations, with some grepping added.
 </ul>
 
 
