@@ -1,7 +1,0 @@
-#!/usr/bin/perl -00
-while(<>){
-   $limit=4;
-   /^(\d*) bytes? each:\n/m or next;
-   $size{$1}.=$_;
-}
-print $size{$_} foreach (sort {$a<=>$b} keys %size);
