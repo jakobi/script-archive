@@ -33,6 +33,7 @@ file: while(<>) {
       $leafdir{$_}=1          if -e "$_/.leaf" or -e "$_.leaf";
       do{$skipdir{$_}=1;next} if -e "$_/.skip" or -e "$_.skip";
       next                    if not -e "$_/.name" and not -e "$_.name";
+      $_.='/' if not m@/$@;
    }
    #                                  # skip if in a skipped dir
    for my $d (sort keys %leafdir) { next file if m!^\Q$d\E/.*?/!};
