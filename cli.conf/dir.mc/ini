@@ -28,7 +28,7 @@ mouse_move_pages_viewer=1
 fast_refresh=0
 navigate_with_arrows=0
 drop_menus=0
-wrap_mode=1
+wrap_mode=0
 old_esc_mode=0
 cd_symlinks=1
 show_all_if_ambiguous=0
@@ -76,7 +76,7 @@ editor_backup_extension=~
 
 [Layout]
 equal_split=1
-first_panel_size=53
+first_panel_size=81
 message_visible=1
 keybar_visible=1
 xterm_title=1
@@ -88,7 +88,7 @@ permission_mode=0
 filetype_mode=1
 
 [Dirs]
-other_dir=/disk-CLS/media/manga
+other_dir=/home/jakobi/git/github/LINKLAYER/REPO.script-archive/cli.html/dir.dir2array
 current_is_left=1
 
 [New Left Panel]
