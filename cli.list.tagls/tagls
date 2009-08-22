@@ -1,0 +1,905 @@
+#!/usr/bin/perl
+
+# 20071228 PJ   0.1  jakobi@acm.org initial version
+# 20080115 PJ        added +NUM*
+# 20090729 PJ   0.2  added synonyms, highlighting, relevance sorting, -cmdX
+#
+# copyright:  (c)2007-2009 PJ GPL v3 or later
+my $version="0.2";
+
+# Bugs:
+# - None. tagls is a beast, and beasts only have fleas. How many? 
+#   Ask your neighbourhood mutt.
+#
+# The following species of fleas may be found:
+# - consider checking ls -l /proc/$$/fd/0 | grep 
+#   pipe to fall back to stdin? [seems to require
+#   an interactive and/or login bash!?]
+# - prefixlen: in addition to -NUMBER, add a further option
+#   to delimit tag searching to the first N subdirs?
+# - MAJOR: tags currently may not contain umlauts 
+#   [to stop thinking about utf issues in matching and 
+#    esp. in key and grep]. Also affected &stemming
+#    in tagls and expansyn.
+
+
+use strict;
+use vars;
+
+# defaults for various options
+my $grep_max_size=100000;               # max size for grep/key functions
+my $TAGLSPATH=$ENV{TAGLSPATH}; $TAGLSPATH="$ENV{HOME}/doc:." if not $TAGLSPATH;
+my $EDITOR=$ENV{EDITORTAGLS};
+if (not $EDITOR) {
+   $EDITOR=$ENV{EDITOR}; 
+   $EDITOR=$ENV{VISUAL} if not $EDITOR;
+   $EDITOR="vi" if not $EDITOR;
+}
+
+# bug: add umlauts to tagcharstring? latin?? utf?? [:char:] classes??
+my $tagcharstring='a-z0-9\-\+\#\_\.\/'; # chars legal in tags
+
+# some common suffices we strip before matching (unless -F) 
+my $stripsfx='\.(jpg|jpeg|png|pnm|bmp|avi|mkv|rm|txt|text|html|htm|xml|css|js|zip|tar|lha|rar|tgz|tbz|deb|rpm|ipkg|pkg)(\.(bz2|gz|z|7z))?$';
+
+my $keywordpat='(?:(?:\A|^|\x0d\x0a|\x0d|\x0a)(?i:kw|keywords?):.*(?=[\t ]))'; 
+my $K="";                               # for keyword line selection 
+my $S='(?:[/\.,:\-_ \t\@\)\]]|\A|^)';   # glorified \b boundaries, may contain some tagchars, too
+my $E='(?=[/\.,:\-_ \t\@\(\[]|\Z|$)';   # for tag words
+my $outputlineend="\n";
+my $inputlineend='(?:\x0d\x0a|\x0d|\x0a|\x0)';
+
+#DEBUG
+my $menu=0;
+my $stemming=1;
+my $highlight=0;
+my $negate=0;
+my $fileprefixlen=0;
+my $matchprefixlen=0;
+my $nocomments=0;
+my $nowhitespace=1;
+my $unsorted=0;
+my $existingfile=0;
+my $verbose=0;
+my $regexonly=0;
+my $editor=0;
+my $suggest=0;
+my $suggestdir="";
+my $suggestion="";
+my $rc=0; # command rc
+my $command="";
+my $commandrc="";
+my $commandperl="";
+my $commandall="";
+my $noprint=0;
+my $unique=0;
+my $printwhitespaceasjoker=0;
+my $relevancesort=0;
+
+my $expr="";
+my $hlexpr=""; 
+my @hlexpr=();
+my $grep_opt="i";
+my $implicitand="and"; # for matcher
+my $newexpr_expansyn=0;
+
+my (@files, @files2, @tmp, %match, $SO, $SE,$tmp);
+
+while($_=$ARGV[0]){ # actually OK
+   /^-(V|-?verbose)$/o      and do{shift; $verbose++; next};
+   /^-(v|-?negate)$/o       and do{shift; $negate=1; next};
+   /^--?noprint$/o          and do{shift; $noprint=1; next};
+   /^-(i|-?ignore-?case)$/o     and do{shift; $grep_opt.="i"; next};
+   /^-(I|-?no-?ignore-?case)$/o and do{shift; $grep_opt=~s/i//g; next};
+   /^-0$/o                  and do{shift; $outputlineend="\0"; next};
+   /^-00$/o                 and do{shift; $outputlineend=$inputlineend="\0"; next};
+   /^-(\d+)(\*?)$/o         and do{shift; $fileprefixlen=$1.$2; next};
+   /^\+(\d+)(\*?)$/o        and do{shift; $matchprefixlen=$1;  
+                            $fileprefixlen=$1.$2 if not $fileprefixlen and $2; next};
+   /^-d$/o                  and do{shift; $TAGLSPATH=shift; next};
+   /^-b$/o                  and do{shift; $expr=&parsestring($expr,shift); next};
+   /^-f$/o                  and do{shift; $existingfile=1; next};
+   /^-F$/o                  and do{shift; $stripsfx=undef; next};
+   /^-X$/o                  and do{shift; $newexpr_expansyn=1; next};
+   /^--?or/o                and do{shift; $implicitand="or"; next};
+   /^--?stem$/o             and do{shift; $stemming=shift; next};
+   /^--?stdin$/o            and do{shift; $TAGLSPATH="-"; next};
+   /^--?highlight$|^-H$/o   and do{shift; $highlight=1; next};
+   /^--?RR$/o               and do{       $relevancesort++; $_='--R'}; # fall thru to next
+   /^--?R$/o                and do{shift; $relevancesort++; 
+                                   if (@ARGV) {
+                                      $tmp=join " ", map {$_="'".sq($_)."'"} @ARGV;
+                                      $tmp=`expansyn -stem $stemming -pcre $tmp`;
+                                   }; @ARGV=($tmp); last};
+   /^--?rr$/o               and do{shift; $relevancesort=2; next};
+   /^--?rel(evance(sort)?)?$|^-r$/o   and do{shift; $relevancesort=1; next};
+   /^-(#|-?skip-?comments?)$/o  and do{shift; $nocomments=1; next};
+   /^--?regexp?e?s?$|^-E$/o and do{shift; $regexonly=1; next};
+   /^--?edit(or)?$|^--?vim?$|^-e$/o and do{shift; $editor=1; next};
+   /^--?m(enu)?$/o          and do{shift; $menu++; next};
+   /^-(-?command[nN]|cmd[nN])$/o  and do{shift; $commandall=shift; next};
+   /^-(-?command[qQ]|cmd[qQ])$/o  and do{shift; $commandrc=shift; next};
+   /^-(-?command[pP]|cmd[Pp])$/o  and do{shift; $commandperl=shift; next};
+   /^-(-?command1?|cmd1?|c)$/o  and do{shift; $command=shift; next};
+   /^-(s|-?suggest)$/o      and do{shift; $suggest=1; next};
+   /^-(u|-?unsorted)$/o     and do{shift; $unsorted=1; next};
+
+   # deprecated
+   /^-(ws)$/o               and do{shift; $printwhitespaceasjoker=1; next};
+
+   /^-(h|-?help|\?)$/o  and do{&usage; exit 1};
+   /^-?-examples?$/o    and do{&usage_examples; exit 1};
+   /^--?$/o and do{shift; last};
+   last;
+}
+
+# what to do for no args and no expr -> for now: tagls .
+#do{die "no tags to look for..."} if not @ARGV;
+@ARGV=(".") if not @ARGV and not $expr; # i.e. return input
+
+$expr=&parsearray($expr,@ARGV);
+$expr="not ( $expr )" if $negate; # -v global negation of expr
+$unique=1 if $expr=~/key|grep/o;
+&vprint("\n# expression:\n$expr\n");
+$hlexpr=join("|",@hlexpr);
+&vprint(  "# hlexpr:    \n$hlexpr\n\n");
+
+$_="dummydata";
+eval $expr;
+die "# expression: $@" if $@;
+eval 'm{'.$hlexpr.'}';
+die "# hlexpr:     $@" if $@;
+eval 'sub matcher { '.$expr. ' }';
+die "# matcher:    $@" if $@;
+
+
+my $i=0; 
+
+
+# get the input into @files
+my($src,@src);
+vprint("# search path: $TAGLSPATH\n");
+foreach $src(split /:/, $TAGLSPATH) {
+   push(@src, $src) if $src eq "-" or -f $src or -d $src;
+   push(@src, glob($src));
+}
+foreach $src (@src) {
+   my $sqsrc=&sq($src);
+   -d $src and do{$suggestdir=$src if not $suggestdir; push @files, `find '$sqsrc' -type f`; next};
+   if (open(FH, "<$src")) {
+      my($lines,@lines);
+      local($/);
+      $lines=<FH>;
+      @lines=split /$inputlineend/, $lines;
+      @lines=grep(/\S/, @lines) if $nowhitespace;
+      @lines=grep(!/\s*#/, @lines) if $nocomments;
+      @lines=grep(-f, @lines) if $existingfile;
+      push @files, @lines;
+      close FH; 
+      next;
+   }
+}
+chomp(@files);
+$suggestdir="$ENV{HOME}" if not $suggestdir;
+
+
+
+# match against files
+my($file, %unique);
+foreach $file (@files) {
+   # we match against $_; file being the full name as used by key/grep
+   $_=$file; 
+   s/$stripsfx//o if $stripsfx;
+   $_=substr($_,0,$matchprefixlen) if $matchprefixlen;
+
+   # bug: efficiency - we COULD try avoid spurious evals 
+   #      for an identical prefix for +NUM/+NUM*/-NUM* 
+   #      (in case of *, after finding the second(!) match)
+
+   # bug: Q: allow for a skip-regex option outside of the
+   #      if block below? 
+
+   if (not $unique or 1==++$unique{$file}) { 
+      # %unique protects against duplicate expensive grep/key evals
+      # the output lines are made unique anyway before printing
+      $match{$file}++ if &matcher; # if eval($expr);
+   }
+}
+%unique=();
+
+
+# if not @files, we might be asked for a suggestion filename
+if ($suggest and not %match) {
+   $suggestion="00UNNAMED" if not $suggestion;
+   $match{"$suggestdir/$suggestion"}=1;
+   print main::STDERR "# adding suggestion $suggestdir/$suggestion\n";
+}
+
+
+# -NUMBER: idea is to restrict the number of files for arbitrary deep subtrees
+#           where the remainder of the pathname no longer consists of 
+#           usable categories and tags [say a source tree for some app, with
+#           just the parent of the unpacked source being the last tag in
+#           the path like this]
+#           comp/sw/lang/perl/<packagename-and-final-user-given-tag>/.../<unpacked tarball>
+if ($fileprefixlen) { # throw away n-1 files for each $fileprefixlen prefix
+   my(%match2,%match3);
+   $fileprefixlen=~/(\d+)/o;
+   my $prefixlen=$1;
+   my $prefix;
+   foreach (keys %match) {      # for each prefix, select ONE file
+      $prefix=substr($_,0,$prefixlen);
+      $match2{$prefix}=$_;
+      $match3{$prefix}++;
+   }
+   %match=();
+   if ($fileprefixlen=~/\*/) {
+      foreach (keys %match2) {  # report possibly truncated-* name (if dupe)
+         $_ = ($_ ne $match2{$_} and $match3{$_}>1) ? $_."*" : $match2{$_};
+         $match{$_}=1;
+      }
+   } else {
+      foreach (keys %match2) {  # report full name
+         $match{$match2{$_}}=1;
+      }
+   }
+}
+
+
+# relevance sort the @files by abusing the highlight expression,
+# which is the simple conjunction of all regexes (ignores do{...} and
+# boolean and/or as well as NOT)
+if ($unsorted) {
+   @tmp=();
+   foreach (@files) {
+      if ($match{$_}) {
+         push @tmp, $_;
+         delete $match{$_};
+      }
+   }
+   @files=@tmp;
+} elsif ($relevancesort and $hlexpr) {
+   eval '@files=map {$_->[1]} sort {$a->[0] cmp $b->[0]} map { 
+           [sprintf("%04d:$_", $relevancesort>1 ? s{$hlexpr}{$&}g'.$grep_opt.' : (- s{$hlexpr}{$&}g'.$grep_opt.' + 9999) ), $_]
+         } keys %match'; die "# relevance sort: ".$@ if $@;
+} else {
+   @files=(sort keys %match);
+}
+
+
+# calling an editor on the _LIST_OF_RESULTS_ and rereading that list
+# to replace the list of files IF it contains more than blank lines
+# AND the editor had a zero return code. It better knows how to cope
+# with </dev/tty >/dev/tty...
+if ($menu>1 or $menu and @files>1) {
+   my $tmpfile="/tmp/$ENV{LOGNAME}.tagls.$$.".time;
+   system "find /tmp/$ENV{LOGNAME}.tagls.* -type f -mtime +1 -exec rm {}\\; 2>/dev/null";
+   open(FH,">$tmpfile") or $tmpfile="";
+   print FH <<EOF;
+# select the files to report
+# 
+# tips
+# - to fall back to the original filelist in spite of having already
+#   saved a modified version, just save the file again as a single
+#   line of just #ORG, #ORIGINAL or #PASS. To suppress output and
+#   just return an error code use #FAIL N or #EXIT N (default 1)
+# - to zero the filelist, save an empty file or do a non-zero exit
+# - #-comments, empty lines and whitespace lines are stripped
+# 
+# vim tips
+# - gf/Vgf to view / :first for list).
+# - :ViewHtml to view html files (:setl noro to allow saving)
+#   (:com! ViewHtml exe "%!lynx -dump -force_html /dev/stdin" | setl ro)
+
+EOF
+   print FH join "\n", @files, "";
+   close FH or $tmpfile="";
+   # still the safest, if something's after us in a pipe...
+   die "# ERR tagls -m: cannot open tmpfile $tmpfile\n" if not $tmpfile; 
+
+   system "$EDITOR $tmpfile </dev/tty >/dev/tty"; # . "; echo '' >/dev/tty; echo '' >/dev/tty";
+
+   if (not $?) {
+      chomp(@files2=`cat $tmpfile`);
+      if      ($#files2==0 and $files2[0]=~/^#[\t ]*(ORG|ORIGINAL|PASS)([\t ].*|)$/) {
+         warn "# tagls -m: using original filelist instead of edited version\n";
+         # use the old files as is
+      } elsif ($#files2==0 and $files2[0]=~/^#[\t ]*(?:FAIL|EXIT)(?:[\t ](\d+))?([\t ].*|)$/) {
+         my $editorrc=1; $editorrc=$1 if $1; $rc+=$editorrc;
+         warn "# ERR tagls -m: setting rc to $editorrc as requested, clearing filelist \n";
+         @files=();
+      } else {
+         # or the new files from the editor session
+         @files=grep /(?!\0)\S/, grep /^[^#]/, @files2;
+      }
+   } else {
+      $rc+=$?>>8;
+      unlink $tmpfile;
+      @files=();
+   }
+   %match=() if not @files;
+}
+
+
+# -cmdQ: run a comand for each file and keep only files with a zero rc
+if ($commandrc and @files) {
+   @files2=();
+   foreach(@files) {
+      my @command=($commandrc);
+      # NOTE that "ARGV0=STRING command args" has the same effect of 
+      #            changing the command name...
+      @command=("bash", "-c", $command[0].' "$@"', $command[0]) if $command[0]=~/[\s'"\$\\;\|\>\<\(\)\{\}\[\]]/;
+      vprint("# calling command: @command $_\n");
+      $ENV{file}=$_;
+      system @command, $_;
+      push @files2,$_ if not $?
+   }
+   @files=@files2;
+   %match=() if not @files;
+}
+
+# -cmdP
+if ($commandperl and @files) {
+   eval($commandperl); die "# ERR tagls -cmdP: $@" if $@;
+   %match=() if not @files;
+}
+
+# -e: calling an editor and/or a command on all results or a command on a single results
+if ($editor and @files) { # above in constrast is safe due to just using a tmpfile
+   my @command=($EDITOR);  
+   @command=("bash", "-c", $command[0].' "$@" </dev/tty >/dev/tty', $command[0]);
+   vprint("# calling editor: @command ".join("'","",@files,"")."\n");
+   system @command, @files;
+   if($?) {
+      my $tmprc=$?>>8;
+      warn "# WRN tagls: rc $tmprc for $EDITOR <all files>\n";
+      $rc+=$tmprc;
+   }
+}
+# -cmdN
+if ($commandall and @files) {
+   my @command=($commandall);
+   @command=("bash", "-c", $command[0].' "$@"', $command[0]) if $command[0]=~/[\s'"\$\\;\|\>\<\(\)\{\}\[\]]/;
+   vprint("# calling command: @command $_\n");
+   system @command, @files;
+   if($?) {
+      my $tmprc=$?>>8;
+      warn "# WRN tagls: rc $tmprc for @command <all files>\n";
+      $rc+=$tmprc;
+   }
+}
+# -cmd
+if ($command and @files) {
+   foreach(@files) {
+      my @command=($command);
+      @command=("bash", "-c", $command[0].' "$@"', $command[0]) if $command[0]=~/[\s'"\$\\;\|\>\<\(\)\{\}\[\]]/;
+      vprint("# calling command: @command $_\n");
+      $ENV{file}=$_;
+      system @command, $_;
+      if($?) {
+         my $tmprc=$?>>8;
+         warn "# WRN tagls: rc $tmprc for @command '$_'\n";
+         $rc+=$tmprc;
+      }
+   }
+}
+
+
+# -H: highlighting to add
+my ($files,@files2)=("",()); 
+$files.=" '".sq($_)."'" foreach @files;
+@files2=@files;
+if ($highlight and @files2 and @hlexpr) {
+   ($SO, $SE) = (`tput smso`,`tput rmso`); chomp($SO,$SE);
+   eval '@files2=grep({s{'.$hlexpr.'}{$SO$&$SE}g'.$grep_opt.';1} @files2);'; die "# highlight error: ".$@ if $@;
+}
+# depreciated -ws
+@files2=grep({s/[\t \n]/?/go, 1} @files2) if $printwhitespaceasjoker;
+
+
+# printing
+print join("$outputlineend", @files2, "") if not $noprint;
+@files2=();
+
+
+if (not $rc) {
+   $rc=%match ? 0 : 1 
+} else {
+   $rc+=20; $rc=255 if $rc>255;
+}
+exit($rc); # switch to shell return code semantics
+
+#-----------------------------------------------------------------------------------------------------------
+
+# parse boolean regular expressions from string or array
+sub parsestring {
+   my @args;
+   # in a string, we require whitespace on both sides of the
+   # boolean operators and keywords like grep/key. The user
+   # is responsible to to disambiguate between keywords and
+   # normal occurance as part of a string
+   @args=split /(?:\A|\s+)(\(|\)|and|or|not|grep|key)(?:\s+|\z)/, $_[1];
+   return parsearray($_[0],@args);
+}
+sub parsearray { 
+   my $oldexpr=shift;
+   local($_);
+   my($expr,$and);
+   $and=""; # changed to "and " if an implicit and is possible
+   $expr="";
+   $implicitand="and" if not $implicitand;
+   while(@_){
+      $_=shift;
+      /^$/o         and do {die "illegal operator/argument"};
+      # syntactic sugar
+      /^not$/o      and do {$expr.=$and  ."not "; $and=""; next};
+      /^and$/o      and do {$expr.="and ";        $and=""; next};
+      /^or$/o       and do {$expr.="or ";         $and=""; next};
+      /^\($/o       and do {$expr.=$and."( ";     $and=""; next};
+      /^\)$/o       and do {$expr.=") ";                                           $and="$implicitand "; next};
+      # functions
+      /^grep$/o     and do {$expr.=$and  .'&grep_file('."'".&sq(&newexpr(shift))."'".',0) ';      $and="$implicitand "; next};
+      /^key$/o      and do {$expr.=$and  .'&grep_file('."'".&sq(&newexpr(shift))."'".',1) ';      $and="and "; next};
+      # default
+      1             and do {$expr.=$and.&newexpr($_).' ';                          $and="$implicitand "; next };
+      next;         # never reached
+   }
+   $expr=~s/ \z//o;
+   if ($expr=~/\S/) {
+      $expr='(' . $expr . ')'
+   }
+   if ($oldexpr=~/\S/ and $expr=~/\S/) {
+      $expr=$oldexpr. ' or ' . $expr ;
+   } elsif ($oldexpr=~/\S/) {
+      $expr=$oldexpr;
+   }
+   return $expr;
+}
+
+
+sub newexpr {  # don't add /o
+   local($_)=@_;
+   my($tmp,@tmp);
+   if      (/^do\s*{/) {
+      # perl
+      ;
+   } elsif (not /[^ :$tagcharstring]/i and /[ :]/ and not /\A\./ and not $regexonly) {
+      # word list
+      $tmp=$_;
+      $tmp=~s/[ :]+/./g;
+      $suggestion.="." if $suggestion; # collect plain words for filename suggestions
+      $suggestion.=$tmp;
+      @tmp=split /[ :]+/, $_;
+      $tmp=""; foreach(@tmp){
+         next if not /\S/;
+         $tmp.=" and " if $tmp;  
+         $_=~s/\\\.$//g; # strip trailing dot (instead of at end of &stemming)
+         if ($newexpr_expansyn) {
+            my $epat=sq($_);
+            $_=`expansyn -stem $stemming -pcre -isregex '$epat'`;
+            chomp($_);
+         } else {
+            $_=stemming($_);
+         }
+         $_='${S}'.$_.'${E}';
+         push @hlexpr,$_;
+         $_='${K}'.$_;
+         $tmp.='m!'.$_.'!'.$grep_opt;
+      }
+      $_="($tmp)";
+   } elsif (/[^$tagcharstring]/i or /\A\./ or $regexonly) {
+      # regex
+      # $_=~s/(?<!\\)((\\\\)*)\@/$1\\\@/go; # escape not-yet escaped - see also expanfind
+      # TEST with parens, these need to be escaped always by the user, thus
+      #               it should be usable for us!
+      $_=~s/\A(\.|=~)//o;
+      if ($newexpr_expansyn) {
+         my $epat=sq($_);
+         $_=`expansyn -stem $stemming -pcre -isregex '$epat'`;
+         chomp($_);
+      }
+      push @hlexpr,'('.$_.')'; 
+      $_="m{$_}$grep_opt";
+   } else {
+      # word
+      $suggestion.="." if $suggestion;
+      $suggestion.=$_;
+      $_=~s/\\\.$//g; # strip trailing dot instead of at end of &stemming
+      if ($newexpr_expansyn) {
+         my $epat=sq($_);
+         $_=`expansyn -stem $stemming -pcre -isregex '$epat'`;
+         chomp($_);
+      } else {
+         $_=stemming($_);
+      }
+      $_='${S}'.$_.'${E}';
+      push @hlexpr,$_;
+      $_='${K}'.$_;
+      $_='m!'.$_.'!'.$grep_opt;
+   }
+   $suggestion=~s/(\.\.+|\.+$)//g;
+   return $_;
+}
+
+sub stemming {
+
+   # !! KEEP IN SYNC WITH &stemming in expansyn !!
+  
+   # do stemming and quote-meta if requested
+   my($word)=@_;
+
+   if ($stemming==0) {
+      # final . denotes missing stem
+      $word=quotemeta($word);
+      $word.='[a-zA-Z]{0,5}' if $word=~s/\\?\.$//o;
+   } elsif ($stemming==2) {
+      $word=~s/(er|e|ing)s?$//io;
+      $word=~s/(?![aeiuoy])([a-z])\1$/$1/io;
+      $word=$_[0] if not $word=~/[a-z]$/io;   # not a word to stem!?
+      $word=quotemeta($word);
+      $word.='[a-zA-Z]*' if $word=~/[a-z]$/io;
+   } elsif ($stemming==1) {
+      $word=~s/(er|e|ing)s?$//io;
+      $word=~s/(?![aeiuoy])([a-z])\1$/$1/io;  # shorten double consonants at end
+      $word=$_[0] if not $word=~/[a-z]$/io;   # not a word to stem!?
+      $word=quotemeta($word);
+      $word.='{1,2}(?i:(?:er|e|ing)s?)?' if $word=~/[a-z]$/io;
+   } else {
+      $word=quotemeta($word);
+   }
+   return($word);
+}
+
+sub grep_file {
+   my($expr,$mode)=@_;
+   my($file, $sqfile,$tmp, $rc)=($_, sq($_), "", 0);
+   local($_);
+   open(FH, "<$file"); 
+   read(FH,$_,512,0); 
+   if      (/\A\037\213/) {
+      # skip large compressed files
+      (-s $file > $grep_max_size) and return(0);
+      $_=`zcat  '$sqfile'`
+   } elsif (/\ABZh/ and $file=~/\.bz(2|i|$|\.)/) {
+      (-s $file > $grep_max_size) and return(0);
+      $_=`bzcat '$sqfile'`
+   } else {
+      seek(FH,0,0);
+      read(FH,$_,$grep_max_size,0); 
+   }
+   close FH;
+
+   my($S)="(?:$S|\\s)";
+   my($E)="(?:$E|\\s)";
+   my($K)=$K;
+   $K=$keywordpat if $mode==1;
+   eval qq@vprint("expr is $expr\n")@ if $verbose > 1;
+   $rc=1 if eval $expr;
+   die "invalid grep in file: $@" if $@; 
+   $tmp="";
+   return($rc);
+}
+
+sub vprint {
+   print(main::STDERR @_) if $verbose;
+   return(@_);
+}
+
+sub sq{ # escape hack for single-quoting
+   my($tmp)=@_;
+   $tmp=~s/'/'"'"'/g;
+   return($tmp);
+}
+
+#----------------------------------------------------------------------------------------
+
+sub usage {
+   print <<EOF;
+
+       tagls     [OPTIONS] EXPR
+       taglsc    [OPTIONS] EXPR          # allow preset collections
+find | taglsgrep [OPTIONS] EXPR          # initialize as boolean grep
+
+
+taglsc notes         sw.admin cron       # use the notes collection
+tagls                sw.admin cron       # use TAGLSPATH or current dir
+
+tagls -c 'ls -l'     sw.admin or sw.adm
+find | tagls -d - -0 sw.admin or sw.adm | xargs -0 ls -l
+ls -l \$(tagls -ws sw.admin)             # -ws instead of IFS=\$'\\n' 
+
+version: $version
+
+[tagle:s]  prints matching dotted-tagged filenames (or input lines). A
+dotted  tagged filename is a name containing a stretch of  .-separated
+words,  usually at the start or end. The output contains no  duplicate
+lines. The exit code of tagls is 0 for matches found, 1 for no matches
+or the sum of editor and command exit codes plus 20 truncated at 255. 
+
+
+EXPR might be as simple as a non-empty list of tags, which is expanded
+into  a perl boolean expression that tests for the ANDed existence  of
+all  tags in the filenames of the files in given in filelists or  dirs
+specified in TAGLSPATH or via -d. 
+
+Alternately  it  can be a valid complex boolean expression  containing
+parenthesis  and the keywords "and", "or", "not" in addition to atoms.
+A sequence of multiple atoms are ANDed. 
+
+Types of atoms:
+
+a) tag (matching against filename):
+  a1) tag:                      string: a-z, 0-9, -, +, #, _
+  a2) (dotted) sequence:        plus . and /; to match, tag sequences 
+                                must occur as substring in the input,
+                                plus satisfy tag boundary conditions.
+                                this allows hierarchic tagging.
+                                Note: '.tag' is invalid, 'tag' is valid
+  a3) list of sequences:        conjunction of sequences, separated by
+                                either a blank or a ':'
+b) regexp (matching against filename): if necessary to disambiguate 
+                                use () or a prefix of '=~' or '.', the
+                                later two will be stripped later
+c) do{perl statements; perl expression setting boolean value}:
+                                e.g. do{/REGEX/msio};
+d) function (arguments are type a-c with modified match target):
+   d1) grep expr                match against file content
+   d2) key  expr                match against keyword lines in file
+                                (e.g. ^kw:, ^keywords:)
+
+Stemming and synonyms:
+
+For  simple tags or the last tag of dotted sequences, stemming can  be
+done:  -stem  0  allows to add a trailing "." to a tag to  extend  the
+match  by upto 5 characters [a-zA-Z]. With -stem 1, tags are  stripped
+of  e/er/ing,  plural s and doubling consonants and extended to  match
+any  of these. -stem 2 modifies tags to match all words beginning with
+the  stripped tag. With -stem 1 and 2, adding a trailing "."  protects
+against  expanding/modifying the tag. The current default stemming  is
+-stem $stemming.
+
+For simple tags and regexes, option -X allows synonym expansion, incl.
+an attempt at stemming even within basic regexes. See also the note on
+expansyn below.
+
+
+For each directory given in TAGLSPATH or -d, "find -type f" is used to
+generate  a filelist. Anything else is either a filelist or a glob  to
+be  expanded  to filelists. Non-canonical filenames like a/../b/c  are
+not  simplified.  Symlinks  are not resolved. 
+
+To  grep  just for matching lines on stdin (not necessarily  requiring
+lines  to be filenames), use -d -. Note that white-space lines in  the
+input  are  ignored, as are comments with -skip-comments. Contrary  to
+grep, matches are sorted in lexicographic order (unless -unsorted).
+
+
+taglsgrep:
+
+For a more grep(1)-compatible use, try taglsgrep which implements just
+boolean   perl  regular  expressions  against  STDIN  (every  atom  is
+considered a type b regex):
+
+  ( echo a; echo a b ; echo a b c; echo c ) | taglsgrep -i a b not c
+
+mytcgrep   aka   Grep.pm  also  implements  a  boolean  perl   regular
+expressions  framework  allowing a more traditional grep  syntax,  but
+lacks tags/stemming.
+
+
+taglsc:
+
+See  the  taglsc  wrapper  for an example of  using  tagls  to  search
+specific  document collections. To list the available collections, run
+taglsc without arguments. 
+
+
+expansyn:
+
+Can  be  used  to expand a) tags to a disjunction of  tags  and  their
+synonyms,  b)  tags  in parens within "simple" regexes.  It  does  NOT
+support  taglists:  use '(tag).(tag)' instead of 'tag.tag'. The  first
+command  simply  ORs  the  set of tags and  sorts  matching  files  by
+relevance, so the most interesting files occur first, without any need
+to craft more restrictive boolean expressions. The second command also
+adds synonyms (expansyn -tagls in command 3 explicitely inserts 'or'),
+while  the  third  command  uses the resulting regex  in  the  boolean
+expression,    resulting    in   something   like   -B    black    and
+(while|yellow|light|bright).  Expansyn also contains the same stemming
+options as tagls.
+
+  tagls -R  -or     tag tag tag
+  tagls -R  -or     \$(expansyn        tag tag tag)
+  tagls -RR     -b "\$(expansyn -tagls tag tag tag)" | tail
+  tagls         black and "\$(expansyn -pcre white yellow)"
+
+
+Options (long options may also start with --):
+  -  / --    end of options
+  -example / -examples                    
+  -h / -?    -help
+  -V         -verbose
+
+  # input
+  -0         output is \\0-terminated, input is \\0, \\r and/or \\n
+  -00        both output and input are \\0-terminated
+  -#         -skip(-)comments in input 
+  -d  PATH   :-separated list of directories or filelists to search in
+             (overrides the shell variable \$TAGLSPATH, can contain
+             patterns)
+  -f         skip input lines not existing in the filesystem
+  -stdin     like -d -: read from stdin
+
+  # matching
+  -b  EXPR   splits string argument EXPR and sets the boolean regex
+             accordingly. Multiple occurances and final non-option 
+             arguments are grouped and OR-ed (instead of the default: 
+             conjunction of non-option arguments)
+  -E         -regex(p)(e?s)  all atoms are regex or do{} (type 2+3)
+  -F         match against full input line including suffices, i.e. 
+             do not shorten perl.faq.txt.gz to perl.faq by stripping
+             away usual filename suffices of little semantic value.
+  -i              -ignore(-)case (default modifiers: $grep_opt)
+  -I         -no(-)ignore(-)case ('(?i-i)' [\\l\\u] [\\L\\U\\E])
+  -or        missing implicit operator is assumed to be 'or' for
+             subsequent arguments.
+  -v         -invert boolean expression
+  -X         invoke expansyn
+  -stem N    0: no stemming
+             1: basic English: doubling, e|er|ing, s
+             2: tag is beginning of word
+
+  # reporting: summarizing
+  control matching and/or printing of prefix-duplicated matches
+  (the results of NUM* require validation, editing and quoting
+  before use within a shell command):
+  -NUM       in case of multiple matches with the same prefix:
+             print a single randomly chosen match [depreceated]
+  -NUM*      in case of multiple matches with the same prefix:
+             print a single <prefix>*
+  +NUM       restrict matching to a prefix of length NUM, and print
+             all matches in full, incl. all prefix-duplicates
+  +NUM*      +NUM -NUM*: print single matches in full, and
+             prefix-duplicates as <prefix>* 
+
+  # reporting: ordering and house-keeping
+  -H         -highlight tags when printing results
+  -s         -suggest -- suggest a filename to create if no matches
+  -r         -rel(evancesort) by decreasing number of tags in name
+  -rr        sort by increasing
+  -u         -unsorted (default lexicographic sort unless -r/-s)
+  -noprint   do not print matching filenames
+
+  # invoking commands on results (in order of execution):
+  # this uses the array form of system and, if necessary, prefixes
+  # "bash", "-c" to allow for complex commands. The shell variable
+  # \$file also contains the filename for -cmdQ/-cmd.
+  -m         -menu -editor-menu: for multiple results, invoke the editor
+             on the list of filenames before final -e/-c/printing. 
+             Use -m -m to also invoke the editor if we have only a single
+             match. The original filelist will be used afterwards
+             if the editor returns only one line consisting of one of 
+             #PASS, #ORIGINAL or #ORG. Empty or whitespace lines and 
+             are stripped from the new filelist. The filelist is also
+             emptied if the editor has a non-zero return code or just
+             returns a line of #EXIT N or #FAIL, which also add to the
+             exit code for tagls.
+  -cmdQ CMD  -commandQ       run CMD on each file; remove on error
+  -cmdP STR  -commandP       eval arbitrary perl (list is \@files)
+  -editor    -vim / -e       run editor on all files at once
+  -cmdN CMD  -commandN       run CMD on all files at once
+  -cmd  CMD  -command  / -c  run CMD on each file
+  
+
+Short-cuts for frequent option combinations:
+  # for relevance-sorted ored tags (last option, no -b/-X)
+  -R         -r  -or \$(expansyn -pcre NON-OPTION ARGUMENTS)
+  -RR        as above with -rr: most-relevant-last
+             (use '-X -or -rr' with -b and more complex arglines)
+
+EOF
+
+# undocumented as it is WAY UNSAFE -- see shell.NOTES
+
+# -ws        whitespace hack to avoid messing with \$IFS: 
+#            print ? for [\\t \\n] in reported matches, e.g. for shell
+#            commands like ls -l \$(tagls ...)
+#
+# the only worse idea is messing with IFS and its side effects on $*.
+#
+# - merely terminally ugly is this approach, which
+#   makes the ugly xargs pipe looking like a fine dandy:
+#   declare -a b; unset b
+#   export a=$(tagls ...)
+#   exec 5< <(echo "$a");  
+#   i=0; while read -u 5 -r a ; do b[$i]="$a"; let i=i+1; done; echo "-$i-" 
+#   ls -l "${b[@]}"
+
+# way better:
+# - ls -l "$(tagls ... | head -1)"                  # otherwise: echo $(echo '*') == echo * !!
+#   f=$(     tagls ... | head -1); ls -l "$f"       # use vars to avoid quoting s/hell
+#
+# the generic solution:
+# (exec based, and thus possibly requiring yet another temp file
+#  in case you need to set args and stuff as shell commands)
+# - tagls -0 ... | xargs0 ls -l 
+# - tagls -0 ... | while read -r 
+# - tagls -c CMD ... # plus workaround on demand via bash
+
+}
+
+sub usage_examples {
+   print <<'EOF';
+
+Examples: 
+
+find | tagls -d - -e PERL COMP not (?i:micro-?soft|ms) key TEST
+
+This will require the filenames to contain the tagwords PERL and
+COMP in any order, but not tags like Microsoft. The resulting 
+set of files will be opened and checked for a keyword line 
+containing TEST. The names of matching files will be printed
+and then these files are displayed in the editor.
+
+
+tagls grep "foo bar" #  grep all files and list those that
+                        contain both the words foo and bar 
+
+tagls grep 'do{/foo/ and /bar/}' # as above, but also 
+                        valid in substrings, etc
+
+ls -l $(tagls -i PERL COMP) # long listing of all files
+                        whose names are tagged with 
+                        PERL and COMP. If the files 
+                        contain whitespace, use instead
+tagls -0 -i PERL COMP | xargs -0 ls -l
+                        as quoting "$(...)" works only 
+                        for single file matches
+#typeset | grep -i ifs # IFS=$' \t\n'
+{ IFS=$'\n'; ls -l $(tagls -i PERL COMP); }
+                        shorter workarounds are
+tagls -cmd "ls -l" -i PERL COMP # and
+ls -l $(tagls -ws -i PERL COMP) # replacing \\s by '?'
+                        the final one might be the quickest
+                        workaround for this shell insanity
+
+tagls -stdin "to be" or not "to be" # doesn't procrastinate,
+                        but rather sorts input from stdin
+
+ls -l $(find | tagls -stdin -ws) # ws-hackify filenames
+                        to survive \$IFS during shell command 
+                        substitution
+
+Notes:
+ - grep/key size limit: $grep_max_size: Small compressed files 
+   will be uncompressed. Files larger than the limit are read 
+   either partially or fail to match (if compressed).
+ - keyword lines are lines matching $keywordpat.
+ - whitespace and optionally comments in input are skipped
+ - the editor is expected to cope with redirection from/to
+   /dev/tty.
+
+Missing stuff:
+ - no option to request enforcing canonical filenames 
+ - no option to request resolving symlinks
+ - no option to set a base dir for a filelist, e.g. in TAGLSPATH
+ = workaround for above: use absolute filenames and be careful in
+   both filelist creation and use
+
+Related:
+ - expansyn  - support program: expand synonyms
+ - expanfind - look in input for tags, then return the tagged lines
+               AND RELATED LINES: expandfind -tag '\.PJ' would match
+               any file with a \.PJ "near" the end. Now it will also
+               include any line matching the earlier match's substring
+               upto \.PJ. By default, it is inefficient and won't go
+               to disk for globbing.
+
+Bugs:
+ - none tagged
+
+EOF
+}
+
+
+__END__

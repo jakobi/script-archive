@@ -1,0 +1,154 @@
+#!/usr/bin/perl
+
+# $0 expands argument ranges; a primitive hack
+
+# XXXXXXXX PJ        jakobi@acm.org -- initial version
+# 20080524 PJ   0.2   
+# copyright:  (c) 2008 PJ GPL v3 or later
+my $version="0.2";
+ 
+# =<partial EXPR>: step expr
+# --/++: perl magic autoinc/decrement ops for numbers/string identifiers
+#
+# :TYPECHAR for printf output (use e.g. x for HEX and X for 0xHEX)
+# NOTE: handling numbers vs strings is independent of TYPECHAR
+#
+# RANGE:= ATOM SPC RGOP SPC ATOM, where RGOP = .. | -
+# in case of missing SPC whitespace and decimal numbers, we
+# try guessing something sane... - I now begin to understand
+# those fears that lwall's patch has a higher IQ than
+# most of its users... :) - just do what I mean can hide
+# some pretty ugly user errors...
+#
+# range    20 23                    # a range of 2 numbers, no other args - imply use of ..
+# range    -n 20 .. 24              # 20 21 22 23 24    (-n: no linefeed, as in echo; implied ++; numeric <=)
+# range    -s , 20 .. 24            # 20,21,22,23,24    (-n: no linefeed, as in echo; implied ++; numeric <=)
+#                                   # echo $(eval echo a{$(range -s , 1..3)}b)         -> a1b a2b a3b
+#                                   # echo $(eval 'echo "a"{'$(range -s , 1..3)'}"b"') -> a1b a2b a3b
+#                                   # echo $(range -f "a%sb" 1..3)                     -> a1b a2b a3b
+# range    -- 24 .. 20 18           # 24 23 22 21 20 18 (numeric >=)
+# range    =+3 02 .. 6              # 02 05           
+# range    =+3 02-6                 # 02 05, equivalent usage
+# range    =+3 02 .. 1              # 02              
+# range    2..4 ..06 a b c 9..10    # 2 3 4 05 06 a b c 9 10
+# range    20.3 .. 22  a .. ff      # 20.3 21.3 a b c d e f # g is lexicographic larger than ff
+# range :X 0x03 .. 0x0c :s a .. ff  # 0x03 0x04 0x05 0x06 0x07 0x08 0x09 0x0a 0x0b 0x0c a b c d e f
+#                                   # actually for string ranges :s is always used instead of the
+#                                   # usual type due to a nice perl surprise where print format
+#                                   # influences ++ behaviour for some versions
+# range :s 3 .. c                   # 3 4 5 6 7 8 9 # consider x3 .. xc: after x9, there comes y0>xc
+# range :s 3 .. 0c                  # 3             # x3 is already lex. larger than x0c.
+# range :x 0x03 .. 0x0c             #   03   04   05   06   07   08   09   0a   0b   0c
+# range :X 0x03 .. 0x0c             # 0x03 0x04 0x05 0x06 0x07 0x08 0x09 0x0a 0x0b 0x0c
+# range :x 03 .. 0c                 # 03            # 0c is a string, thus 0, smaller than 3
+# range -f "%07.2F" 3..33           # 0003.00 etc
+# 
+# see also: rev (space separated word reversal)
+#           tac (line reversal)
+#           seq (-f "%02.f" N M sequence output; allows float)
+# - range does try to interpret bad range descriptions sanely such as 
+#   2 ..04 as 2 03 04, or 2..4 ..06 as 2 3 4 5 06.
+# - range tries handling strings / floats in a primitive/pass-thru manner
+# - hex is treated sanely
+# - octal is not supported (interpreted as decimal numbers)
+ 
+
+$nl="\n"; 
+$s=0;  # s/tart
+$sp=0; # s/tart is NOT yet printed
+$mode="++";
+$op='(?:-|\.\.)';
+$num='(?:[-+]?\d+|[-+]?0x[0-9a-fA-F]+)';
+$type='s';
+$out="";
+
+
+$ARGV[1]="..$ARGV[1]" if 1==$#ARGV and $ARGV[0]=~/^$num$/ and $ARGV[1]=~/^$num$/;
+while(@ARGV){
+   $_=shift;
+   if (/^$num$/)                 { 
+      $s=$_; range($s)
+   } elsif (/^($num)?$op($num)?$/)    { 
+      do{$sp=0;$s=$1} if defined $1;
+      $e=(defined $2) ? $2 : shift;
+      $s=range($s,$e);
+   } elsif (/^=[\*\+\-].*|^(--|\+\+)$/) { 
+      $mode=$_; $mode=~s/^=// 
+   } elsif (/^:([dsxX])$/)             { 
+      $type=$1
+   } elsif (/^-s$/) {
+      $nl=shift;
+   } elsif (/^-f$/) {
+      $type=shift;
+   } elsif (/^-n$/) {
+      $nl=" ";
+   } elsif (/^-h$/) {
+      system "less $0"; exit 1;
+   } else { 
+      $s=$_; range($s) 
+   }
+}
+
+$out=~s/$nl\Z// if $nl and $nl!~/\n/;
+print $out;
+
+exit;
+
+###############################################################
+
+sub range {
+   my($n,$start,$end,$fmt,$fmt0)=();
+   my($type)=$type;
+   ($start,$end)=@_;
+
+#print "range: $start, $end\n";
+   # let perl guess the right thing using %0Ns for both strings and numbers
+   $n=""; 
+   $n="0" . length($1) if $end   =~ /^(?:0x)?(0+[\da-f]+)$/i; #only useful in the infamous ..NUM case
+   $n="0" . length($1) if $start =~ /^(?:0x)?(0+[\da-f]+)$/i;
+   # $start =~ s/^0+(?=[\d\.]+$)//; $end   =~ s/^0+(?=[\d\.]+$)//; # remove leading 0
+   
+   # SURPRISE: perl uses print format to guesstimate string vs number issues for ++ operation
+   # so type x makes a major mess of things; "a"++ -> b <printf %x>  "b"++ -> !! 1 !! 
+   $fmt0="";
+   if ($type=~/^.$/){
+      $type='s' if not (numeric($start) and (numeric($end) or not defined($end)));
+      do{$type="x"; $fmt0="0x"} if $type eq "X";
+      $fmt0="$fmt0\%${n}$type";
+   } else {
+      $fmt0=$type; # user used -f PRINTF-FORMAT option, so use it as is
+   }
+   $fmt=$fmt0.$nl; 
+
+   # due to an upgrade, some of the magic broke, so we use eval
+   # to make perl properly handle *hex* again, sigh
+   # for numbers not OCTAL/...
+   eval '$start=0+'.$start if numeric($start) and $start=~/[^0-7]/;
+   eval '  $end=0+'.$end   if numeric($end)   and   $end=~/[^0-7]/;
+
+   do{$sp=1; $out.=sprintf $fmt, $start} if not defined($end) or not $sp;
+   if (defined($end)) { 
+      if (numeric($start) and numeric($end)) {
+         if    ($mode=~/^\+\+$/) { while(++$start <= $end ) {$out.=sprintf $fmt, $start}}
+         elsif ($mode=~/^\-\-$/) { while(--$start >= $end ) {$out.=sprintf $fmt, $start}}
+         else                    { while(eval('$start = $start ' . $mode), $start <= $end ) {$out.=sprintf $fmt, $start}}
+      } else {
+         $start="x$start"; $end="x$end"; # enforce interpretation as string even for strings like "3"
+         if    ($mode=~/^\+\+$/) { while(++$start le $end ) {$out.=sprintf $fmt, substr $start, 1}}
+         elsif ($mode=~/^\-\-$/) { while(--$start ge $end ) {$out.=sprintf $fmt, substr $start, 1}}
+         else                    { while(eval('$start = $start ' . $mode), $start le $end ) {$out.=sprintf $fmt, substr $start, 1}}
+      }
+      $sp=0;
+   }
+   
+   # return a somewhat sensible default to allow a .. b - c type constructs (which are a mess anyway ... 
+   # as we certainly won't allow monsters such as "a .. b-c"; also: return the incremement start or 
+   # $end instead?). Anyway, deal with pathologics, IFF we can guess a sane meaning, else
+   # don't try interpreting it as range, but as atom.
+   return(sprintf $fmt0, $start); # incremented to "beyond" end
+}
+
+sub numeric {
+   # allows 100, 100.0, .0, 10e2, 0x23, somewhat more relaxed in comparison to $num
+   $_[0]=~/^([-+]?[\d\.]*\d(e[-+]?[\d\.]*\d)?|0x[\da-f]+)$/i;
+}

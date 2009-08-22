@@ -1,0 +1,15 @@
+#!/usr/bin/perl
+
+# just like exec tagls -unsorted -stdin "$@", however mark any normal argument as regex
+# example: cat /etc/hosts | taglsgrep -V -i \( An.*rn or compact \) not kefk
+
+for (@ARGV) {
+   # boolean (extend with e.g. (?=) to interpret as regular expression)
+   next if /^(\(|\)|not|or|and)$/;
+   # -.*: pass thru regex or option
+   next if /^-.*$/;
+   # mark further arguments as regular expressions
+   $_="=~".$_;
+}
+
+exec "tagls", "-unsorted", "-stdin", @ARGV;

@@ -1,0 +1,8 @@
+#!/usr/bin/perl
+
+unshift @ARGV, $0;
+for($i=0; $i<=$#ARGV; $i++) { 
+   $ARGV[$i]=~s/\n/\n  /g;
+   print "$i $ARGV[$i]\n";
+}
+

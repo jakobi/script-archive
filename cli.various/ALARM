@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# this toy should try a visual and sonic attack,
+# possibly even starting the audio daemon to
+# get attention (though it probably should also 
+# check volume and possibly even try a remote connect
+# to a known good sound server turned up just for 
+# notifications - monitor speakers may be turned off
+# if the monitor's off or powersaving ...)
+
+# also a scrapboard of all things visual annoyance, 
+# from OSD to xdialog ...
+
+# example usage: 
+# - ssh HOST waitcond not recent /dev/pts/foo; ALARM text
+# -          waitcond not recent /dev/pts/bar; ALERT
+# - make; echo RC is $?; ALERT
+# - sleepuntil 16:00; ALERT
+
+
+cd
+
+test -f $HOME/.profile && . $HOME/.profile
+xurgency=$(which xurgency)
+osd=$(which ALERTOSD)
+tty=$(tty|sed 's@/dev/@@')
+time=$(date +%H:%M)
+export bmsg="$tty{$time}${1:+: $*}";
+export msg="ALERT $bmsg";
+
+( echo "Subject: ALERT for $@"; echo "To: $LOGNAME"; echo; echo "$msg" ) | /usr/lib/sendmail -ti
+
+if [ "$DISPLAY" != "" ] ; then
+   # set a WM hint ON THE CURRENTLY ACTIVE WINDOW - not necessarily 
+   # for OUR window (this is indeed correct if the command is wrapped
+   # by xurgency). It's likely the one below the xmessage. However
+   # that window's hint is displayed even after switching. Hint is
+   # not displayed if that window REMAINS active.
+   # xurgency needs about a cmd runtime of about 10s to register(?).
+   test -x "$xurgency" && { nohup xurgency sleep 10 2>/dev/null & } 
+   test -x /usr/bin/xmessage && { 
+        # or xdialog; but that's focused unless helped by a
+        # REAL wm (not metacity) or xdotool, which btw
+        # can also send mouse, keys, moves, focus, ...
+        # (though probably not workspace switching)
+:       xmessage -nearmouse -timeout 40000 "$msg" & 
+   }
+   
+   # display limited to about 10s max with freedesktop-DBUS/galago/ubuntu NotifyOSD
+   # IF it displays
+   perl -e 'use Desktop::Notify;$N=Desktop::Notify->new();
+            $n=$N->create(summary=>"ALERT",body=>"$ARGV[0]",timeout=>9000);
+            $n->show()' "$bmsg" 2>/dev/null 
+   # other options:
+   # echo test | wall writes to e.g. one's _login_ shells, not mere interactive shell (root overrides mesg)
+   # FreeDesktops notification area / systray via e.g. a full Gtk app using 
+   #    e.g. Menues and Gtk2::TrayIcon [even worse than wall]
+
+   # OSD notification, annoying and for a day 
+   export tmp=$(echo "$msg" | tr '()' '{}')
+   #    however, these don't queue like maybe
+   #    the real notifier might do in karmic,
+   #    when it no longer fails every 2 seconds
+   # libxosd2 / osd_cat 
+   # osdsh / osdctl
+   test -x $osd && $osd "ALERT $*";
+
+   # to move/focus windows: xdotool
+fi
+
+echo -ne '\a'; sleep 1 # bash builtin, NOT in ash /bin/sh
+echo -ne '\a'; sleep 1
+echo -ne '\a'; sleep 1
+
+test -x /usr/bin/mpg123 && {
+   # maybe add a mixed command?
+   echo press ^c to end alert
+   for i in $HOME/.alarm.mp3 $HOME/images/alarm.mp3 /compact/images/alarm.mp3; do
+      test ! -f $i && continue
+      padsp mpg123 $i >/dev/null 2>&1 && break
+      mpg123 $i >/dev/null 2>&1 && break
+   done
+
+if [ "$DISPLAY" != "" ] ; then
+   echo ""
+   echo "# use ALERTCLR to clear OSD"
+#   echo "# to clear OSD: (1) ALERTOSD or osdctl -s ' ' / zap osdsh or"
+#   echo "#               (2) perl -e 'print qq@\n@x3' >>$l / zap osd_cat"
+fi
+
+}

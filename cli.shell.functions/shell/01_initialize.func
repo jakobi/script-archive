@@ -1,0 +1,67 @@
+export HOME PATH HISTCONTROL
+export HOSTNAME LOGNAME UID USER SHNEST debian_chroot # moved to init! 
+
+
+
+# tty setup, prompt, display, ... should also go to prompt*.func
+
+
+
+# nesting detection
+# 0.. - console shells, ssh
+# 1.. - desktop spawned shell
+# m-n - n-th shell of another kind in shell#m
+if [ "${SHNEST##*-}" != "$SHNEST" ]; then
+   _SHNEST=${SHNEST##*-}
+   SHNEST=${SHNEST%-*}
+   let _SHNEST=_SHNEST+1
+   SHNEST=$SHNEST-$_SHNEST
+else 
+   SHNEST=${SHNEST:--1}
+   let SHNEST=SHNEST+1
+fi
+
+
+
+# chroot detection (commented if default for bash)
+[ -z "$debian_chroot" ] && [ -r /etc/debian_chroot ] && debian_chroot=$(cat /etc/debian_chroot)
+
+
+
+# umask 022
+# HOSTNAME=$(hostname)
+# LOGNAME=$(id -un)
+# USER=${USER:-$LOGNAME}
+# export UID=$(id -u)
+
+
+
+# PATH=$HOME/bin:$PATH
+PATH=$HOME/bin-l:$PATH
+
+
+
+if [ "$PS1" != "" ]; then
+   : # interactive code goes here
+fi
+
+
+# consider tty or pid specific histories...
+
+# histf=`tty | awk 'BEGIN {FS="/"; nm=".shist_"} { for (i=1; i<=NF; i++)  nm = nm $i;} END { print nm;} '`
+#export HISTFILE=$histf
+#\rm -f $histf
+#echo History file is $histf...
+
+# history -a append to file;            -w write to file  -c clear
+#         -r replace history with file  -n append file to memory history
+# shopt -s histappend # stuff should be appended to history file at session end
+# set -o history on
+# HISTSIZE=0 == no history
+# export HISTIGNORE=”pwd:ls:ls -ltr:” # ignore specific commands
+
+HISTCONTROL=ignorespace:ignoredups
+
+
+
+# vim:filetype=sh

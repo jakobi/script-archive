@@ -1,0 +1,111 @@
+#!/usr/bin/perl
+
+# Usage cat0 [OPTIONS] ...
+# conversion tool for filelists: \n-lines <--> \0-lines.
+
+# created     PJ 2005XXXX$ jakobi@acm.org
+# last change PJ 20090615 fixing copyright and version
+# copyright:  (c) 2005-2009 PJ, GPL v3 or later
+my $version="0.1";
+
+
+sub help {
+   print <<EOF;
+$0 [OPTIONS] PATH ...
+
+prepare file-per-line style input for xargs -0. 
+
+version: $version
+
+Options:
+  -arg           print argument interpreting it as file or stdin
+                 --argnl, --arg0
+  -0		 --zero    input \\n to output \\0 (default)
+  -nl            --newline input \\0 to output \\n
+  -rw            --removewhitespace and empty lines
+  -nonl[=STRING] replace any embedded line ends ('$strval_default')
+  -nore[=STRING] replace embedded output record ends (also -rn/-rnl)
+  -rc / -#	 --removecomments   and empty lines
+
+Notes:
+  - -nore / -nonl embed the argument in double quotes unless it
+    starts with one or with do{...}. (default: "?").
+    Use -nonl='' to just strip. 
+    Also consider perl -0777pe 's/\n/\?/' == tr '\n' '?'
+  - xargs normally honors quotes and blanks in input and cannot
+    turn off that misbehaviour except with -0 which also requires
+    a lineend of \\0 instead of \\n. So we want to do instead:
+    - find | egrep -v ... | cat0 | xargs -0 echo FILE
+    - find | xargs0 -n 1 -iZ diff Z /mnt1/AVI-ARCHIVE/Z
+  - cat0 | cat0 is not idempotent, but mostly harmless,
+    the problem being filenames with embedded \\n. This is
+    however NOT TRUE for cat0 -nore / -nonl!
+  - cat0 == cat0 -0 == egrep -Z -e '()'
+
+See also:
+  - cat0par - generalized cat0 allowing strings/regexes for
+              record splitting
+  - nl0,    - a most trivial nl clone
+  - xargs0  - just a cat0 | exec xargs -0 "$@"
+  - see also GNU / perl:
+    - grep -Z, find -print0
+    - sort -z, uniq -z, grep -z
+    - perl -0ne 
+    - BUT NOT diff fails to implement \\0: 
+      fall back to wrapping both inputs in cat0 -nl -nore
+      (but this disable use of patch...)
+
+EOF
+}
+
+sub streval {
+   local($_)=@_;
+   $_=$streval_default if not defined $_;
+   $_='"' . $_ . '"' if not /^"|^do{/;
+   eval('$_=' . $_); die "# option has invalid string for eval: $@\n" if $@;
+   return $_;
+}
+
+
+$streval_default='?';
+$lineends="[\n\r\0]";
+$lineend="\0";
+# $/ is still the default "\n"
+@argv=@ARGV;
+while(@ARGV){
+   $_=shift;
+   if(/^-#$|^-?-r(emove)?c(omments?)?$/o) {$o_nocomments=1;next}
+   if(/^-?-r(emove)?w(hite)?s(paces?)?$/o){$o_nowhitespace=1;next}
+   if(/^-?-(?:nonl)(?:=(.*))?$/o)  { $o_nonl  =streval($1); next}
+   if(/^-?-(?:nore|r(?:emove)?(?:embedded)?nl?)(?:=(.*))?$/o)      { $o_nore=streval($1); next}
+   # the default being more lenient
+   if(/^-?-(0|null|zero)$/o)              {         $lineend="\0";$/="\n";next} 
+   if(/^-?-n(ew)?(l(ines?)?)?$/o)         {$o_nl=1; $lineend="\n";$/="\0";next}
+   # the next 2 options continue processing
+   if(s/^-?-args?(0|zero|null)$/-arg/o)   {unshift @ARGV, "-0"}
+   if(s/^-?-args?(nl|newlines?)$/-arg/o)  {unshift @ARGV, "-nl"}
+   if(/^-?-args?$/o)                      {$o_inputfromarg=1;next}
+   if(/^-?-h(elp)?$/o) {&help;exit 1}
+
+   if(/^--$/o) {last}
+   unshift @ARGV, $_; last
+};
+
+
+# actually, if cat0 has been already used, we should get a
+# single line and thus replacement of \n by \0 should not
+# find no \n. Using -nonl or -nore however is definitely
+# no longer idempotent even for benign input.
+
+
+while(($o_inputfromarg and ($_=shift @ARGV, 1) or $_=<>), defined $_) {
+   # KEEP IN SYNC WITH CAT0PAR
+   s/($lineends)+\z//o;                  # glorified chomp
+   s/($lineends)/$o_nonl/go              if defined $o_nonl; 
+   s/($lineend)/$o_nore/go               if defined $o_nore;
+   next if /\A\s*#/o                     and $o_nocomments;
+   next if /\A\s*\Z/o                    and ( $o_nowhitespace or $o_nocomments );
+   $_=$1 if /\A\s*(.*?\S)\s*\Z/o         and $o_nowhitespace;
+   s/\Z/$lineend/o;
+   print
+}

@@ -1,0 +1,41 @@
+#!/usr/bin/perl -lp
+# emvp [-p] op - edited mv helper, applying (predefined) perl expr to the region on stdin
+
+# copyleft, etc: see emv proper.
+
+BEGIN {
+   if ($ARGV[0] eq "-p"){$o_fullpath=1; shift};
+   $op=shift or die;
+   do "$0.cfg" if -f "$0.cfg"; do "$0.$ENV{LOGNAME}.cfg" if -f "$0.$ENV{LOGNAME}.cfg";
+   $op=$operation{$op} if $operation{$op};
+   # builtins
+   $op   ='s/[\"\'\\]/_/gi'                  if $op eq "clean";    # sane and very sane filenames
+   $op   ='s/[\(\)\[\]\{\};]/--/gi; s/[^\\0-9-A-Z,;_\.\-\+]/_/gi' if $op eq "uclean";
+   $op   ='s/(\A|\/)\[[^\[\]]*\][\. _]?/$1/' if $op eq "sq";       # bracket stripping
+   $op   ="\$_=$op"                          if $op=~/\A[a-z]+\Z/; # e.g. perl uc, lc
+}
+
+if(/^ *["#]/ or not /^ *(\d+\t)(.*)/){print;next};
+($l,$_,$o)=($1,$2,$_); 
+
+if ($_) {
+   ($b,$f)=($1,$2) if m@^(.*)/+([^/]*)$@o;
+   if (not $o_fullpath) { # strip basedir
+      $_=$f if $b and $f;
+   }
+
+   if ($_) {
+      eval $op; die $@ if $@; 
+
+      if (not $o_fullpath) { # prefix basedir unless absolute
+         $_="$b/$_" if $b and not /^\//;
+      }
+      $nb="";
+      $nf=$n=$_;
+      ($nb,$nf)=($1,$2) if m@^(.*)/+([^/]*)$@o;
+   } else {
+      $_=$o;
+   }
+   $_=sprintf "%6d\t%s",$l,$_;
+}
+

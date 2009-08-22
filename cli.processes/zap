@@ -1,0 +1,350 @@
+#!/bin/sh
+#!perl # -Sx: line count is one off; -w: tested.
+eval 'exec perl -Sx $0 ${1:+"$@"}'
+   if 0;
+ 
+# --.--.94 <user> <latest change>
+# 05.09.94 domke  (From "Programming Perl", L.Wall, R.Schwartz)
+# ........ pj   0.2   various small changes to make it work on hpux,aix,bsd,linux,sunos and solaris
+# 06.05.01 pj         fixed no-tty handling for use under rsh/...
+# ........ pj   0.3   added display of children (so you know what to kill)
+# 23.10.05 pj   0.4   added/folded back renice code
+# 09.06.09 pj   0.5   small cleanup
+# (c) perl artistic licence
+my $version="0.5";
+
+($me = $0) =~ s#.*/##; # in $0 alles bis zum letzten '/' loeschen
+#---------------------------------------------------------------
+sub Usage {
+  %action=("100", "kill -$sig", "010", "renice $nice", "001", "list");
+  $action=$action{"$is_kill$is_nice$is_list"};
+  $pattern=join("\n       ","",@ARGV);
+
+  die <<USAGE;
+     $me [-<SIGNAL> | <NICE-VALUE>] [OPTIONS] PATTERN ...
+
+     version $version
+
+     Zap searches the output of ps for anything matching one of the
+     perl regular expression PATTERNs. Matching processes are presented
+     to the user. To perform the predetermined action (see below), just
+     enter 'y' (or 'z'), possibly followed by 'enter'. This immediately
+     acts on the process and optionally its children.
+     Use 'q' to quit selecting or '^c' to abort.
+
+     Actions implemented / action selection:
+       # action   parts of basename   switches            defaults/notes
+       kill       zap/kill           -is_kill / -is_zap   15/TERM
+       renice     nice/renice        -(is_)(re)nice / -n  1; HINT: nice -n 1
+       list       ls/list/display    -is_list / -l        0; aka "renice 0"
+
+     So to renice processes, invoke $me e.g. as 'prenice' or use a switch
+     as in '$me -is_nice'. NICE goes from +1 to +19, and you're unable to
+     reduce a process NICE value (root: -19 to +19, anything goes). For
+     nice <1 and >7, $me also tries to run ionice if available to set
+     high/low values for the process [linux, requires >2.6.13 and CFQ IO
+     scheduler]. For nice values > 12, ionice c3 [idle] is used instead 
+     of class 2 [best effort, with ionice values of 0 or 7].
+
+     The last line on STDOUT returns the sort -u'd list of selected pids.
+     
+     Zap was invoked as "$me" with action "$action" and these PATTERNs: $pattern
+
+     Other options:
+       -a         consider all users, not just processes matching owned by
+                  $ENV{LOGNAME} plus possibly *some* of those that also 
+		  contain $ENV{LOGNAME} (root defaults to -a)
+       -c         display unsorted process tree for each selected process
+       -C         similar, sending signal to process AND children
+       -h         help, this text
+       -i         PATTERNs are case insignificant
+       -l         list, no action (short for -is_list action)
+       -not PATTERN skip processes matching PATTERN 
+                  (but the processes are still acted if selected via -c/-C)
+       -p PID	  restrict to process tree with root at PID, excluding PID
+       -y         Assume yes / send signal to all matching processes
+                  without asking (be VERY careful!)
+	
+     Examples: 
+       $me firefox # do the default action, probably list all processes 
+                  and ask which to kill ("zap -y firefox" might have 
+		  been better; assuming there's no risk to kill innocents
+		  owned by $ENV{LOGNAME} like "vim urls-for-firefox.txt")
+       $me / $me .                          # matches all processes
+       $me -INT vhdlsim vhdlcad             # to interrupt some CAD programs
+       $me -is_nice 9 firefox               # to have a niced 'fox
+       $me -l -y '^\\S+ +\\d+ +1 +'         # list orphaned processes
+       $me -l -y -a '^(?!.*00:0\\d:\\d\\d)' # list cpu hogs (perl5 only)
+       $me -p PID -c PATTERN                # allow selection of descendants
+                  of PID that match PATTERN, also listing their children
+       echo UNUSED | echo `$me -a -C provider </dev/tty | nl` # using $me
+                  within pipes to pass a processlist to other programs
+	          (provided tty magic is succeeding)
+
+     Bugs:
+       doesn't complain about impossible actions such as renicing 
+                  processes of other users when being non-root, or bad
+	          signals or nice values
+       doesn't know about process groups - but they're rarely useful
+                  for process selection...
+       behaves dangerously if more than one action is requested
+     
+     See also:    cpulimit, nice, renice* (*: as used by this script)
+                  ionice*
+                  traffic shaping (xnetload, wondershaper IF U D [Kb/s], 
+                                   trickle -d D -u U APP [KB/s])
+                  kill, killall, killproc, pgrep/pkill, skill/snice
+                  ps, gps/qps/xzap, ps (-edalf|aux) -H*, pstree
+USAGE
+}
+
+$sig = 'TERM'; # kill -15
+$nice= '+1';   # nice +1
+($is_kill=0, $is_nice=0, $is_list=1); # default action is list
+if (     $0=~/zap|kill/) {
+   ($is_kill=1, $is_nice=0, $is_list=0);
+} elsif ($0=~/ls|list|display|grep/) {
+   ($is_kill=0, $is_nice=1, $is_list=0);
+}
+
+#================================================ Parameter Loop
+
+
+@argv=@ARGV;
+while ($ARGV[0] =~ /^-|^\+?\d\d?$/) {
+  $_ = shift;
+  /^--$/ && last;
+  (/^-?-help$/ || /^-H$/ || /^-h$/) && ($help=1, next);
+  /^-a$/ && ($all=1, next);
+  /^-y$/ && ($yes=1, next);
+  /^-c$/ && ($child=1, next);
+  /^-C$/ && ($child=2, next);
+  /^-p$/ && ($parent=shift, next);
+  /^-i$/ && ($ignorecase='i', next);
+  /^-not$/ && ($not=shift, next);
+  
+  # switch personality: demonic, angelic, or plain boring
+  /^-?-is_(zap|kill)$/             &&  (($is_kill=1, $is_nice=0, $is_list=0), next);
+  /^-?-(is_)?(re)?nice$|^-n$/      &&  (($is_kill=0, $is_nice=1, $is_list=0), next);
+  /^(-?-is_(display|list|ls)|-l)$/ &&  (($is_kill=0, $is_nice=0, $is_list=1), next);
+  
+  /^\+?(\d+)$/ && ($1<20)      && ($nice= $1, next);
+  /^-(\d+)$/   && ($1<20)      && ($sig = $1, $nice= -$1, next);
+  /^-([A-Z][A-Z][A-Z][A-Z]?[A-Z0-9]?)$/ && ($sig = $1, next);
+   
+  die "$me: illegal option: $_\n";
+}
+&Usage if $help; # exits
+die "$me: -y requires PATTERN to be given.\n" if $yes and not @ARGV;
+
+#===================================================== Variables
+$col=512;
+$BSD = -f '/vmunix' || -f "/boot/vmunix";
+$pscmd  = $BSD ? "COLUMNS=$col ps -auxww </dev/null 2>/dev/null" : 
+                 "COLUMNS=$col ps -ef    </dev/null 2>/dev/null";
+
+# if we deal with ppid and children:
+$pscmd2 = $BSD ? "COLUMNS=$col ps -alx   </dev/null 2>/dev/null" : "";
+$pididx = $BSD ? 3-1 : 2-1;
+$ppididx= $BSD ? 4-1 : 3-1;
+
+# restrict selection to user processes (and those containing user name)
+# ps -u is bad, as it may break the output format 
+$all=1 if 0==$>; # shell var UID is not necessarily exported
+if (not $all and $ENV{LOGNAME} and $> > 0) {
+    $pscmd.=" | egrep '^$ENV{LOGNAME} '";
+   $pscmd2.=" | egrep '^$ENV{LOGNAME} '" if $pscmd2;
+   $notitle=1;
+}
+
+chomp($ionice=`which ionice 2>/dev/null`);
+
+#=================================================== Script Body
+
+open (PS,"$pscmd |") || die "Can't run $pscmd\n";
+if (not $notitle) { 
+   $title = <PS>; 
+   print STDERR $title if not $yes or $yes and $is_list; 
+}
+@PS    = <PS>;
+close PS;
+
+# just map the ancestry into a data structure
+if ($child or $parent) {
+   # BSD lacks PPID, so run another ps if necessary
+   if ($pscmd2 eq "") {
+      @PPS=@PS;
+   } else {
+      @PPS=`$pscmd2`; shift @PPS if not $notitle;
+      die "Cannot run $pscmd2\n" if not @PPS;
+   }
+   foreach $cand (@PPS) {
+      $cand=~s/\x0d?\x0a//;
+      @field = split(' ',$cand);
+      $pid   = $field[$pididx];
+      $ppid  = $field[$ppididx];
+      next if $$==$pid or $$==$ppid; # skip this script + its children
+      $cand{$pid}=$cand;            # %cand:  ps output for $pid
+      push @{$child{$ppid}}, $pid;  # child{} hash of arrays of direct children
+      $parent{$pid}=$ppid;
+   }
+   foreach $pid ( keys %parent ) {
+      $ppid=$pid;
+      while ($ppid > 0) {
+         $ancestor{$ppid,$pid}=1;
+	 $ppid=$parent{$ppid};
+      }
+   }
+}
+
+# prepare tty for interactive input
+if (not $yes) {
+   $TTYin=$TTYout=$TTY="/dev/tty";
+   $TTYCMD=`which tty 2>/dev/null`; chomp $TTYCMD;
+   $TTYCMD="/usr/bin/tty" if not $TTYCMD;
+   if (-x "$TTYCMD") {
+      system "$TTYCMD | grep ^/dev >/dev/null";
+      if ($?) {
+         $TTYin="&STDIN"; $TTYout="&STDOUT"; $TTY="";
+      }
+   }
+   open (TTYIN,  "<$TTYin")  || "Can't read  $TTYin: $!\n";
+   open (TTYOUT, ">$TTYout") || "Can't write $TTYout: $!\n";
+   select (TTYOUT);
+   $| = 1;
+   select(STDOUT);
+   $SIG{'INT'} = 'cleanup';
+   
+   # put Terminal in single-character input mode
+   if ($TTY) {
+      if ($BSD ) {
+         system "stty cbreak <$TTY >$TTY 2>&1";
+      }
+      else {
+         system "stty", '-icanon';   # HP-UNIX
+         system "stty", 'eol', ''; # ATTENTION: Control Character
+         system "stty", "min", '1';
+      }
+   }
+}
+
+# hmm - why did I eval like that??
+#eval <<'EOF';
+foreach $cand (@PS) {
+  chop($cand);
+  ($user,$pid) = split(' ',$cand);
+  next if $pid == $$; # we may list $$, but won't act on it!
+  $found = !@ARGV;
+  if (not $not   or eval("\$cand!~m{\$not}$ignorecase")) {
+    foreach $pat (@ARGV) {
+      $found = 1 if eval("\$cand=~m{\$pat}$ignorecase");
+    }
+  }
+  next if (!$found);
+  next if ($parent and ( 1 != $ancestor{$parent,$pid} ) );
+
+  if (not $already_warned and $is_kill and not $yes) {
+     print main::STDERR "\n### ATTN ### PERSONALITY IS ZAP/KILL\n\n";
+     $already_warned=1;
+  }
+  
+  @pidlist=($pid);
+  @pidlist=(@pidlist, getpstree($pid)) if $child>1;
+  if ($yes and $is_list) {
+     print STDERR $cand;
+     print STDERR "\n", stringpstree($pid) if $child;
+     print STDERR "\n";
+     action(@pidlist);
+  } elsif (not $yes) {
+     print TTYOUT $cand;
+     print TTYOUT "\n", stringpstree($pid) if $child;
+     print TTYOUT "? ";
+     read(TTYIN,$ans,1);
+     if (not $TTY) {
+	# fallback if insane host tty environment
+        $tmp=<TTYIN> if $ans ne "\n";
+     } else {
+        print TTYOUT "\n" if ($ans !~ /\n/);
+     }
+     if ($ans =~ /^y|^z/i) { 
+        print TTYOUT "\n" if $child;
+	action(@pidlist) 
+     }
+     if ($ans =~ /^q/i) {last;}
+  } else {
+     print TTYOUT "$cand! y\n";
+     action(@pidlist);
+  }
+}
+#EOF
+
+&cleanup2;
+print STDERR "selected pids are:\n" if @selected_pids and (not $yes or $is_list);
+@set=(); foreach(sort {$a<=>$b} @selected_pids) { next if $last==$_; push @set, $_; $last=$_ }; # sort -u -n
+@selected_pids ? print join(" ", @set), "\n" : print "\n";
+exit;
+
+#---------------------------------------------------------------
+sub cleanup {
+  &cleanup2;
+  print "\n";
+  exit;
+}
+sub cleanup2 {
+  if ($TTY) {
+     if ($BSD) {
+        system "stty -cbreak <$TTY >$TTY 2>&1";
+     }
+     else {
+        system "stty", 'icanon';
+        system "stty", 'eol', '^@';
+     }
+  }
+}
+
+# perform action on the given process list
+sub action {
+   @selected_pids=(@selected_pids, @_);
+   if(      $is_nice) { # renice is global, not cummulative.
+			# also try using ionice if available 
+                        # to complement very high/low nice values
+      system("renice $nice -p @_");
+      if (-x $ionice) { # some ionice actions may require root privs?
+         if      ($nice>12) {
+            system("$ionice -c3 -p $_")     foreach (@_);  # idle
+         } elsif ($nice>7) {
+            system("$ionice -c2 -n7 -p $_") foreach (@_);  # best effort low
+         } elsif ($nice<1) {
+            system("$ionice -c2 -n0 -p $_") foreach (@_);  # best effort hi
+         } 
+     }
+   } elsif ($is_kill and $sig) {
+      kill $sig, @_;
+   } else {
+      ;
+   }
+}
+
+# print pstree depth first
+sub stringpstree { 
+   my($ppid)=@_;
+   my($pid,$OUT);
+   foreach $pid ( @{$child{$ppid}} ) {
+      $OUT.="  Child ". $cand{$pid} . "\n";
+      $OUT.=stringpstree($pid);
+   }
+   return($OUT);
+};
+
+sub getpstree { 
+   my($ppid)=@_;
+   my($pid);
+   my(@pidlist);
+   foreach $pid ( @{$child{$ppid}} ) {
+      @pidlist=(@pidlist, $pid, getpstree($pid));
+   }
+   return(@pidlist);
+};
+
+
+#=========================================================== End

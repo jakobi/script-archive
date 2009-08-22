@@ -1,0 +1,37 @@
+#!/usr/bin/perl
+
+# a generalized version of sort -t. +0n -1 +1n -2 +2n -3 +3n -4
+# sorting on the first ip found in a line
+
+# bugs: doesn't consider hex ips, ip6, etc pp
+
+@lines="\n";      # line separator to subsequent non-ips; will be stripped if possible
+$b='(?:^|$|\W)';  # ip boundary ((?:^|$|\W) = non-numeric \b)
+$o_output=1;      # 1 is input, 0 is input prefixed with first ip from line
+$p="~"x15;        
+
+while($_=shift,defined $_) {
+   /^-b$/       and do{$b=""; next};               # ip without boundary
+   /^-c$/       and do{$o_canonical++; next};      # return 0-padded canonical ip
+   /^-i$/       and do{$o_output=0; next};         # return ip-prefixed input
+   /^--$/       and last;
+   /^-[h\?]$|^-?-help$/ and do{die "$0 [-b][-c][-i] IP or FILE ... # sort by ip\n"};
+   /()/         and unshift @ARGV,$_ and last;
+}
+
+while(($o_inputfromarg and ($_=shift @ARGV, 1) or $_=<>), defined $_) {
+   push @lines,$_
+}
+
+@lines=map {$_->[$o_output]} 
+      sort {$a->[0] cmp $b->[0]} 
+      map  {$f=$p . $_; 
+            if ($f=~/$b(\d+)\.(\d+)\.(\d+)\.(\d+)$b/) {
+               $f=sprintf("%03d.%03d.%03d.%03d",$1,$2,$3,$4);
+               s/$b(\d+)\.(\d+)\.(\d+)\.(\d+)$b/$f/g if $o_canonical;
+               $f.="   $_";
+            }
+            [$f,$_]} @lines;
+$lines[$#lines] eq "\n"      and delete $lines[$#lines];
+$lines[$#lines] eq "$p\n"    and delete $lines[$#lines];
+print @lines;

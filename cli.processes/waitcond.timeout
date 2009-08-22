@@ -1,0 +1,358 @@
+#!/usr/bin/perl
+
+# Modifications jakobi@acm.org 
+# 20080114 PJ extend semantics of limit and -s
+
+## timeout
+##
+## (c) 2004-2007 Piotr Roszatycki <dexter@debian.org>, GPL
+##
+## $Id: timeout.pl 4 2007-06-19 11:58:08Z piotr.roszatycki $
+
+
+=head1 NAME
+
+timeout - Run command with bounded time.
+
+=head1 SYNOPSIS
+
+B<timeout> S<B<-h>>
+
+B<timeout>
+S<[-I<signal>]>
+I<time>
+I<command>
+...
+
+=head1 README
+
+B<timeout>  executes a command and imposes an elapsed time limit. When
+the time limit is reached, B<timeout> sends a predefined signal to the
+target  process.  
+
+Optionally  a short delay and a second harsher signal can be appended,
+e.g. TERM:10:KILL. Note that timeout always sends the second signal if
+specified, even if the child has already terminated in the mean time.
+
+B<time>  is  a  numerical time limit or a command, in which  case  the
+termination of the sleeper command is interpreted as reaching the time
+limit,  consider e.g. timeout 'while ! test -f ~/TIMEOUT; do sleep  1;
+done' ls -lR
+
+=cut
+
+
+use 5.006;
+use strict;
+
+use Config;
+use POSIX ();
+
+
+##############################################################################
+
+## Default values for constant variables
+##
+
+## Program name
+my $NAME = 'timeout';
+
+## Program version
+my $VERSION = '0.11';
+
+
+##############################################################################
+
+## Signals to handle
+##
+my @signals = qw< HUP INT QUIT TERM SEGV PIPE XCPU XFSZ ALRM >;
+
+
+##############################################################################
+
+## Signal to send after timeout. Default is KILL.
+my $signal = 'KILL';
+
+## Time to wait
+my $time = 0;
+
+## Command to execute as array of arguments
+my @command = ();
+
+## PID for fork function
+my $child_pid;
+my $sleep_pid;
+
+## Time to wait before sending a harsher signal to child_pid
+my $signaldelay = 0;
+my $signal2= undef;
+
+## Call killer at most once per run of program
+my $killer=1;
+
+##############################################################################
+
+## usage()
+##
+## Prints usage message.
+##
+sub usage() {
+    # Lazy loading for Pod::Usage
+    eval 'use Pod::Usage;';
+    die $@ if $@;
+
+    pod2usage(2);
+}
+
+
+## help()
+##
+## Prints help message.
+##
+sub help() {
+    # Lazy loading for Pod::Usage
+    eval 'use Pod::Usage;';
+    die $@ if $@;
+
+    pod2usage(-verbose=>1, -message=>"$NAME $VERSION\n");
+}
+        
+
+## getsignal($sig)
+##
+sub getsignal($) {
+    my($opt) = @_;
+    if ($opt =~ /^\d+/) {
+        # Convert numeric signal to name by using the perl interpreter's
+        # configuration:
+        usage() unless defined $Config{sig_name};
+        return (split(' ', $Config{sig_name}))[$opt];
+    } else {
+        $opt =~ s/^SIG//;
+        return $opt;
+    }
+}
+
+
+## signal_handler($sig)
+##
+## Handler for signals to clean up child processes
+##
+sub signal_handler($) {
+    my ($sig) = @_;
+    if ($child_pid) {
+       if ($sig eq 'ALRM') {
+           printf STDERR "Timeout: aborting command ``%s'' with signal SIG%s\n", join(' ', @command), $signal;
+       } else {
+           printf STDERR "Got signal SIG%s: aborting command ``%s'' with signal SIG%s\n", $sig, join(' ', @command), $signal;
+       }
+    }
+    killer();
+    exit -1;
+}
+
+sub killer {
+    # call at most once per program run
+    return if $killer=0;
+    if ($child_pid) {
+       kill $signal, -$child_pid;
+       if ($signal2) {
+          # actually, it should check every second
+          # or so for child exiting, instead of
+          # just a sleep / kill combo
+          sleep $signaldelay if $signaldelay;
+          kill $signal2, -$child_pid;
+       }
+    }
+    kill "TERM",  -$sleep_pid if $sleep_pid;
+}
+
+
+##############################################################################
+
+## Main subroutine
+##
+
+
+## Parse command line arguments
+my $arg = $ARGV[0];
+if ($arg =~ /^-(.*)$/) {
+    my $opt = $1;
+    if ($arg eq '-h' || $arg eq '--help') {
+        help();
+    } elsif ($opt =~ /^[A-Z0-9:]+$/) {
+        my @opt;
+        @opt=split /:/, $opt;
+        $signal=getsignal($opt[0]);
+        $signaldelay=$opt[1] if $opt[1];
+        $signal2=getsignal($opt[2]) if $opt[2];
+        &usage if $signaldelay and $signaldelay=~/\D/;
+        &usage if $signaldelay and not $signal2 or not $signaldelay and $signal2;
+	shift @ARGV;
+    } else {
+        usage();
+    }
+}
+
+usage() if @ARGV < 2;
+$time = shift;
+@command = @ARGV;
+
+
+
+## Fork for exec sleeper: sleep_pid
+if (! defined($sleep_pid = fork)) {
+    die "Could not fork: $!\n";
+} elsif ($sleep_pid == 0) {
+    if ($time=~/^\d+$/) {
+       sleep $time if $time;
+    } else {
+       ## Set new process group
+       POSIX::setsid;
+       ## Execute sleeper
+       exec $time or die "Can not run sleeper $time: $!\n";
+    }
+    exit 1;
+}
+
+## Fork for exec command: child_pid
+if (! defined($child_pid = fork)) {
+    killer();
+    die "Could not fork: $!\n";
+} elsif ($child_pid == 0) {
+    ## Set new process group
+    POSIX::setsid;
+    ## Execute command
+    exec @command or die "Can not run command `" . join(' ', @command) . "': $!\n";
+    exit 1;
+}
+
+
+
+foreach my $sig (@signals) {
+    $SIG{$sig} = \&signal_handler;
+}
+
+
+
+while(1) {
+   my $pid;
+   next if ($pid = wait) != -1 and $pid != $child_pid and $pid != $sleep_pid;
+   if ($pid == $child_pid) {
+      my $rc=$?;
+      killer();
+      exit($? >>8);
+   } else {
+      killer();
+      exit(-1);
+   }
+}
+
+
+
+#######################################################################
+=head1 DESCRIPTION
+
+B<timeout> executes a command and imposes an elapsed time limit.
+The command is run in a separate POSIX process group so that the
+right thing happens with commands that spawn child processes.
+
+=head1 OPTIONS
+
+=over 8
+
+=item -I<signal>
+
+Specify  an optional signal name to send to the controlled process. By
+default,  B<timeout> sends B<KILL>, which cannot be caught or ignored.
+
+Optionally  a short delay and a second harsher signal can be appended,
+for  example  TERM:10:KILL. Note that timeout always sends the  second
+signal  if specified, even if the child has already terminated in  the
+mean time.
+
+=item I<time>
+
+The  elapsed time limit after which the command is terminated. 
+
+If the limit is non-numeric, it is assumed to be a shell command whose
+return is interpreted as reaching the time limit.
+
+=item I<command>
+
+The command to be executed.
+
+=back
+
+=head1 EXAMPLES
+
+=over 8
+
+=item 1.
+
+timeout -9                    60                      ls -lR
+
+=item 2.
+
+timeout 'while ! test -f ~/TIMEOUT; do sleep 1; done' ls -lR
+
+
+=head1 RETURN CODES
+
+=over 8
+
+=item 0..253
+
+Return code from called command.
+
+=item 254
+
+Internal error. No return code could be fetched.
+
+=item 255
+
+The timeout was occured.
+
+=back
+
+=head1 PREREQUISITES
+
+=over
+
+=item *
+
+L<perl> >= 5.006
+
+=item *
+
+L<POSIX>
+
+=back
+
+=head1 COREQUISITES
+
+=over
+
+=item
+
+L<Pod::Usage>
+
+=back
+
+=head1 SCRIPT CATEGORIES
+
+UNIX/System_administration
+
+=head1 AUTHORS
+
+Piotr Roszatycki E<lt>dexter@debian.orgE<gt>
+
+=head1 LICENSE
+
+Copyright 2004-2007 by Piotr Roszatycki E<lt>dexter@debian.orgE<gt>.
+
+Inspired by timeout.c that is part of The Coroner's Toolkit.
+
+All rights reserved.  This program is free software; you can redistribute it
+and/or modify it under the terms of the GNU General Public License, the
+latest version.

@@ -1,0 +1,66 @@
+export _IS_KSH ENV SHNEST
+
+# shell detection is in LOAD
+
+# main ksh differences:
+# - echo honors --
+# - set -A -- # may be _required_ for typeset arrays
+# - support hashes
+# - varname.key is a discipline function, thus disallowing . in fu names
+# - profile sourcing break on first error
+# - typeset (and this includes typeset -i / -a, contrary to docs) creates
+#   a local variable with (ksh) lexical scope or (bash) dynamic scope
+
+
+if [ -n "$_IS_BASH" ]; then
+   # there's the problem that some /bin/sh also did eval this...
+   ENV=~/.kshrc
+   :
+fi
+
+if [ -z "$_IS_KSH" ]; then 
+   return
+fi
+
+
+SHELL=$_SHELL
+test -f /etc/ksh.kshrc && . /etc/ksh.kshrc
+set -o vi
+
+# fails to work from within profile, thus excluded 
+# from ksh detection in LOAD
+# typeset +x _AST_FEATURES 
+
+
+
+###########################################################
+# possible ksh aliases for cursor control; not req. for linux
+# (does autom. switch to command mode, use i/a/... to edit)
+# ksh93, not in pdksh (pdksh target is an approx. to ksh88
+# with some ksh93 extensions)
+# ksh'93 (non-pdksh!) soft keys:   M-char -> alias  _char
+#                                 M-[char -> alias __char
+true <<EOF
+   # emacish ^[[A mapped to ^P instead
+   alias __A='' # ^[[A up
+   alias __B='' # ^[[B down
+   alias __C='' # ^[[C right
+   alias __D='' # ^[[D left
+   alias __P=''   #
+   alias __H='' #
+   # less likely in a shell:
+   # ^[[5~ # page up
+   # ^[[6~ # page down
+   # ^[[7~ # home
+   # ^[[8~ # end
+EOF
+#
+# an ancient, hopefully long fixed pdksh bug:     
+#       echo hi | read a -> newline
+#       workaround: ( echo a ) | while read a; do echo $a; done
+#       bug: a && b --> a is stopped, b is run immediately
+#       see also: /usr/doc/packages/pdksh/*
+###########################################################
+
+
+# vim:filetype=sh

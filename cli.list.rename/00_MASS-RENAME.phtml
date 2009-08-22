@@ -1,5 +1,5 @@
 [*
-   $ENV{__EMB_EXTRATITLE}="TEMPLATE";
+   $ENV{__EMB_EXTRATITLE}="Mass-Renaming Files";
    $ENV{__EMB_COUNT}++; 
    if (1==$ENV{__EMB_COUNT}) {
       Execute('base.epl');
@@ -7,18 +7,18 @@
 *]
 
 <p>This  toolbox compartment offers two tools for mass renaming files,
-including  logging and creating UNDO scripts.</p>
+both of which also offering UNDO-loggings and more.</p>
 
 <p>One  allows for way too much configurability and perl evals with an
-optional  interactive mode that acts on each file independently, while
-the other shows all files at once in your favorite editor. If the task
-is  repetitive,  use  myrename;  if you need to do it  all  the  time,
-pre-define  a  small  perl scrap for myrename and  just  say  myrename
-&lt;NAME&gt;  FILES. If you want to see all the files at once and want
-to  think about their names while editing and changing whole groups of
-files,  use  emv  instead (when using vim, do read up on  g//p,  sort,
-regex and visual blocks; note that emv is rather useless when combined
-with a weak editor).</P>
+optional  interactive  mode  that  acts  on  each  file  independently
+(myrename),  while the other shows all files at once in your  favorite
+editor  (emv). If the task is repetitive, use myrename; if you need to
+do  it  all the time, pre-define a small perl scrap for  myrename  and
+just say myrename &lt;NAME&gt; FILES. If you want to see all the files
+at once and want to think about their names while editing and changing
+whole  groups of files, use emv instead (when using vim, do read up on
+g//p,  sort, regex and visual blocks; note that emv is rather  useless
+when combined with a weak editor).</P>
 
 <p>See also GREP.xchange, which is somewhat similar:</p>
 <ul>
@@ -27,7 +27,7 @@ with a weak editor).</P>
    <LI>ls -1d FILES | emv - -&gt; grep FILES | pipe.vim | Grep.xchange
 </ul>
 
-<H3>Major Commands</H3>
+<H3>Commands</H3>
 
 <ul>
    <li><B>emv</B> (perl) - edited mv: two pass renaming, link creation, 
@@ -43,7 +43,9 @@ with a weak editor).</P>
       customization. Features a basic interactive mode. A configuration example
       is also provided.
 </ul>
-<BR><BR>
+
+<p>Other commands:</p>
+
 <UL>
    <li><B>emvs</B>, a helper to sort filelists but keeping directories and
       contents always together, temporarily remapping / to \0.

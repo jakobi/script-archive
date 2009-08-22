@@ -1,0 +1,4 @@
+#   echo "# to clear OSD: (1) ALERTOSD or osdctl -s ' ' / zap osdsh or"
+osdctl -S ~/.osdsh0 -s "" >/dev/null 2>&1
+#   echo "#               (2) perl -e 'print qq@\n@x3' >>$l / zap osd_cat"
+perl -e 'print qq@\n@x3' >>/tmp/osd_log

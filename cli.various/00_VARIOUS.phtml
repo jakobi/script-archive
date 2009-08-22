@@ -1,0 +1,40 @@
+[*
+   $ENV{__EMB_EXTRATITLE}="Various Scripts";
+   $ENV{__EMB_COUNT}++; 
+   if (1==$ENV{__EMB_COUNT}) {
+      Execute('base.epl');
+   } else {
+*]
+
+<p>Some scripts, helpers and experiments that don't quite fit the other categories.</p>
+
+<H3>Commands</H3>
+
+<ul>
+   <li><B>ALARM</B> (acoustic environmental damage, for use with waitcond)
+   <li><B>df.minfree</b> (checks free space and warns if lower than requested)
+   <li><b>mt_dir</b> (configures directory short names and invokes one of echo/cd/mc; see
+        also the nico_cd stack in the shell function section)
+   <li><b>paradj</b> (format or justify a text; modified from J. Duque; can now skip \ 
+        to format perl double quoted text for output)
+   <li><b>repeat</b> (when I'm too lazy to write a while ... do; command; done loop)
+   <li><b>sanitize_filenames</b> (rename files containing certain characters, umlauts,
+       etc; superseeded by myrename)
+   <li><b>sleep.p</b> (select-based sub-second sleep example)
+   <li><b>sleepuntil</b> [-c COMMAND] TIMESPEC ... sleeps until TIMESPEC, then 
+       optionally execute the previously defined command. Knows some short-hand 
+       notations like sleepuntil +20s or sleeptuntil 16:00.
+   <li><b>unespace.pl</b> (modified version of Guide de Rosa's unespace; strip 
+       some of the noise from script's typescript sessions logs; tries to strip
+       e.g. vi sessions from the logs to increase their usability)
+   <li><b>watchfloat</b> (write background command output to a floating region of a tty)
+</ul>
+
+<p>See also:</p>
+<ul>
+   <li><B>addcr/foldlf/remcr</B> - adding/removing umlauts or cr from files, (placed into html section
+     due to the use of sub.mime)
+</ul>
+
+
+[*}*][# MUST BE AT EOF! #]

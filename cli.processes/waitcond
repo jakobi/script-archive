@@ -1,0 +1,447 @@
+#!/usr/bin/perl
+
+# wait for event using a boolean expression and multitute of event sources
+
+# 20071107 PJ jakobi@acm.org created - wait for processes, tty idle, files, grep in file
+# 20071228 PJ added netidle, diskidle, cpuidle 
+# 20090722 PJ 
+# copyright:  (c)2007-2009, GPL v3 or later
+my $version="0.2";
+
+
+# defaults for various options
+$negate=0;
+$test=0;
+$sleep=5;     # shorten to waitcond -V -C 1 -s 1 in case of debugging
+$recent=300; 
+$cpuidle=95;
+$netidle=100; # still some slight spikes for $sleep < 3s on a dual cpu host
+              # nfs gigabit cpio about 2000-30000 packets/s, depending on
+              # disk i/o and possible head thrashing due to small files
+$diskidle=10; # buffer cache heuristics -- expect SHORT EXTREME spikes 
+              # both extremely idle and extremely busy
+$bytesnonempty=0; 
+$grep_max_size=100000000;
+$grep_opt="m";
+$pscmd="ps -edalf";
+$base=$0; $base=~s!.*/!!;
+$tty=`tty`; $tty=~s!(/dev/|\n)!!g; # the part of the pty name that top/ps/... display
+$loopmax=99999; # less than 6 days (assuming 5sec sleep + 0sec cpu usage per iteration)
+
+$countinit=2;  # how many times do we require a true expr value in sequence to finish?
+
+
+
+$rc=0;
+$iter=0;
+$oldpackagecount=$packagecount=0;
+
+
+
+while($_=$ARGV[0]){ # OK
+   /^(-V|-?-verbose)$/o  and do{shift; $verbose=1; next};
+   /^(-v|--negate)$/o    and do{shift; $negate=1; next};
+   /^-r$/o               and do{shift; $recent=shift; next};
+   /^-c$/o               and do{shift; $cpuidle=shift; next};
+   /^-d$/o               and do{shift; $diskidle=shift; next};
+   /^-n$/o               and do{shift; $netidle=shift; next};
+   /^-C$/o               and do{shift; $countinit=shift; next};
+   /^-p$/o               and do{shift; $pscmd=shift; next};
+   /^-T$/o               and do{shift; $loopmax=shift; next};
+   /^-1$/o               and do{shift; $countinit=1; next};
+   /^-i$/o               and do{shift; $grep_opt.="i"; next};
+   /^-b$/o               and do{shift; $bytesnonempty=shift; next};
+   /^-s$/o               and do{shift; $sleep=shift; next};
+   /^(-t|--test)$/o      and do{shift; $test=1; next};
+
+   /^-(h|-?help|\?)$/o  and do{&usage; exit 1};
+   /^-(-?examples)$/o   and do{&usage_examples; exit 1};
+   /^--?$/o and do{shift; last};
+   last;
+}
+do{print "no arguments to test..."; exit 1} if not @ARGV;
+
+
+
+grep({/^cpuidle$/}  @ARGV) and $ioargs="2 3";                                # no spikes, but still some secs
+                                                                             # waiting to get the current 
+                                                                             # non-1-sec-period value...
+grep({/^diskidle$/} @ARGV) and $ioargs="10 3";                               # spikes! -> 10sec (20s additional
+                                                                             # delay just getting a useful
+                                                                             # disk io statistic
+grep({/^netidle$/}  @ARGV) and do{$initialsleep=$sleep=($sleep>3)?$sleep:3}; # spiky! -> adjust sleep int to
+                                                                             # at least 3secs 
+
+
+# compile into perl
+@tmp=(); foreach(@ARGV){
+   @arg=($_);
+   /^idle$/  and do{@arg=qw/not recent/};
+   /^empty$/ and do{@arg=qw/not nonempty/};
+   push @tmp,@arg;
+}
+@ARGV=@tmp;
+
+@file=(); 
+$expr="";
+$and=""; # changed to "and " if an implicit and is possible
+
+sub newfile { # compile time: side effects: $_, $and, @file
+   ($_,$flags)=@_;
+   # allow user to omit the /dev/ prefix when just pasting
+   # a tty name from say top or ps -edalf
+   $_="/dev/$_" if /^pts\/\d+$/ and $flags=~/\bdev\b/ and not -e $_;
+   push @file,$_;
+   $and="and ";
+   $#file;
+};
+while(@ARGV){
+   $_=shift;
+   /^$/o         and do {die "illegal operator/argument"};
+   # syntactic sugar
+   /^not$/o      and do {$expr.=$and  ."not "; $and=""; next};
+   /^and$/o      and do {$expr.="and ";        $and=""; next};
+   /^or$/o       and do {$expr.="or ";         $and=""; next};
+   /^\($/o       and do {$expr.=$and."( ";     $and=""; next};
+   /^\)$/o       and do {$expr.=") ";                                               $and="and "; next};
+   # functions
+   /^exists$/o   and do {$expr.=$and  .'-e &fn('.       &newfile(shift).') ';       $and="and "; next };
+   /^cpuidle$/o  and do {$expr.=$and  .'&cpuidle() ';                               $and="and "; next };
+   /^diskidle$/o and do {$expr.=$and  .'&diskidle('."'".        (shift) ."'".') ';  $and="and "; next };
+   /^netidle$/o  and do {$expr.=$and  .'&netidle('."'".         (shift) ."'".') ';  $and="and "; next };
+   /^recent$/o   and do {$expr.=$and  .'&recent(&fn('.  &newfile(shift,"dev").')) ';$and="and "; next };
+   /^ps$/o       and do {$expr.=$and  .'&grep_ps(\''.   shift().'\') ';             $and="and "; next };
+   /^grep$/o     and do {$expr.=$and  .'&grep_file(\''. shift().'\', &fn('.&newfile(shift).')) '; 
+                                                                                    $and="and "; next };
+   /^nonempty$/o and do {$expr.=$and  .'&nonempty(&fn('.&newfile(shift).')) ';      $and="and "; next };
+   # default
+   1             and do {$expr.=$and.'-e &fn('.&newfile($_).') ';                   $and="and "; next };
+   # not reached
+   next; # never reached
+}
+$expr="not ( $expr )" if $negate; # -v global negation of expr
+$expr="&prep, $expr";
+
+
+
+$i=0; 
+&vprint("\n# expression:\n$expr\n\n# files:\n", 
+   join("\n",
+      map {
+         sprintf "%-3s %s", $i++.":", $_
+      } 
+   @file), 
+"\n\n");
+
+
+
+$rc=eval($expr) ? 1 : 0; # 1st test plus syntax test
+die "whatever this is, a boolean expression it ain't\n: $@\n" if $@;
+&vprint("# 1st eval returned " . ( $rc ? "true" : "false" ) . "\n");
+exit( $rc ? 0 : 1 ) if $test;
+sleep $initialsleep if $initialsleep;
+
+
+
+$rc=0;
+# basically be paranoid and wait for countinit event repetitions
+$count=$countinit;
+while(($loopmax>0) and ($count>0)){
+   until($rc=eval($expr)){
+      &vprint("# loop condition not yet true ($count;$iter/$loopmax)\n");
+      $count=$countinit;
+      last if not $loopmax>0;
+      $loopmax--;
+      $iter++;
+      sleep $sleep;
+   }
+   &vprint("# loop condition true ($count;$iter/$loopmax)\n");
+   $count--;
+   sleep $sleep if $count;
+}
+
+print main::STDERR "TIMEOUT OCCURED - returning result from last test\n" if not $loopmax>0;
+
+exit( $rc ? 0 : 1 ); # switch to shell return code semantics
+
+#-----------------------------------------------------------------------------------------------------------
+
+sub fn { # eval time: return $file($1), possibly replaced
+         #         by the 1st file from a successful glob
+   my $f=$file[$_[0]];
+   my @f=();
+   @f=glob($f) if $f=~s/^\*//o;
+   $f=$f[0] if @f;
+   return $f;
+}
+
+sub recent {
+   # return false if file does not exist or file not 
+   # modified in less than $recent seconds
+   warn "q: missing filename for recent/idle (or did you mean {cpu,net,disk}idle)?" if not $_[0];
+   return(time-(stat($_[0]))[9] < $recent); 
+}
+
+sub nonempty {
+   # return false if file does not exist or file 
+   # not having MORE bytes than bytesnonempty
+   warn "q: missing filename for nonempty/empty?" if not $_[0];
+   return(-s $_[0] > $bytesnonempty); 
+}
+
+sub grep_ps {
+   my($expr,$rc,$tmp)=($_[0],0,"");
+   $tmp=`$pscmd`;
+   $tmp=~s/^.*//; # header line
+   # exclude SELF, but hopefully not too much else (the \d\d:\d\d are sufficient)
+   $tmp=~s/.*\b$$\b.* \d\d:\d\d $tty\b.*$base\b.*//gm; 
+
+   $rc=1 if eval '$tmp=~/$expr/'.$grep_opt; # no o!
+   die "invalid grep in ps output: $@" if $@;
+   $tmp="";
+  
+   return($rc);
+}
+
+sub grep_file {
+   my($expr,$rc,$tmp)=($_[0],0,"");
+   open(FH, "<$_[1]"); read(FH,$tmp,$grep_max_size,0); close FH;
+  
+   $rc=1 if eval '$tmp=~/$expr/'.$grep_opt; # no o!
+   die "invalid grep in file: $@" if $@; 
+   $tmp="";
+  
+   return($rc);
+}
+
+sub cpuidle {
+   my($idle)=("");
+   pos $iostat=0;
+   $iostat=~/\%user.*\n/g for(1..2); 
+   $idle=$1 if $iostat=~/(.*\n)/g;
+   $idle=~s/^\s+//;
+   $idle=(split /\s+/,$idle)[5]; # %idle field content
+   if ($idle=~/[^0-9\.]/) {
+      warn "parse problem with %idle / iostat: $idle?";
+   } else {
+      return($idle >= $cpuidle);
+   }
+   return(0);
+}
+
+sub netidle {
+   my($dev)=@_;
+   my($idle)=("");
+   $oldpackagecount=$packagecount;
+   $packagecount=0;
+   $ifconfig=`ifconfig $dev`;
+   pos $ifconfig=0;
+   $packagecount+=$1 if $ifconfig=~/RX packets:\s*(\d+)/; 
+   $packagecount+=$1 if $ifconfig=~/TX packets:\s*(\d+)/; 
+   vprint("packagecount: $packagecount delta ". abs($packagecount-$oldpackagecount) ."\n");
+   if ($packagecount and $oldpackagecount) {
+      # counter wrap around is interpreted as transient busy
+      return($netidle >= abs($packagecount-$oldpackagecount)) 
+   } else {
+      warn "parse error with RX/TX sum/ ifconfig $dev: $packagecount?" if $iter>1;
+   }   
+   return(0);
+}
+
+sub diskidle { # iostat is SLOW! we need about 10s per measurement
+               # and we need 3 iterations, the first block traditionally
+               # being the summary, the last one may or maybe a summary
+               # furthermore, we need a multiple second period to reliably
+               # get usable values as iostat might report tps 0
+               # in one second inspite of continually high disk i/o
+   my($dev)=@_;
+   my($tps)=("");
+   pos $iostat=0;
+   $iostat=~/\%user.*\n/g for(1..2);
+   $iostat=~/\n(?=$dev)/g;
+   $tps=$1 if $iostat=~/(.*\n)/g;
+   $tps=~s/^\s+//;
+   $tps=(split /\s+/,$tps)[1]; # tps field content
+   if ($tps=~/[^0-9\.]/) {
+      warn "parse problem with tps / iostat: $tps?";
+   } else {
+      return($tps <= $diskidle);
+   }
+   return(0);
+}
+
+sub prep {
+   $iostat=`iostat $ioargs` if $ioargs;
+   die "no iostat" if not $iostat;
+}
+
+sub vprint {
+   print(main::STDERR @_) if $verbose;
+   return(@_);
+}
+
+#----------------------------------------------------------------------------------------
+
+sub usage {
+   print <<EOF;
+
+waitcond [OPTIONS] EXPR
+
+version: $version
+
+wait for a boolean condition expression to evaluate to true for $countinit
+iterations [unless -t or -c N/-1], otherwise return false after 
+a timeout of $loopmax iterations [*(<cpu>+<sleep>) seconds].
+
+EXPR might be as simple as a non-empty list of filenames, which is
+expanded into a perl boolean expression that tests for the ANDed
+existence of all files.
+
+Alternately it can be a valid complex boolean expression containing 
+parenthesis and the keywords "and", "or", "not" in addition to atoms.
+A sequence of multiple atoms are ANDed. Use ./ or similar if keywords
+and filenames collide. 
+
+Atoms for boolean expressions are
+
+a) filenames - test for existance the file.
+b) fileglobs - beginning with '*', the remainder is assumed to be a
+   glob pattern and IFF matching files do exist _at_ _run-time_, 
+   the argument is replaced by the first of these matching files.
+c) functions without arguments
+   1) "cpuidle" 
+d) functions that take filenames or fileglobs as argument:
+   0) "exists" (see case a)
+   1) "recent", "nonempty"
+   2) "idle", "empty" (implemented by prefixing "not").
+   3) "diskidle" (argument is device basename, e.g. sda; like
+       cpuidle, it is implemented via iostat and takes about
+       30s to get a usable value when using iostat 10 3)
+   4) "netidle"  (argument is device basename, e.g. eth0)
+   DO _explicitely_ test for existance of the file, if it might
+   not exist during at any point in time during execution.
+e) functions with a perl regex as first argument (modifiers: $grep_opt):
+   1) "ps" greps in $pscmd
+   2) "grep" greps in the file given as second argument
+
+Options:
+  -V     verbose output incl. printing of the compiled expression
+  -i     ignore case for ps and grep
+  -p CMD use as ps command 
+  -t     test condition and return immediately with exit code 
+         for testing or e.g. for use in "while LIST; do LIST; done"-loops
+  -v     globally negate condition 
+  
+  -C N   require the expression to be true for a sequence of N 
+         iterations before exiting. -1 implies -C 1 ($countinit) 
+  -T N   timeout after CNT iterations, returning last eval results ($loopmax)
+
+  -b BYT nonempty(/empty): files must have more than BYT bytes ($bytesnonempty)
+
+         # NOTE that idle itself always refers to files, NOT cpu state
+  -c N   cpuidle:  if more than N [%] ($cpuidle)
+  -d N   diskidle: if less than N transactions per second ($diskidle)
+  -n N   netidle:  if less than N packets per iteration are sent or received
+
+  -r SEC recent(/idle): modified/touched within SEC seconds ($recent)
+  -s SEC sleep SEC seconds ($sleep) 
+  
+
+For additional notes and examples try --examples.
+
+See also: sleepuntil, waitcond.timeout
+
+EOF
+}
+
+sub usage_examples {
+   print <<'EOF';
+
+Notes:
+  - grep has a sanity limit of $grep_max
+  - changing $pscmd may profit from updating the self-removal in grep_ps
+  - fwait is a similar tool to waitcond with a somewhat simpler 
+    syntax. It implements a subset of waitcond, but lacks the idle*
+    functionality.
+
+Examples: 
+  - wait for processes PID to exit:
+    while ps -p 100 102 >/dev/null; do sleep 1; done
+    waitcond not /proc/PID not /proc/PID # aka
+    waitcond -v /proc/{PID,PID}
+  
+  - wait for processes matching PATTERN to exit:
+    while zap -y -l PATTERN | grep . >/dev/null; do sleep 10; done # -a for all users
+    while pgrep PATTERN >/dev/null; do sleep 10; done 
+    # -f: egrep commandline, -t: tty, -v negate
+    fwait    not ps:PATTERN
+    waitcond not ps PATTERN
+
+  - wait for 5min LOAD AVERAGE to fall below 1.05:
+    [the problem being runlevel is a rather bad approx for
+     the more interesting cpu short-term averages; but there's
+     no procfile or command to get this value quickly]
+    perl -e 'while(chomp($_=`uptime|cut -d, -f4`)>1.05){sleep 1}'
+
+  - wait for cpu idle higher than 95%
+    [ignoring the averages-SINCE-BOOT on the first and possibly 
+     last lines; either waiting for ci times a one second idleness
+     or better a slow 3-step mpstat testing for 10sec idleness] 
+    # stupid cpu hog:  while true; do echo; done
+    # perl -e '$c=$ci=3; while($c){while(CONDITION){$c=$ci;sleep 60;};$c--}'
+    perl -e 'while(@m=split(/\s+/,`mpstat 10 3|tail -2|head -1`),$m[10]<95){sleep 1}'
+
+    # use -c to set the threshold, and -s / -C to set the interval
+    # length during which the condition is required to persist
+    waitcond cpuidle # set threshold with -c; consider multicore issues
+
+    in the same manner, (network)disk IO can be waited for with iostat, e.g.
+    requiring the 2nd field (tps) of iostat 10 3|grep ^sda | tail -2|head -1
+    to be SMALL.
+
+    waitcond diskidle sda # set threshold with -d
+
+    or with ifconfig, network packets per period using the difference of
+    these values:
+    ifconfig eth0|grep TX|head -1|sed 's/ error.*//;s/.*://'
+
+    waitcond netidle eth0 # set threshold with -n
+
+  - to wait until a process' tty is more than 5min idle 
+    [-r RECENTTHRESHHOLD / -s SLEEPINTERVAL, both in seconds
+     uses: e.g. notification on install finished, or early notification of
+     a job waiting for input in the middle of a lengthy compile...]
+    [use who / who am i / or ps -ef to get the associated tty / or this one:]
+    # perl -e 'split(/\s+/,$_=`ps -fp 24408|tail -n -1`);print "/dev/$_[5]\n"'
+    waitcond not recent /dev/pts/13
+
+  - to kill a program after a time interval or condition, try
+    waitcond.timeout                               300 top
+    waitcond.timeout -TERM:10:KILL                 300 top
+    waitcond.timeout "waitcond not recent /dev/pts/13" top
+
+  - to restart, these 'watchdogs' are more suitable
+    # to kill/watch/restart a command consider e.g. *ps-watcher*
+    #   even if this requires a small one-stanza config like e.g
+    #   [aterm]\noccurs = none\naction = setsig aterm &\n
+    #   ps-watcher can also be configured to kill on excess cpu, etc
+    ps-watcher --sleep 10 --no-daemon --config example.ps-watcher 
+    # or e.g. launchtool to restart a specific command 
+    #   which is probably the minimum required command line
+    launchtool -L -n -v --wait-times=1,1 -t sleep "bash -c 'sleep 10; false'" 
+    # some init.d scripts may also demonstrate a suitable wrapper
+    # however this insists on only one sleep running... and
+    # while setting up groups and house holding (and allows
+    # start/query/kill, it lacks watchdog/restart functions; making
+    # launchtool more suitable)
+    start-stop-daemon --start --exec /bin/sleep 3600
+    # the famed upstart is worse (init/initctl) for non-init.d usage
+
+EOF
+}
+
+
+
+
+__END__
+

@@ -1,0 +1,345 @@
+#!/usr/bin/perl
+use strict; use vars;
+
+# expanfind    - grep a filelist and return       grep + related - skipped
+# expanfind -v - grep a filelist and return all - grep - related - skipped
+#
+# to extend a partial list (plus sort -u?): find | tee >(expanfind) | cat 
+# NOTE: mind the use of useless cat NOT being useless: depending on the
+#       shell implementation of | vs > for multi-process fan-in
+
+# 2007XXXX pj   0.1  jakobi@acm.org
+# 200907xx pj        added -disk, compiled matcher
+# 20090808 pj        added -reduce == -v filelist reduction
+# copyright:  (c) 2007-2009 jakobi@acm.org, placed under GPL v3 or later 
+my $version="0.3";
+
+# default usage scenario: 
+# part of my backup set, rpm/dpkg-messups + manually modified config scripts
+# this is case sensitive; matches e.g. (.*)\.PJ\.(.*) and (.*)\.PJ, but not (.*)\.pj
+# which is expanded by default (no stemming/no related) to everything matching $1(.*),
+# that is the tag must come immediately after the stem-basename of the set of files
+# to be included.
+# [note to self: 0907: this is correct on e.g. anuurn outside of /home]
+# [anuurn: /FIND: 638968 files; cat0 -nl /FIND | expanfind | wc -l: 124 files]
+my $USERTAGLISTDEFAULT="PJ COMPACT rpmsave rpmnew rpmorig rpmbak dpkg-old dpkg-new dpkg-bak";
+# default negated usage scenario: strip anything related with a suffix '\.SKIP$'
+#  from the file list. '/SKIP$' and /SKIP/ would be matched, but are skipped by default.
+my $USERTAGLISTDEFAULTREDUCE="SKIP";
+
+
+# expanfind
+# 
+# find         | expanfind     ... | xargs    echo 
+# find -print0 | expanfind -0  ... | xargs -0 echo 
+#
+# given lines on stdin, grep/grep -v the list, sort
+# the results and print them, but in addition to the
+# grep results, also inject lines "related" to the 
+# grep results (related:=by default this is determined
+# as having the same prefix as a grep result). 
+# 
+# example outline: expanfind takes care of the middle of 
+# the pipe below and considerably extends its usability:
+#
+# find -print0 | grep -z | grep -z -v | sort -z | xargs -0 
+#
+# **********************
+# *** usage scenario ***
+# **********************
+#
+# a more specific example would be grepping .rpmnew versions of config 
+# files from the list and return these files ***PLUS** their non-.rpmnew 
+# cousins, upto and including renamed backups (e.g. with datestring
+# or hostname suffices), with or without .gz. By default (no -rel/-stem),
+# the tags we look for must come immediately after after the basename
+# of the set of related files: "a.b.TAG.SHORT-STRING" assumes "a.b.c" 
+# to be related, but ignores "a.d".
+#
+#
+# above is set as default for -tag and -sfx:
+# - possibly dangerous package management: rpmnew, dpkg-new & co
+# - plus tags for user changes (configured in the next line).
+#
+# notes:
+# - tags should be part of plain files (i.e. the path cannot contain
+#   further / after the occurance of the tag). 
+# - tag and suffix must span the whole rest of the filename
+
+# options       (File perlExpression wordList Regex String)
+#
+#   -0          use \0 as lineend
+#   -disk / -nodisk (default -disk)
+#
+#   -c    F     load config file F (e.g. set alternate
+#               defaults or additional functions for use in 
+#               the -keep & co perl expressions)
+#   -e    E     immediately evaluate perl expression 
+#   -i          ignore case for -tag, -sfx and
+#               possibly -skip
+#   -v          negate: all files excluding (matches + related)
+#
+#               arg is regex or space-separated strings
+#   -tag  R|L   tagged files are the files ...
+#               (add parens to force interpretation as regex)
+#   -sfx  R|L   ... matching the regex .*TAG(SFX)?$
+#               (default: \.[^/]{1,40})
+#
+#               arg is regex, =string or do{perl expression},
+#               with $_ being the filename to test
+#   -keep E|R|S always include file on match or eval to true
+#   -skip E|R|S always skip file or stem on match or eval to true
+#   -stem E|R|S optional expression to stem tagged files
+#   -rel  E|R|S optional expression to test "relatedness"
+#  
+#   -h -help --help 
+#   -V          verbosity
+#   - --        last arg
+
+#Z
+
+
+# bugs:
+# - use of memory for 2nd pass in non-pipe case instead of seek and reread
+#
+# - INEFFICIENT
+#   grep against related is against the whole filelist instead of 
+#   going to disk and just have a look at the actual directory. 
+#   given the normal usage context, this script should probably 
+#   indeed go to disk; maybe just a grep | stem | xargs find?
+#   [but the find then should be provided with the same args as
+#   the original find] - disk io option is added.
+# --> see the performance notes on if / eval / call-by-value / call-by-ref
+
+
+
+my($o_ignorecase,$verbose,$e_skip,$e_keep,$e_tag,$e_sfx,$e_rel,$e_stem,$o_disk,$o_reduce);
+$\=$/;
+$o_disk=1;
+while(@ARGV){
+   $_=shift;
+   if(/^-e$/)   {eval($_=shift) or die "error for $_: $@"; next}
+   if(/^-c$/)   {$_=shift; do $_ or die "error for config file $_: $@"; next}
+   if(/^-i$/)   {$o_ignorecase="i";next}
+   if(/^-0$/)   {$/=$\="\0";next}
+   if(/^-V$/)   {$verbose++;next}
+   if(/^-skip$/){$e_skip=shift;next}
+   if(/^-v$|^-reduce$/){$o_reduce=1;next}
+   if(/^-disk$/){$o_disk=1;next}
+   if(/^-nodisk$/){$o_disk=0;next}
+   if(/^-keep$/){$e_keep=shift;next}
+   if(/^-tag$/) {$e_tag=shift;next}
+   if(/^-sfx$/) {$e_sfx=shift;next}
+   if(/^-rel$/) {$e_rel=shift;next}
+   if(/^-stem$/){$e_stem=shift;next}
+   if(/^-?-h(elp)?$/) {exec "grep -B 999 '^#Z' '$0'|cut -b3-"}
+   if(/^--$/)   {last}
+   unshift @ARGV, $_;
+   last
+};
+
+# default settings: avoid some backups and include all files
+# containing the prefix of files tagged as below
+# 
+# the e_tag will include e.g. a dir containing /.COMPACT, but not
+# one only containing a tag /COMPACT, as there's no basename for
+# this case to be found. 
+not defined $e_skip and $e_skip='(?:(?:~|\.BAK|\.NAME|\.DESC|\.bak|\.backup|/\.[^/]+\.sw.|/SKIP)$|(?:/SKIP/)|(?:^/(home|data|disk).*/(IN|OUT|RAW\..*|TMP)/))';
+not defined $e_keep and $e_keep='(?:/enc\.[^/]*gpg$|/cron/crontabs/)';
+if (not defined $e_tag) {
+   if ($o_reduce) {
+      $e_tag=$USERTAGLISTDEFAULTREDUCE;
+      not defined $e_sfx  and $e_sfx =''; 
+      not defined $e_stem and $e_stem=''; 
+      not defined $e_rel  and $e_rel =''; 
+   } else {
+      $e_tag=$USERTAGLISTDEFAULT;
+   }
+}
+# allow for space to append .gz, datestrings, hostnames...
+not defined $e_sfx  and $e_sfx='\.[^/]{1,40}'; 
+not defined $e_stem and $e_stem='';
+not defined $e_rel  and $e_rel='';
+
+
+
+# warning: expressify patterns may modify $_
+sub expressify {
+   local($_)=@_;
+   $_=quotemeta($_) if s/^=//;
+   if (/\S/ and not /^do\s*{/) { 
+      s/(?<!\\)((\\\\)*)\@/$1\\\@/go; # escape not-yet escaped -- see also tagls
+      $_="m\@$_\@o$o_ignorecase"; 
+   }
+   {local($_)=($_);eval($_)}; die "cannot eval arg $_: $@" if $@;
+   return($_);
+}
+sub expressify2 {
+   local($_)=@_;
+   $_=quotemeta($_) if s/^=//;
+   if (/\S/ and not /^do\s*{/) { 
+      s/(?<!\\)((\\\\)*)\@/$1\\\@/go; # escape not-yet escaped
+      $_="s\@$_\@\@o$o_ignorecase"; 
+   }
+   {local($_)=($_);eval($_)}; die "cannot eval arg $_: $@" if $@;
+   return($_);
+}
+$e_skip = expressify($e_skip);
+$e_keep = expressify($e_keep);
+$e_rel  = expressify2($e_rel);
+$e_stem = expressify2($e_stem);
+
+
+sub wordlistregexify{
+   local($_)=@_;
+   if (not /[\(\|\\\?\*]/) {
+      s/^ *| *$//g;
+      s/ /|/g;
+      $_='\.(?:' . $_ . ')';
+   }
+   return($_);
+}
+$e_tag=wordlistregexify($e_tag);
+$e_sfx=wordlistregexify($e_sfx);
+my $grep   = '\b(?:(?:'.$e_tag.')(?:'.$e_sfx.')?)$';
+
+
+vprint("skip: $e_skip\n",1);
+vprint("keep: $e_keep\n",1);
+vprint("stem: $e_stem\n",1);
+vprint("rel:  $e_rel\n",1);
+vprint("grep: $grep\n",1);
+vprint("\n",1);
+
+
+my (@files, @tmp, $file, $rel, $tagged, @tagged, %tagged, %taggedstem);
+
+if (0) {                                                                    # some profiling results, from way too inefficient to actually acceptable:
+   while($file=<>) {                                                        # 1:10  - 2Mio Evals in use   == 1 CPU minute extra                  (1st block)
+                                                                            # 0:07.9  compiled loop with expended evals                          (2nd block)
+                                                                            #                               2Mio if statements  << 1 sec extra (e.g. pipe thru Grep.pm)
+                                                                            # 0:10    .66M function calls    2 sec extra (by value, copied)      (3rd block)
+                                                                            # 0:08.2  .66M function calls   .3 sec extra (by reference / global) (4th block)
+      chomp($file);
+      $_=$file;
+      eval($e_skip) and next;
+      eval($e_keep) and $tagged{$file}=1 and next;
+      if (s!(?$o_ignorecase:$grep)!!o) { # grep incl. sfx extends to EOL
+         eval($e_stem);
+         $taggedstem{$_}.=":::".$tagged;
+      }
+      push @files, $file; 
+   }
+} elsif (1) {                                                                   # *** the fastest :) ****
+### USE THIS ONE ###
+   eval 'sub matcher { 
+      while($file=<>) {                                                             
+         chomp($file);
+         $_=$file;
+         '.$e_skip.' and next;
+         '.$e_keep.' and $tagged{$file}=1 and next;
+         if (s!$grep!!o'.$o_ignorecase.') { # grep incl. sfx extends to EOL
+            '.$e_stem.';
+            $taggedstem{$_}.=":::".$tagged;
+         }
+         push @files, $file if not $o_disk or $o_reduce;
+      }
+   }'; die $@ if $@;
+   &matcher;
+} elsif(0) {
+   eval 'sub matcher { 
+         my($file)=@_;  
+         chomp($file);
+         local($_);
+         $_=$file;
+         '.$e_skip.' and next;
+         '.$e_keep.' and $tagged{$file}=1 and next;
+         if (s!$grep!!o'.$o_ignorecase.') { # grep incl. sfx extends to EOL
+            '.$e_stem.';
+            $taggedstem{$_}.=":::".$tagged;
+         }
+         return $file; 
+   }'; die $@ if $@;
+   while ($file=<>) { push @files,&matcher($file);}
+} elsif (0) {
+   eval 'sub matcher { 
+         chomp($file);
+         $_=$file;
+         '.$e_skip.' and next;
+         '.$e_keep.' and $tagged{$file}=1 and next;
+         if (s!$grep!!o'.$o_ignorecase.') { # grep incl. sfx extends to EOL
+            '.$e_stem.';
+            $taggedstem{$_}.=":::".$tagged;
+         }
+         return 0;
+   }'; die $@ if $@;
+   while ($file=<>) { &matcher; push @files,$_}
+}
+
+sub sq{ # escape hack for single-quoting
+   my($tmp)=@_;
+   $tmp=~s/'/'"'"'/g;
+   return($tmp);
+}
+
+# cf. cat /FIND | time cat0 -nl >/dev/null                                      # 0:07         (using 2nd block above)
+# cf. cat /FIND | time cat0 -nl | Grep.pm .                                     # 0:08.4
+# <REACHING HERE>                                                               # 0:08
+foreach $tagged (sort keys %taggedstem) { 
+   $_=$tagged; eval($e_skip) and next;
+   if ($o_disk) {
+      # use the fs for globbing       
+      my $sqtagged=sq($tagged);
+      $rel=`find '$sqtagged'* -print0 2>/dev/null`;
+      my @rel=split(/\0/,$rel);
+      foreach $rel (@rel) {                                                     # 0:09   -> 1s but requires root - 10* faster if inodes in cache
+                                                                                # (test data has about 220 results in all; maybe 100 tags for 660K files)
+                                                                                # during IO, more than 1 core is used (CPU, not IO_WAIT; the first 7sec and
+                                                                                # a little bit for o_disk, which is way to short for measuring) 
+                                                                                # memory and input size 104M virt 86M res 40M input (@files in use; factor 2 is quite ok)
+                                                                                #                        17M       2M     40M       (with -disk)
+         vprint("related: $rel\n",2);
+         $_=$rel; eval($e_skip) and next;
+         $_=$rel; not $e_rel or eval($e_rel) or next;
+         $tagged{$_}.=":::".$rel;
+      }
+   } else {
+      # use the list, slow (might be moderately efficient when 
+      # tree based tree or on sorted input with remembered
+      # index of directory being entered...)
+      # (even if there were a is_prefix at 0 function, it shouldn't
+      #  be noticably faster then index. substr however needs to
+      #  do nearly twice the work and is nearly as fast)
+      foreach $rel (grep {0==index($_,$tagged,0)} @files) {                     # 0:20   -> 11.5s uses only one core
+      # foreach $rel  (grep /\A\Q$tagged\E/, @files) {                          # 0:48   -> 40s   anchored regex is surprisingly slow
+      # foreach $rel  (grep {substr($_,0,length($tagged)) eq $tagged} @files) { # 0:20.4 -> 12s
+         vprint("related: $rel\n",2);
+         $_=$rel; eval($e_skip) and next;
+         $_=$rel; not $e_rel or eval($e_rel) or next;
+         $tagged{$_}.=":::".$rel;
+      }
+   }
+}
+
+warn scalar(keys %tagged), " ", scalar(@files);
+
+if (not $o_reduce) {
+   foreach $tagged (sort keys %tagged) {
+      $_=$tagged; eval($e_skip) and next;
+      print $tagged;
+   }
+} else {
+   foreach $file (@files) {
+      print $file if not $tagged{$file};
+   }
+}
+
+exit 1 if not %tagged;
+exit 0;
+
+#########################################################################
+sub vprint {
+   local($\);
+   print main::STDERR $_[0] if not $_[1] or $verbose >= $_[1];
+}
+

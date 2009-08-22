@@ -1,0 +1,1132 @@
+#!/usr/bin/perl
+
+# 200x               PJ  jakobi@acm.org
+# 200906XX           PJ  some sanity checks, usability in pipes, readline,
+#                        script generation, interactive mode, undo log
+# 20090808 0.2       PJ
+# copyright:  (c) 2009 jakobi@acm.org, placed under GPL v3 or later 
+#
+our $version=0.2;
+
+our $o_pathtrack=1;# turn on tracking renames (dirs unless noexec; rather moronic)
+our $o_verbose=0;  # >0 - debugging
+                   # 0  - report op, actions, summary
+                   # -1 - just actions and errors
+                   # -2 - errors only (silent mode)
+                   # use -v to increase, -q to decrease or -qq for silent mode
+
+use warnings;
+use strict;
+use vars;
+
+# Bugs:
+# a) impossible to fix
+# - the usual pain of encountering \n within filenames...
+# - the pains of incompletely defined library and system calls:
+#   rename semantics: rename(3) should be replaced by something saner e.g. FILE::
+#   ($n exists nondir / $n is dir / $n/$f exists / ad nauseam)
+#   (actually posix is stark raving crazy: rename shall remove directories.
+#    rm -rf /.-happy madmen designing this camel!?!?)
+#   (in case of plain files old, new, perl's rename based on  libc on linux 
+#    does an _unlink_ on new, possibly with a race condition, during which 
+#    the new name fails to exist; thankfully the contents of the data of the
+#    inode pointed to by the original new is NOT clobbered)
+#
+# b) fixable
+# - refactoring a bit would be helpful
+# - path tracking of renames does prefix $PWD to relative files without 
+#   stripping .. or otherwise simplifying filenames. It also does not
+#   manage to track all renames (this would require to canonize names
+#   just to check tracking, then possibly trying to undo some of it?).
+#   It may fail interestingly (possibly incl. data loss) for non-default
+#   op_rename's.
+# - no transformation into simplified or canonical filenames (however the
+#   user would need to expect them in op - and they might be rather dissimilar
+#   to what he provided on stdin and the command line).
+# - no proper cycle detection - use mmv or a bunch of mv's instead. op and op_rename
+#   allow way too many interesting things to guarantee detection. Furthermore
+#   we'd need to 100% guarantee canonical filenames incl. checking inode/dev#.
+# ->SOLUTION FOR THIS ONE MIGHT BE (at least this doesn't try second guessing op):
+#   A part-way hack would be to check for each rename if it removes any previous
+#   collisions "solved" by using a collision suffix. If yes: try non-forced
+#   noninteractive non-colliding renames for that list. On success or on no
+#   visible problems and noexec, unregister them [do this only with pathmagic,
+#   and an actual rename, probably better ignoring op_rename, esp. if it does link
+#   or copy and would create additional "copies" of the file]. As the suffix
+#   is thought to be NOT EXISTING in input, we do not need to consider recursion.
+#   $collission{intended_name}=[list of colliding names in temporal sequence]
+# =>for now however - *AVOID*
+# - collision suffix: append a counter behind the "unique" suffix stem?
+# - collision suffix: it is a fiction that a) it is unique and doesn't
+#   exist in both input and filesystem and b) that we can append it 
+#   without risking it being truncated due to some fs-specific component
+#   or path length limit. Which we cannot deal with w/o actually asking
+#   the fs with a open or a rename to try creating such a file. And 
+#   actual fs io might be something we do not even want to do in script 
+#   creation or filter mode...
+# =>for now however - AVOID at least the builtin rename should fail gracefully.
+# - tty and printing messages with control chars, esp. \x80-9f vs utf8
+# =>leave alone for now; chars below \x1f are already replaced in pr() by '?'
+#
+# d) notes and questions
+# - duplicate input names - by default this will lead to a warning and
+#   possibly to a failing rename later on. Non-default op_renames might
+#   however also cause some data loss.
+# - should the prompt reuse it's area instead of scrolling upward all the time?
+#   (however, myrename's interaction is an emergency fix option, for proper
+#   interaction, emv is way more suitable)
+# =>AVOID for now.
+
+
+
+sub usage {
+   warn <<EOF; 
+
+Usage: myrename [options] operation [|filenames]
+
+(find foo; find bar -print0) | sort | myrename uclean -
+myrename s/foo/bar FILES
+
+version: $version
+
+A  mass  file renamer. If a file list is provided on stdin  (filenames
+/dev/fd/0, /dev/stdin, - or option -stdin), the whole list of names is
+read  before renaming. Both \\0 or \\n-terminated names are allowed.  If
+no  filenames are given, the list of files matching '*' in the current
+directory is used.
+
+Myrename  can apply operations like uc, lc, s/foo/bar/g or  predefined
+operations  to  each  name  from the list  of  filenames.  It  renames
+corresponding  files  if the filename in \$_ changes (or \$b and \$f  for
+basedir and basefilename). If the variable \$l changes, it modifies the
+link target instead.
+
+The  new  name  should not exist. The new name also should not  be  an
+existing  directory  - to move all files/dirs into one directory,  use
+the operation 's!^!DIRNAME/!'. 
+
+A    basic   interactive   mode   (-i)   is   implemented,   including
+readline-support  for entering a completely new filename. Press h  for
+further  help. 
+
+A  very simple-minded path tracking has been added, which is available
+for  the  default  rename  operation, as well as  some  of  the  other
+operation modi (see -examples for its restrictions).
+
+All  changes  are logged in the UNDO log, which is basically  a  shell
+script  with  mv and ln statements; use a command like tac or perl  -e
+'\@l=<>; print reverse \@l' to reverse it before use.
+
+Some examples:
+
+   myrename uclean          FILES  # rename (predefined op uclean)
+   myrename '\$_=lc'         *      # lower-case filenames or shorter
+   myrename lc                     #            (this is a perl builtin)
+   myrename -i .            FILES  # interactively rename all files 
+                                   # (. is 'magic')
+   myrename s/foo/bar/      FILES  # rename files with foo to bar
+   myrename -P -p 's/^/\$pwd\\//'    # rename the absolute path of FILES
+                                   # by prepending the current directory
+                                   # and creating missing directories
+ 
+For more information and restrictions, see --examples. For predefining
+operations    see    --internals.
+
+
+
+Options:
+
+  --            last option
+  -f            force (turns path tracking off)
+  -i            enable interactive mode
+  -I            enable interactive mode (only for collisions)
+  -k            use a suffix in case of collisions (sets -f)
+  -K S          use the suffix S in case of collisions (sets -f)
+  -n            no execution
+  -p            apply op to full path instead of just the basename
+  -P0 / - P1    turn path tracking off (-P == -P0)
+  -q            quiet   - decrease verbosity by 1 (also -qq)
+  -v            verbose - increase verbosity by 1 (also -vv, -vvv)
+  -missingdir   create missing directories (not logged)
+  -stdin        read names from stdin (alternative: myrename OP -)
+  
+Setting the operation \$op to modify the filename:
+(Note that normally the first non-option argument is used as \$op)
+  -e OP / -E OP set OP to edit filenames (\$op)
+
+To override builtins and provide perl scraps for \$op_*:
+  -PRT S        printing                        (\$op_print; builtin)
+  -REN S        rename files and link targets  (\$op_rename; builtin)
+  -PRE S        preprocessing filenames     (\$op_preproc; undefined)
+  -LOG S        maintain the UNDO log             (\$op_log; builtin)
+  -INIT S       initialization                 (\$op_init; undefined)
+  -ENDIT S      e.g. final reporting          (\$op_endit; undefined)
+
+
+Modes other than the default file renaming / link editing:
+
+  print changes on stdout without renaming:
+  -c           pass on comments (unset op_log; for use with -F)
+  -F           set suitable options for filters (sets -c -n -f -q)
+  -sh          print shell script for renaming and link changing
+
+  other modes modifying the filesystem (implies -P and overrides -n)
+  NOTE that UNDO logging is unavailable or somewhat misleading:
+  -cp          \$op_rename is set to cp      -p -- "\$O" "\$N"
+  -ln          \$op_rename           ln         -- "\$O" "\$N"
+  -lns         \$op_rename           ln      -s -- "\$O" "\$N"
+  -scp o_scp   \$op_rename           scp \$o_scp -- "\$O" "\$N"
+EOF
+}
+
+sub examples {
+   warn<<'EOF';
+
+Some examples for the OP/$op filename modification hook:
+
+  '$_=lc'            -- lower case filename (lc)
+  '$_=""'            -- magic "":   skip file 
+  '$_="."'           -- magic ".":  process incl. interactive prompt, but
+                        skips rename at the end if still $_ eq "." 
+  's@^@$pwd/@        -- the basename should be both non-empty and must not
+                        exist (including directories!) - thus this is the 
+                        proper way to move files/dirs to a specific directory
+  -P -p 's!^!$pwd/!' -- rename while retaining the full old path as part of
+                        the new name, recreating any missing components
+
+Predefined builtins for OP/\$op:
+  - uc         upper case filename, perl builtin function
+  - lc         lower case filename, perl builtin function
+  - sq         remove first bracketed substring from name
+  - clean      strip some problematic chars from filenames
+  - uclean     strip some more
+
+
+On the interactive mode:
+
+This   mode  allows  the  user  to  interact  with  the  program   and
+accept/reject  the  changed filenames from OP, as well as enter a  new
+filename.  With -I, this mode is only entered when a rename will  fail
+due to a pre-existing destination file. An alternative to this mode is
+the  use  of  -k  /  -K to solve  collisions  by  appending  a  suffix
+automatically. You can later on search for such cases with find -name.
+Another  alternative  to the interactive mode is using the emv  script
+instead,  which  allows changing and viewing the set of all  files  at
+once in the editor.
+
+Examples: 
+  - To  interactively lowercase files, use myrename -i lc FILES. 
+  - A special case  is  myrename  -i . FILES: This will only rename 
+    files  the  user explicitely modified during interactive mode. 
+    Background: While '.' is a valid  new name, it will be skipped 
+    just shy of the final rename.
+
+
+On the restrictions of path tracking:
+
+The  builtin  rename will skip in case a rename is attempted  with  an
+existing  target. In spite of path tracking, general cyclical  renames
+will  fail. 
+
+If  path tracking is active, all relative input names will be prefixed
+with  the current directory with some trivial cleanup for // and  /./.
+It  won't however generate proper canonical names for paths containing
+e.g.  /../  .  Renames  are  tracked  and  affected  subsequent  input
+filenames are updated AFTER applying $op.
+
+Tracking  will  NOT  catch  all renames, which in  turn  may  lead  to
+printing  the  original,  but by-now-wrong filename with -F  and  -sh.
+Tracking is *TURNED OFF* for more interesting (read: dangerous :) uses
+like using op_rename/-cp/-f/... . Add a later -P1 option to reactivate
+pathtracking if you need additional rope for hanging yourself.
+
+Suggested work around: use a suitable generation of the input filelist
+and/or split directory renames from the rest of renames.
+
+Note  that path tracking WILL NOT update relative link targets.  There
+is  a  tracked variable available containing the absolute target  path
+(\$ola_tracked),  but this will also fail if the relative link contains
+e.g.  /../.  There is also the issue of replacing a relative  with  an
+absolute  symlink,  which  usually  is  the exact  thing  NOT  to  do.
+
+Suggested   work  around:  do  link  target  editing  separately  from
+directory renaming.
+
+
+Alternative tools:
+- bash (for i in...; do j="\${i##foo}.bar"; mv "\$i" "\$j"; done)
+- gprename (perltk)
+- imv (with readline), 
+- mmv 
+- mrename (shell script)
+- prename.pl (perl)
+- pyrenamer (pygtk)
+- qmv (renameutils)
+
+EOF
+}
+
+sub internals {
+   warn<<'EOF';
+
+Defining operations:
+
+1. $op - hook for modifying the filename
+
+The  core operation of the script is the modification of the  filename
+by  applying  $op,  which specifies how to change the old name  in  $_
+(/$b/$f) to the new name in $_ (/$b/$f).
+
+$op  can  be  anything from the name of a perl builtin function  to  a
+regex  to arbitrary perl, including an assignment to $_ to change  the
+filename.  In  case  of using predefined operations, the NAME  of  the
+builtin  is replaced by the code from $operation{NAME}. In case of the
+op  name being 'NAME:=TEXT', $operation{NAME} is used for $op and  the
+variable  $opword  is  set to TEXT, which can be used  by  either  $op
+itself or by the configuration to customize $op.
+
+
+Configuration file:
+
+In  the  configuration  file  $0.cfg  or  $0.$LOGNAME.cfg,  additional
+predefined  operations may be defined as 'builtins' to myrename; check
+e.g.  the  uclean filename-sanitizer defined in the script  itself. 
+
+An  example  configuration file defining lcsane by building  on  other
+operation definitions:
+
+   # lcsane -- lower case and sanitize file, while removing backups
+   # usage: myrename lcsane FILES
+   $operation{lcsane}='
+      $_=lc $_;
+      do{unlink $_ if not $o_noexec;$_=""} if /\.(back(up)?|bak)$|~$/i;
+      ' . $operation{uclean} . ';'
+      ;
+   1; # do return true 
+
+
+A multitude of variables is availble for use by operations:
+
+             original / new names
+   $_    / $o, $b, $f / $n, $nb, $nf # these contain filenames
+                                     # (the n* are set after the rename op has
+                                     #  been eval'ed)
+   @ARGV /  @n        / @o           # list of filenames, renames (new and old)
+   $prefix                           # add prefix to filename
+   $renames                          # counter
+   $renames0                         # counter (000, ...)
+   $n_tracked .. $o_untracked        # pathtracked and untracked versions for 
+                                     # above variables
+   $l    / $ol, $ola  / $nl, $nla ...# link target available for target rename 
+                                     # (like $_). *a is prefixed with the files
+                                     # basedir $b. NOTE that pathtracking won't
+                                     # properly update relative link targets 
+                                     # or targets with e.g. /../ 
+   -     / $O $L $OLA_TRACKED .. $NF # same as the lower case variables, but
+                                     # suitably escaped to be safe in shell 
+                                     # double quotes
+  
+Path  tracking  is active if o_pathtrack is set. This  tries  tracking
+renames  and apply them to input subsequent filenames (after evaluting
+op_preproc  and op, but before op_rename, etc). Path tracking adds the
+current  working  dir  to relative input filenames. 
+
+Issues  with  Path tracking are: no proper canonical names - ..,  /./,
+links.  Tracking will fail to update filenames for renamed files being
+accessed  by multiple pathes, only some of which being tracked,  incl.
+mount  --bind.  Tracking will fail for duplicate input. Tracking  will
+mess  up in interesting ways for op expressions other than the default
+rename  builtin. Tracking in no way solves general cyclical renames  -
+AVOID cycles, esp. when creating shell scripts using -sh or using mode
+commands like -cp or -lns!.
+
+Note  that pipes like find | $0 will not cause find to pickup renames,
+as the script already read the whole filelist before any rename.
+
+
+Predefined builtins and suitable convencience funtions:
+   $op:                uc, lc, sq, clean, uclean # modifying $_
+
+
+2. $op_* -- other hooks:
+
+It  is  also possible to provide perl code to override  preprocessing,
+printing  and  the actual rename, however there is no operation  hash
+for these; if necessary these can also be set from within $op or -PRE.
+
+Operation hook         convenience function
+   -LOG / $op_log:     -                    # code scrap to maintain UNDO log
+   -PRE / $op_preproc: tabbedlinenumber()   # per name initial preprocessing
+   -PRT / $op_print:   -                    # code scrap to override print()
+   -REN / $op_rename:  -                    # code scape to override rename()
+
+
+Be careful in using $op_* or -ln/-cp/...: it is better to force a safe
+failure  with  non-existing files instead of combining e.g. -f  force,
+pathtracking  and possibly non-builtin-rename commands to create  data
+loss   conditions.  
+
+Furthermore, there is no proper/sane UNDOLOG available for the created
+shell script or modes like -ln/-cp.
+
+EOF
+}
+
+
+
+## global variables
+our($op,%operation)=("");
+our($op_log,$op_rename,$op_print,$op_preproc,$op_init,$op_endit)=("","","","","");
+
+# op_*: default code scraps
+$op_log='&log_rename_and_relink';
+# $op_log='$_=sprintf qq@mv -i -- %-32s %-32s@, qq@"$N"@, qq@"""$O"""@;s/ *\Z//};$_'; # op for undo log
+
+# op: builtins (note that the perl functions lc, uc are also kind of builtins)
+$operation{clean} ='s/[\"\\\'\\\]/_/gi'; # sane and ultra-sane filenames
+$operation{uclean}='s/[\(\)\[\]\{\};]/--/gi; s/[^\\\\0-9-A-Z,;_\.\-\+]/_/gi';
+$operation{sq}    ='s/(\A|\/)((\[[^\[\]]*\]|\{[^\{\}]*\})[\. _]?)+/$1/'; # bracket prefix stripping
+# trigger rename handling, but skip rename, e.g. myren -i . * 
+# to force the interactive prompt for each file visited
+$operation{"."} = '$_="."';              # dummy name change, won't really rename
+$operation{":"} = $operation{nop} = ';'; # no name change
+
+our($o_readline,$o_force,$o_noexec,$o_fullpath,$o_createmissingdir)=("",0,0,0,0);
+our($o_filter,$o_comments,$o_interactive,$o_suffix)=(0,0,0,0);
+our($o_stdin,$o_sh,$o_scp,$o_verboserename,$o_skip_final_report)=(0,0,"",0,0);
+
+$o_readline=1; $ENV{PERL_RL}="Gnu"; # turn on Term::ReadLine
+
+our($rc,$errors,$errskip,$collisions,$collisionsskip,$renames,$renames0)=(0,0,0,0,0,0,"000"); # counters
+our($suffix,$collisionssfx)=("","");
+our(@o,@n,@pathtrack)=();
+our($tmp,$eol,$prefix)=("","","");
+
+
+while($_=shift,defined $_) {
+   # never lstat names == do not check collisions == rename even if target exists
+   /^-f$/       and do{$o_force=1; $o_pathtrack=0;next}; # force, default to no path tracking
+   /^-n$/       and do{$o_noexec="would be ";next};
+   # find . | sort -r | myrename ...            # base dir must occur before subdir
+   /^-p$/       and do{$o_fullpath++;next};     # apply operation to fullpath, not basename
+   /^-missingdir$/ and do{$o_createmissingdir++;next}; # mkdir -p as necessary (BUGS: not logged,
+                                                # ordering dependency, future renames of created
+                                                # dirs may fail)
+   /^-P$|^-P0$/ and do{$o_pathtrack=0;next};    # turn pathtracking off
+   /^-P1$/      and do{$o_pathtrack=0;next};    # turn pathtracking on
+   /^-q$/       and do{$o_verbose--;next};      # quiet -- no output to stderr
+   /^-qq$/      and do{$o_verbose-=2;next};     # quiet -- no output to stderr
+   /^-v$/       and do{$o_verbose++;next};      # more verbose
+   /^-vv$/      and do{$o_verbose+=2;next};     # more verbose
+   /^-vvv$/     and do{$o_verbose+=3;next};     # more verbose
+;;
+   ## using $0 output as part of a command's arguments
+   ## export $i; mv "$i" "$($0 -F "expr" "$i")" # outer quoting required
+   ##                                           # w/o requiring escaping within $(...)
+   ## actually perl -lpe 's///' is more suitable, as this script DOES SKIP e.g. DIR/.
+   /^-F$/       and do{$o_filter++; $o_verbose=-1; $o_noexec=1; $o_force=1; $o_comments=1; $op_log=undef; next};
+   /^-c$/       and do{$o_comments=1; $op_log=undef; next}; # leave comments and whitespace alone
+
+   ## find . | myrename  -E "s/d/e/" -sh -i -stdin | nl   # recursive
+   # interactive mode: enter h or ? for help
+   /^-i$/  and do{$o_interactive=1;next};       # interactive rename [Yes|No|Quit|Help|...]
+   /^-I$/  and do{$o_interactive=2; $o_force=1;next}; # only for collisions
+   # $suffix is also used for the interactive 'k' answer
+   /^-k$/  and do{$o_suffix=1;$o_force=1;next}; # try adding $suffix for collisions
+   /^-K$/  and do{$o_suffix=1;$suffix=shift;$o_force=1;next}; # append and set
+   
+   ## myrename  -E "s/d/e/" -sh -I               # implies '*',   with -E op
+   ## myrename  -sh -I             "s/d/e/" *    # same as above, with op as first non-option
+   /^-E$|^-e$/  and do{$op=shift;next};         # alternate syntax for "rename operation"
+   /^-?-stdin$/ and do{$o_stdin=1; next};       # alternate syntax for "rename operation -"
+
+   ## allow perl code overrides for reporting (with -n/-v) and renaming
+   ## $b basedir, $f basename, $_/$o original file or path, $n new path
+   ## $B          $F              $O                        $N          # double-quote-safe versions
+   ##                                                                   # for ONE expansion
+   ## export a="c c"; echo2cat mv   -- "$a"  "$(myrename  -E "s/c/d/"  -F                       "$a")"
+   ##          -->            "mv" "--" "c c" "d c"       # remove the echo2cat to actually move
+   ## export a="c c"; echo2cat "$(myrename  -E "s/c/d/"  -R 'print qq@mv -- "$o" "$n"\n@'  "$a")"
+   ## export a="c c"; eval "echo2cat $(myrename   -E "s/c/d/"  -R 'print qq@mv -- "$O" "$N"\n@'  "$a")"
+   ##          -->            "mv" "--" "c c" "d c"       # ...
+   ##          c\"c           'mv' "--" 'c"c' 'd"c'       # ... 
+   ## myrename -F -E ... -P ... ... is probably safer as it explicitely implied o_noexec
+   # additional code overrides - no builtin substitution implemented
+   /^-PRT$/     and do{$op_print=shift;next};   # - printing                (hard coded print)
+   /^-REN$/     and do{$op_rename=shift;$o_pathtrack=0;next};  # - renaming (hard coded rename)
+   /^-PRE$/     and do{$op_preproc=shift;next}; # - preprocessing input lines            (NOP)
+   /^-INIT$/    and do{$op_init=shift;next};    # - init                                 (NOP)
+   /^-ENDIT$/   and do{$op_endit=shift;next};   # - final reporting or similar           (NOP)
+   /^-LOG$/     and do{$op_log=shift;next};     # - maintain UNDO log (roughly $_ := mv $N $O)
+;;
+   ## non-renaming example filters for use in pipes:
+   # short cut to create shell script with mv statements instead of renaming
+   /^-sh$/       and do{$o_sh=1; next};
+   /^-ln$/       and do{$op_rename='system qq@ln    -- "$O" "$N"\n@';$o_pathtrack=$o_noexec=0; next};
+   /^-lns$/      and do{$op_rename='system qq@ln -s -- "$O" "$N"\n@';$o_pathtrack=$o_noexec=0; next};
+   /^-cp$/       and do{$op_rename='system qq@cp -p -- "$O" "$N"\n@';$o_pathtrack=$o_noexec=0; next};
+   /^-scp$/      and do{$o_scp=shift; $op_rename='system qq@scp $o_scp -- "$O" "$N"\n@';$o_pathtrack=$o_noexec=0; next};
+
+#   /^-?-help$|^-h$|^-\?$/  and do{
+#    system "sed", "-e", "1d; 2d; /##/d; /;;/d; s/^/   /; /END[O]FHELP/q", "$0";
+#    print  "\nbuiltins and user defined builtins to change name in \$_:\ns///, uc, lc, sq, clean, uclean\n";
+#    system "perl", "-0777ne", 'BEGIN{close STDERR};s/[\s\S]*?(?:\$operation{(\S+?)}\s*=|\Z)/$1 /g; print "$_\n"', "$0.cfg", "$0.$ENV{LOGNAME}.cfg";
+#    exit 1};
+   /^-?-internals?$/ and do {&internals; die "\n"};
+   /^-?-help$|^-h$/  and do {&usage; die "\n"};
+   /^-?-examples?$/  and do {&examples; die "\n"};
+   /^--$/       and do{last};                   # -- end of option vs - as -stdin
+   /()/         and do{unshift @ARGV,$_; last};
+}
+if (not $op) { $op=shift or die "Usage: $0 [options] operation [-|filenames*]\n"; } #ENDOFHELP
+
+
+our @time=localtime(time);
+our $date=sprintf "%04d%02d%02d" . "%02d%02d%02d", 1900+$time[5],1+$time[4],@time[3,2,1,0];
+our $pwd=$ENV{PWD}?$ENV{PWD}:`pwd`; chomp $pwd;
+
+
+# predefined variables for op; define early to also allow use 
+# from configure defined functions
+# BUG: in hindsight, it would be better to avoid this inflation
+#      and just provide short-named functions to track and quote... (trk(),dq(),sq())
+our($o,$f,$b,$n,$nb,$nf);  # normally used by the script: $o,$f,$b, $n(/$_)
+our($l,$ol,$ola,$nl,$nla); # normally used by the script: $l, $ol
+our($o_tracked,$o_untracked,$n_tracked,$n_untracked);         # normally used by the script: $o_tracked
+our($ol_tracked,$ol_untracked,$nl_tracked,$nl_untracked);     # path tracked, in case a user 
+our($ola_tracked,$ola_untracked,$nla_tracked,$nla_untracked); # scrap depends on them
+our($O,$F,$B,$N,$NB,$NF);                                     # and the same once again, shell-safe double quotable
+our($L,$OL,$OLA,$NL,$NLA);
+our($O_TRACKED,$O_UNTRACKED,$N_TRACKED,$N_UNTRACKED);
+our($OL_TRACKED,$OL_UNTRACKED,$NL_TRACKED,$NL_UNTRACKED);
+our($OLA_TRACKED,$OLA_UNTRACKED,$NLA_TRACKED,$NLA_UNTRACKED);
+
+
+# user configured builtins or setup?
+our($opname,$opword);
+$opname=$op; ($opname,$opword)=($1,$2) if $op=~/^([a-z0-9_]+)(:=(.*))?$/i;
+do "$0.cfg" if -f "$0.cfg"; do "$0.$ENV{LOGNAME}.cfg" if -f "$0.$ENV{LOGNAME}.cfg";
+$op=$operation{$opname} if $operation{$opname};
+if ($op=~/\A[a-z]+\Z/) {
+   # hmm. op is bare word or a perl function?
+   $_="";
+   eval("\$_=$op"); die "# ERR op: $@\n" if $@;
+   if ($_ eq $op) {
+      # avoid accidental first file renames when misspelling an op
+      die "# ERR op: trying to rename to constant string (use '\$_=\"STRING\"' to force)\n";
+   } else {
+      $op   ="\$_=$op"; # e.g. perl-scraps like uc, lc; as NOP use ';'
+   }
+}
+
+
+warn "# EXP $op\n" if $o_verbose > -1;
+warn "1 @ARGV" if $o_verbose > 1;
+$o_stdin=shift if 0==$#ARGV and $ARGV[0] eq "-";
+if ($o_stdin) {
+   undef $/;
+   $_=<STDIN>;
+   unshift @ARGV,split(/\x0d\x0a|\x0a|\n|\x0/,$_);
+}
+@ARGV=<*> if not @ARGV;
+#warn "2 @ARGV" if $o_verbose > 1;
+
+
+# setup a reasonable safe workdir and undo log
+# $op_log="" if $#ARGV==0; # Q: skip logging if only one filename
+our($dir,$stat,$logname,@stat)=("","","");
+if ($op_log) {
+   $dir="/var/tmp"; -d "$dir/." or $dir="/tmp";
+   $dir="$dir/rename-$ENV{LOGNAME}";
+   not -d $dir and mkdir "$dir";
+   @stat=lstat $dir or die "tmpdir: cannot create";
+   $stat[4] == $< or die "tmpdir: not owner";
+   chmod 0700, $dir;
+   system q@find "@ . $dir . q@" -mtime +1 -name "???.*"  -exec rm {} 2>/dev/null \; ;@ .
+          q@find "@ . $dir . q@" -mtime +1 -name "????.*" -exec rm {} 2>/dev/null \;  @ ;
+   $logname="$dir/undo.$date.$$";
+   open(LOGFH,">$logname") or die "cannot open log $logname";
+   print LOGFH "# you may need to edit and reverse the commands" if $o_noexec;
+   print LOGFH "# WARNING -- output was created by myrename -n (o_noexec)\n" if $o_noexec;
+}
+
+
+if ($o_sh) {
+   $o_noexec=0;
+   $op_rename='print &print_rename_and_relink;';
+   # line format of generated script: 
+   #    command 1: line numbers (non-executing)
+   #    command 2: command _cmd  "name1" """name2"
+   # which allows to
+   # - match old vs new files (anchor to """, guaranteed to only occur once per line) 
+   # - add \0 before """ to allow sorting old or new names
+   # - pipe thru sort to reestablish original order
+   print ":      0;   # myrename created shell commands ($date)\n";
+   print ":      0;   # log $logname\n" if $logname and $op_log;
+   print ":     01;   #    add temporary field sep for e.g. sorting by either\n";
+   print ":     02;   #    myrename.mangle -s (sort -k2; check for ##) or\n";
+   print ":     03;   #    vim: ^v^2 or " . qq@perl -lpe 's/"""/\\0"""/'@ . " (sort -t '\\0' -k2)\n";
+   print ':     09;   function _cmd { /bin/mv  -i -- "$1" "$2"; }'."# sort before source\n"; 
+   print ':     09-l; function _ln  { [ -l "$2" ] && /bin/ln -sf -- "$1" "$2"; }' . "\n";
+}
+
+
+our($term,$TTY,$BSD);
+if ($o_interactive) {
+   if ($o_readline) {
+      use Term::ReadLine;
+      $term= Term::ReadLine->new('myrename');
+   }
+   &setup;
+}
+
+
+$suffix="myrename.$$" if not $suffix;
+$o_verboserename=1 if $o_pathtrack and $o_verbose>-2;
+
+
+if ($op_init) {
+   eval($op_init);
+   die "# myrename init: $@" if $@;
+}
+
+
+
+# file loop --------------------------------------------------
+
+
+file: foreach (@ARGV) {
+   $eol="\n"; s/([\0\n])\Z//o and $eol=$1; # chomp!
+
+   $prefix="";
+   $o_tracked="";
+   do {&printsub; next} if $o_filter and $o_comments and $o_noexec and ( not /\S/ or /^\s*#/ );
+   if ($op_preproc) {
+      eval $op_preproc;
+      die "preproc: $@" if $@;
+   }
+
+   
+   # simplify names for later tracking of dir renames
+   if ($o_pathtrack) {
+      s@^(\./)*@@;
+      s@/+\.?(?=$|/)@@g;
+      $_="$pwd/$_" if $_ and not /^\//o; # make pathes absolute
+   }
+   $o_tracked=$o_untracked=$_;
+   $o_tracked=&tracked($_) if $o_pathtrack;
+
+   
+   $b=""; $f=$o=$_;
+
+
+   # skip input like 'dir/.', 'dir/', 'dir/..' unless o_fullpath
+   ($b,$f)=($1,$2) if m@^(.*)/+([^/]*)$@o;
+   if (not $o_fullpath) { # strip basedir
+      $_=$f if $b and $f;
+   }
+   if ($_ eq "" or $_ eq ".." or $_ eq "." ) {
+      warn "# SKP ".pr($o)." eq NULL (".pr($_).")\n" if $o_verbose>0;
+      next 
+   }
+   ($B,$F,$O,$O_TRACKED,$O_UNTRACKED)=quotesafe($b,$f,$o,$o_tracked,$o_untracked);
+
+   
+# BUG - too many lstats
+   # for more advanced uses, skip stat and warning
+   # use o_tracked, which defaults to o for either of 
+   # - no pathtracking or
+   # - pathtracking, but no applicable dir renames
+   if (not $o_force and do{lstat $o_tracked, not -e _}) {
+      $tmp="$o";
+      $tmp="$o (->$o_tracked)" if $o_pathtrack and $o ne $o_tracked;
+      warn "# ?   ".pr($o)." does not exist - trying to continue\n" if $o_verbose>-1 and not $o_filter;
+      # next 
+      # continue anyway for now
+   }
+
+   
+   $ol_tracked=$ol_untracked=$ol=$l="";
+   $ola_tracked=$ola_untracked=$ola="";
+   my $is_link=0;
+   if (-l $o_tracked) {
+      $is_link=1;
+      $ol=readlink($o_tracked);
+      $ol=~s@^(\./)*@@;
+      $ol=~s@/+\.?(?=$|/)@@g;
+   }
+   $ola=$ol;
+   $ola="$b/$ola" if $ola!~m@^/@ and $b and $ola;
+   $ol_tracked =$ol_untracked =$ol;
+   $ola_tracked=$ola_untracked=$ola;
+   $l=$ol;
+   $ol_tracked=&tracked($ol)   if $o_pathtrack;
+   $ola_tracked=&tracked($ola) if $o_pathtrack;
+   ($L,$OL,$OL_TRACKED,$OL_UNTRACKED)=quotesafe($l,$ol,$ol_tracked,$ol_untracked);
+   ($OLA,$OLA_TRACKED,$OLA_UNTRACKED)=quotesafe($ola,$ola_tracked,$ola_untracked);
+
+
+   ###
+   ### apply the user's requested op / action
+   ###
+   eval $op;
+   die "op: $op - $@" if $@;
+
+
+   # allow e.g. '.' to retain native rename() semantics
+   if ($_ eq "\x0" or $_ eq "\x0a" or $_ eq "\n" or $_ eq "") {
+      warn "# SKP ".pr($o)." -> NULL\\n" if $o_verbose >0;
+      next;
+   }
+   
+
+   $l="" if not $is_link;
+
+
+   # only simplify the path in the default var
+   s@^(\./)*@@           if $o_pathtrack;
+   s@/+\.?(?=$|/)@@g     if $o_pathtrack;
+   $l=~s@^(\./)*@@       if $o_pathtrack;
+   $l=~s@/+\.?(?=$|/)@@g if $o_pathtrack;
+   if (not $o_fullpath) { # prefix basedir unless absolute
+      # "." is magic - explicitely PREFIX dir paths like $pwd instead
+      $_="$b/$_" if $b and not /^\// and $_ ne ".";
+   }
+   
+   
+   # op by default works on the ORIGINAL name, now however
+   # we switch to the tracked names which should better 
+   # reflect the current filesystem state
+   #
+   # use some op like the one below to explicitely work 
+   # on the tracked/untracked version
+   # $tmp=$o_tracked; $tmp=~s///; $_=$tmp if $tmp ne $o_tracked 
+   $n_tracked=$n_untracked=$_;
+   if ($o_pathtrack and @pathtrack) {
+      $n_tracked=$_=&tracked($_);
+      $o=$o_tracked;
+      $b="";
+      $f=$o;
+      ($b,$f)=($1,$2) if $o=~m@^(.*)/+([^/]*)$@o;
+   }
+   $nb="";
+   $nf=$n=$_;
+   ($nb,$nf)=($1,$2) if m@^(.*)/+([^/]*)$@o;
+   ($B,$F,$N,$O,$NB,$NF,$N_TRACKED,$N_UNTRACKED)=quotesafe($b,$f,$n,$o,$nb,$nf,$n_tracked,$n_untracked);
+
+   $nl_tracked=$nl_untracked=$nl=$l;
+   $nla=$nl; $nla="$nb/$nla" if $nla!~m@^/@ and $nb and $nl;
+   $nla_tracked=$nla_untracked=$nla;
+   if ($o_pathtrack and @pathtrack) {
+      $nl_tracked=&tracked($nl);
+      $nla_tracked=&tracked($nla);
+      $ol=$ol_tracked;
+      $ola=$ola_tracked;
+   }
+   ($L,$NL,$NL_TRACKED,$NL_UNTRACKED)=quotesafe($l,$nl,$nl_tracked,$nl_untracked);
+   ($NLA,$NLA_TRACKED,$NLA_UNTRACKED)=quotesafe($nla,$nla_tracked,$nla_untracked);
+
+
+#if ($o_pathtrack and ($n_untracked ne $n_tracked or $o_untracked ne $o_tracked) ){
+#   warn "# TRK U $o_untracked -> $n_untracked\n";
+#   warn "# TRK T $o_tracked -> $n_tracked\n";
+#}
+
+
+   # ASSERT interactive dot magic: if op set $_ to '.', both $_ and $n still need to be '.'
+
+
+   my($do,$prompted,$collision)=(0,0,0);
+   if      ($l ne $ol and $o eq $_) {
+      $do=1
+   } elsif ($o ne $_){
+# BUG should probably reduce the number of expensive lstats here depending on options
+   
+      if (do{lstat $o, not -e _}) {
+         $tmp="$o";
+         $tmp="$o (->$o_tracked)" if $o_pathtrack and $o ne $o_tracked;
+         warn "# ?   ".pr($o)." does not exist after \$op\n" if $o_verbose>-1 and not $o_filter;
+         # next 
+         # continue anyway for now
+      }
+
+      if (not ($_ eq '.' and $o_interactive)) {
+         if (not $o_force and do{lstat $n, -e _}) {
+            $collision=1;
+# PERL LIBC RENAME(2), RENAME(3), RENAME(3posix) PROBLEM: 
+# ... Behavior of this function varies wildly depending on your system implementation ...
+#
+# possibly offer interactive mode with unlink/rmdir/rm-rf, 
+# possibly check and report if $n dir/link/whatever already exists 
+# [tripple check that inode#/dev# are NOT identical before unlink!]
+            if (not $o_force) {
+               warn "# SKP ".pr($o)." -> ".pr($_)." - target exists\n" if $o_verbose>-1;
+               $collisions++;
+               $collisionsskip++;
+               next
+            }
+            if ($o_interactive) {
+               print TTYOUT "\n!!the target for the next file already exists!!\n";
+            } elsif ($o_suffix) {
+               $do=2;
+            }
+         } elsif (2==$o_interactive) {
+            # without collision, assume yes
+            $do=1
+         }
+      }
+
+      if (not $do) {
+         if ($o_interactive) {
+            my($prompt,$ans,$reply);
+            # processing loop taken from zap
+            $prompt=1;
+            while(1) {
+               $prompted=1;
+               if ($prompt) { 
+                  if ($o_fullpath) {
+                     printf TTYOUT "? %-30s  ->  %-30s ", $o, $n;
+                  } else {
+                     printf TTYOUT "? %-27s %-20s  ->  %-20s ", "$b: ", $f, $nf;
+                  }
+                  $prompt=0;
+               }
+               printf TTYOUT "? ";
+               read(TTYIN,$ans,1);
+               if (not $TTY) {
+                  # fallback if insane host tty environment
+                  $tmp=<TTYIN> if $ans ne "\n";
+               } else {
+                  print TTYOUT "\n" if ($ans !~ /\n/);
+               }
+               if ($ans =~ /^y|^z/i){$do=1}  # yes (also implies o_force)
+               if ($ans =~ /^a/i){$do=1; $o_interactive=undef} # always yes from now on
+               if ($ans =~ /^q/i){last file;}  # quit
+               if ($ans =~ /^k/i){ # use suffix in case of collision 
+                  $do=1; $do=2 if $collision;
+               }
+               # toggle modes for collisions (-i/-I, -f) for further processing
+               if ($ans =~ /^i/i){$o_interactive=($o_interactive==2)?1:2 ;next}     
+               if ($ans =~ /^f/i){$o_force      =$o_force           ?0:1 ;next} 
+               if ($ans =~ /^e/i){
+                  if ($o_readline) {
+                     #&ttynormal; # not necessary for GNU readline?
+                     $term->addhistory($n, $o);
+                     $tmp=$n; $tmp=$o if not $n or $n eq ".";
+                     $reply=$term->readline("# EDT ", $o);
+                     if ($reply) { 
+                        $_=$reply;
+                        $nb=""; $nf=$n=$_;
+                        ($nb,$nf)=($1,$2) if m@^(.*)/+([^/]*)$@o;
+                        ($N,$NB,$NF)=quotesafe($n,$nb,$nf);
+                        $do=1;  $do=2 if $collision;
+                     }
+                     #&ttysingle; # not necessary
+                  } else {
+                     print TTYOUT "readline not supported\n";
+                  }
+               } 
+               if ($ans =~ /^h|^\?/i){ # help
+                  print TTYOUT "# HLP [Yes | y | Z | z ]:        rename files.\n";
+                  print TTYOUT "# HLP [Keep_collision]:          rename, append $suffix if collision.\n";
+                  print TTYOUT "# HLP [No] or unlisted answers:  skip renaming.\n";
+                  print TTYOUT "# HLP [List | Prompt | Help | Edit | [v]erbose rename | [V]erbose]\n";
+                  print TTYOUT "# HLP [All | Quit]:              always Yes | abort processing.\n";
+                  print TTYOUT "# HLP [Force | Interactive]:     -f=$o_force -i/-I=$o_interactive.\n";
+                  next;
+               }
+               if ($ans =~ /^l/i){$tmp=`ls -l "$O" "$N" 2>/dev/null`; print TTYOUT $tmp; next} # ls
+               if ($ans =~ /^p/i){$prompt=1; next} # prompt
+               if ($ans =~ /^v/){$o_verboserename++; next} # verbose
+               if ($ans =~ /^V/){$o_verbose++; next} # verbose
+               last; # default: no/skip
+            }
+         } else {
+            $do=1
+         }
+      }
+   }
+
+   if ($collision and $do==2) {
+      $_=$n="$n.$suffix"; $nf="$nf.$suffix";
+      if (lstat $n, -e $n) {
+         warn "# Err $o -> $n exists both with or without suffix\n" and $errskip++;
+         # next # or
+         $do=0;
+         $collisionsskip++;
+      } else {
+         $collisionssfx++;
+      }
+      $collisions++;
+      ($N,$NF)=quotesafe($n,$nf);
+   }
+
+   # do nothing if new name is .
+   if ($_ eq '.') {
+      $do=0;
+   }
+
+   if (not $do) {
+      # no renaming -> update vars for op_rename/op_print
+      $_=$n=$o; $nf=$f; $nb=$b; $N=$O; $NF=$F; $NB=$B; 
+      $L=$NL=$OL; $l=$nl=$ol;
+   }
+
+   if ($do) {
+# BUG no check if the fs truncates $nf / $n... (cf. esp. also the suffix above)
+# BUG $n and $o pointing to different filesystems
+      $renames++; 
+      &renamecount;
+      
+      if ($o_pathtrack and $o ne $_ and ($o_noexec or -d $o)) {
+         # in case of noexec, we probably better just treat everything as a possible dir
+         push @pathtrack, ["$o", "$_"];
+      }
+      
+      warn "# REN ".pr($o)." -> ".pr($_)."\n"  if ($o_verbose>0 or $o_verboserename) and $o ne $_;
+      warn "# RLK ".pr($_).": ".pr($ol)." -> ".pr($l)."\n" if ($o_verbose>0 or $o_verboserename) and $ol ne $l;
+      warn "\n"                if ($o_verbose>0 or $o_verboserename) and $o_interactive>0 and $prompted;
+      &printsub if $o_noexec or $o_verbose>0;
+      # QQQ might we want an option to rename recursively upper dirs??
+
+      &renamesub if not $o_noexec;
+  
+      if ($op_log) {
+         local($_)=$_;
+         $tmp="";
+         $tmp=eval($op_log);
+         die "log: $@" if $@;
+         $_=$tmp if $_ eq $n; # op changed $_, so use that instead
+         if($_) {
+            $_.="\n" if not /\n/;
+            printf LOGFH $_;
+         }
+      }
+
+   } else {
+      &printsub if $o_filter or $o_verbose>0;
+   }
+}
+
+
+$rc=0;
+if ($op_init) {
+   eval($op_init);
+   warn "# myrename init: $@" if $@; # not die
+}
+
+
+if (not $o_skip_final_report) {
+   $errskip+=0;
+   warn "\n" if $o_verbose>-1;
+   warn "# SUM $renames renames logged and executed " . 
+            ( $errors   ? "($errors of which failed)" : "" ) .
+            ( $o_noexec ? "(o_noexec)" : "" )           . ( $o_sh ? "(shell script generated)" : "" ) . "\n" 
+            if $o_verbose>-1;
+   warn "# ERR in addition $collisions collisions ($collisionsskip + $errskip skipped; sfx: $collisionssfx $suffix)\n" if $o_verbose>-1 and $collisions;
+   warn "# ERR there were errors during actual rename: $errors  !! please check !!\n" if $o_verbose>-1 and $errors;
+   warn "# LOG sed -n '1!G;\$p;h' $logname\n" if $renames and $op_log and $o_verbose>-1;
+   warn "\n" if $o_verbose>-1;
+
+   if (not $rc) {
+      $rc=1 if $collisions;
+      $rc=2 if $errors;
+   }
+}
+
+
+exit $rc;
+
+
+
+# ------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------
+
+# convenience functions for op_*
+sub tabbedlinenumber { # allow a line number prefix
+   /^ *(\d+)\t(.*)/ and ($prefix,$_)=($1,$2) and $prefix=sprintf("%06d\t",$prefix)
+}
+
+sub renamecount { $renames0=sprintf "%03d", $renames; } 
+# ------------------------------------------------------------------------------------------
+
+sub printsub {
+   if ($op_print) {
+      eval $op_print;
+      die "print: $@" if $@;
+   } else {
+      print "$prefix$_$eol"
+   }
+}
+
+
+sub renamesub {
+# BUG do we want to stat source?
+   if ($o_createmissingdir and not -d $nb) {
+      system "mkdir", "-p", $nb;
+   }
+   my $renamed;
+   #if ($o ne $_) {
+      if ($op_rename) {
+         $renamed=1; # to be reset by user on error (if he uses it later)
+         eval $op_rename;
+         die "rename: $@" if $@;
+      } else {
+         $renamed=0;
+         if ($o ne $_) {
+            lstat $o and -e _ and rename($o,$_) and $renamed=1 or warn "# ERR $o -> $_\n" and $errors++;
+         }
+         if ($ol ne $l) {
+            lstat $_ and do{unlink $_; symlink $l, $_} and $renamed=1 or warn "# ERR relink $_: $ol -> $l\n" and $errors++;
+         }
+      }
+      push @o, $o;
+      push @n, $_;
+   #} else {
+   #  # NOP unless the user somehow manages to require a side effect??
+   #}
+}
+
+sub quotesafe { # ensure string is protected for one-time use in bourne shell double quotes
+   # note that single quote rules in bash always end
+   # the string on ', even if escaped by \... -- thus
+   # quoting requires use of ending the string, 
+   # doublequoting the offender and restarting the string
+   return map {local($_)=$_;s/["`\\\$]/\\$&/g;"$_"} @_;
+}
+sub quotesafe_single {
+   return((quotesafe(@_))[0])
+}   
+
+sub tracked {
+   return(@_) if not $o_pathtrack;
+
+   my($o, $n, $in, $out, $i, $l, $c, @out);
+   foreach(@_) {
+      $in=$out=$_;
+      warn "# WRN please try to avoid pathes with .. or /./ in input\n" if $in=~m@/\.\./|/\./@;
+      foreach $i (@pathtrack){    # check+apply dir renames in chronological order
+         ($o,$n)=@$i;
+         $l=length($o);
+         if ($o eq substr($out,0,$l)) {
+            if ($l==length($out) or "/" eq substr($out,$l,1)) {
+               $c++;
+# warn "# TRK . $o -> $n\n";
+               substr($out,0,$l)=$n;
+            }
+         } 
+      }
+# warn "# TRK = $in -> $out ($c changes)\n" if $c;
+      push @out, $out;
+   }
+   if (wantarray or $#out>0) {
+      return(@out);
+   } else {
+      return $out[0];
+   }
+}
+
+
+# log and scrip generation defaults for rename/relink reporting
+         
+#        if ($o ne $_) {
+#            lstat $o and -e _ and rename($o,$_) and $renamed=1 or warn "# ERR $o -> $_\n" and $errors++;
+#         }
+#         if ($ol ne $l) {
+#            lstat $_ and do{unlink $_; symlink $l, $_} and $renamed=1 or warn "# ERR relink $_: $ol -> $l\n" and $errors++;
+#         }
+
+sub log_rename_and_relink { # default code scrap for maintaining the undo log;
+   # NOTE: order of lines in UNDO is to be reversed before execution
+   my($tmp);
+   if ($l ne $ol and lstat $_) { 
+      $tmp.="\n" if $tmp;
+      $tmp.=sprintf qq@ln -sf -- %-32s %-32s@, qq@"$OL"@, qq@"""$O"""@;
+   }
+   if ($_ ne $o) {
+      $tmp.="\n" if $tmp;
+      $tmp.=sprintf qq@mv -i -- %-32s %-32s@,  qq@"$N"@, qq@"""$O"""@;
+   }
+   return $tmp;
+}
+sub print_rename_and_relink { # default -sh code scrap for 'rename' / 'relink' reporting
+   my($tmp);
+   if ($_ ne $o) {
+      $tmp.="\n" if $tmp;
+      $tmp.=sprintf qq@: %6d  ; _cmd %-32s %-32s@,  $renames, qq@"$O"@, qq@"""$N"""@;
+   }
+   if ($l ne $ol) { 
+      $tmp.="\n" if $tmp;
+      $tmp.=sprintf qq@: %6d-l; _ln %-32s %-32s@,   $renames, qq@"$L"@, qq@"""$N"""@;
+   }
+   $tmp.="\n" if $tmp;
+   return $tmp;
+}
+
+sub pr { # return printable chars -- protect the tty against control codes below \x80
+         # Q: 9b vs. utf8 - leave alone for now
+   local($_)=@_;
+   # s/[\0-\x1f\x7f]/"%".unpack("H2",$&)/ge;
+   s/[\0-\x1f\x7f]/?/go;
+   return $_;
+}
+
+# ------------------------------------------------------------------------------------------
+# as taken from the perl process killer
+
+sub setup {
+   # prepare tty for interactive input
+   $BSD = -f '/vmunix' || -f "/boot/vmunix";
+   # include linux to also allow stdin from pipe (i.e. stty with redirect)
+   system "uname -a | grep -i linux >/dev/null";
+   $BSD = 1 if not $BSD and not $?;
+
+   my($TTYin,$TTYout,$TTYCMD);
+   $TTYin=$TTYout=$TTY="/dev/tty";
+   $TTYCMD=`which tty 2>/dev/null`; chomp $TTYCMD;
+   $TTYCMD="/usr/bin/tty" if not $TTYCMD;
+   if (-x "$TTYCMD") {
+      system "$TTYCMD | grep ^/dev >/dev/null";
+      if ($?) {
+         $TTYin="&STDIN"; $TTYout="&STDOUT"; $TTY="";
+      }
+   }
+   open (TTYIN,  "<$TTYin")  || die "Can't read  $TTYin: $!\n";
+   open (TTYOUT, ">$TTYout") || die "Can't write $TTYout: $!\n";
+   select (TTYOUT);
+   $| = 1;
+   select(STDOUT);
+   $SIG{'INT'} = 'cleanup';
+   &ttysingle;  
+}
+sub cleanup {
+  &ttynormal;
+  print "\n";
+  exit;
+}
+
+sub ttynormal {
+  if ($TTY) {
+     if ($BSD) {
+        system "stty -cbreak <$TTY >$TTY 2>&1";
+     }
+     else {
+        system "stty -icanon ";
+        system "stty eol ' '";
+     }
+  }
+}
+
+sub ttysingle {
+   # put Terminal in single-character input mode
+   if ($TTY) {
+      if ($BSD ) {
+         system "stty cbreak <$TTY >$TTY 2>&1";
+      }
+      else {
+         system "stty -icanon "; # HP-UNIX
+         system "stty eol ''"; # Achtung: Control Character
+         system "stty min 1   ";
+      }
+   }
+}

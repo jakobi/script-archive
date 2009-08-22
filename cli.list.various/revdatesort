@@ -1,0 +1,37 @@
+#!/usr/bin/perl
+
+# ascending sort of lines; descending sort if a differing numeric date
+# field is encountered in lines with the same prefix. Useful if the
+# strings contain yyyymmdd-type date fields and the most recent
+# lines should be the first in a block but still in ascending order
+# within the block and between blocks...
+
+$datepat='\d\d(\d\d)?[\:\.\-]?\d\d[\:\.\-]?\d\d([\.\:\-\d]*)';
+
+sub revdate {
+   $lastp=-1; $loop=1;
+   while($loop and $a=~/$datepat/g) {
+      $p=length($`); $q=pos $a;
+      if ($b=~/^.{$p}$datepat/) {
+         # we're interested only in changing the direction of comparison
+	 # for pairs with a common prefix and different date strings
+         if (substr($a,0,$p) eq substr($b,0,$p) and substr($a,0,$q) ne substr($b,0,$q)){ 
+	    $lastp=$p 
+	 } 
+      } else {
+         $loop=0;
+      }
+   }
+   # results to return...
+   if ($lastp>-1) {
+      $b cmp $a
+   } else {
+      $a cmp $b
+   }
+}
+
+@_=<>;
+@_=sort revdate @_;
+print @_;
+exit;
+

@@ -1,0 +1,125 @@
+#!/usr/bin/perl
+
+# sleep until TIMESPECs, optionally triggering a previously defined command after TIMESPEC
+
+# 2008XXXX PJ   0.1  jakobi@acm.org initial version
+#
+# copyright:  (c) 2008-2009 jakobi@acm.org, placed under GPL v3 or later 
+my $version="0.1";
+
+#use Date::Parse; # use GNU date -d for now, allows more natural specs
+$debug=" on "; # noexec nosleep whatever
+
+$NOW=time;
+while($ARGV[0]){
+   if ($ARGV[0]=~/^(-h|--help|-\?)$/) {&usage; exit 1}; 
+   if ($ARGV[0]=~/^-f$/)              {shift; $o_force=1;                   next}; 
+   if ($ARGV[0]=~/^-c$/)              {shift; $o_cmd=shift;                 next};
+   if ($ARGV[0]=~/^-t$/)              {shift; &add_timespec(shift, $o_cmd); next };
+   if ($ARGV[0]=~/^-(\d+)$/)          {shift; $o_countdown=$1;              next};
+   if ($ARGV[0]=~/^--?$/)             {shift;                               last};
+   last;
+}
+
+do{ &add_timespec(shift, $o_cmd); } if @ARGV and not %event;
+do{ &usage; die "ERROR: illegal or missing arguments" } if not %event or @ARGV;
+
+
+printf "#%12d\n", $NOW if $debug;
+foreach(sort keys %event) {
+   $CMD=$event{$_}->{cmd}; $CMD=$o_cmd if not $CMD;
+   printf main::STDERR "#%12d %20s %20s %30s %20s\n", $_, $event{$_}->{timespec}, $event{$_}->{time}, localtime($_)."", $CMD #if $debug;
+}
+
+
+foreach(sort keys %event) {
+   $UNTIL=$_;
+   $DELTA=$UNTIL-time;
+   $CMD=$event{$_}->{cmd}; $CMD=$o_cmd if not $CMD;
+
+   if ($DELTA>0) {
+      if ($o_countdown) {
+         while ($DELTA) {
+            $DELTA=$UNTIL-time;
+            last if $DELTA<1;
+            if ($DELTA<900) {
+               printf main::STDERR "%d\n", $DELTA;
+            } else {
+               printf main::STDERR "%d:%02d\n", $DELTA/3600, $DELTA/60%60;
+            }
+            $DELTA=$o_countdown if $DELTA>$o_countdown;
+            sleep $DELTA if not $debug=~/nosleep/;
+         }
+      } else {
+         print main::STDERR "#sleep $DELTA # until ", scalar localtime($UNTIL), "\n";
+         sleep $DELTA if not $debug=~/nosleep/;
+      }
+   }
+
+   print main::STDERR "#system \"$CMD\"\n";
+   system $CMD if $CMD and not $debug=~/noexec/;
+   $trc=$?>>8;
+   print main::STDERR "#return: $trc\n" if $trc;
+   $rc+=$trc;
+}
+
+exit $rc;
+
+######################################
+
+sub usage {
+   print <<EOF;
+sleepuntil [OPTIONS] TIMESPEC
+sleepuntil [OPTIONS] -c CMD -t TIMESPEC -c CMD -t TIMESPEC
+
+Options:
+  -DDD      count down in steps of DDD seconds
+  -c CMD    command C is run after sleep
+  -f	    use TIMESPECs without checking and possibly adding 24h
+  -t T      use TIMESPEC T
+
+Notes:
+ - TIMESPEC alias: +SSS or +MMMm or +HHH:MM(:SS) 
+ - TIMESPEC alias: HH:MM(:SS) - adds 24h as necessary
+ - sleeps  until  TIMESPEC.  For TIMESPEC, see date -d (GNU).
+ - a TIMESPEC optionally executes the previously defined CMD,
+   or the value of the last CMD argument in \@ARGV. 
+  
+Examples:
+ - TZ=EST sleepuntil 22:00 # sleep until next 22:00 in timezone EST
+ - sleepuntil "fri 22:00"  # sleep until 22:00 on next friday
+ - sleepuntil "+4:30"      # translated to "+4 hours 30 minutes" for date
+ - sleepuntil "+20s"       # translated to "+20 seconds" for date
+ see also: TZ=MESZ date -d "1:00pm EST" (MET=MEST=MEZ=MEST, as MEZ incl. ST).
+
+EOF
+}
+
+sub add_timespec {
+   my ($timespec, $cmd) = @_;
+   my ($time, $offset);
+   $time=$timespec;
+   if    ($time=~/^\d?\d:\d\d(:\d\d)?$/)      { $offset=24*3600 }
+   elsif ($time=~/^\+?(\d+)s?$/)              { $time="+$1 seconds" }
+   elsif ($time=~/^\+(\d+)m$/)                { $time="+$1 minutes" }
+   elsif ($time=~/^\+(\d+)h$/)                { $time="+$1 hours" }
+   elsif ($time=~/^\+(\d+):(\d{2})$/)         { $time="+$1 hours $2 minutes" }
+   elsif ($time=~/^\+(\d+):(\d{2}):(\d{2})$/) { $time="+$1 hours $2 minutes $3 seconds"};
+   if ($time=~/[^a-z0-9:,\-\.\+ ]/i) {
+      die "ERROR: invalid char in timespec $time";
+   }
+   #$epoch=str2time($time); # too weak, use gnu date -d instead
+   $epoch=`date -d "$time" +\%s`; chomp($epoch); $epoch="" if $?;
+   if (not $epoch) {
+      die "ERROR: timespec invalid $time / $timespec";
+   } elsif ($offset and $NOW-$epoch>0 and not $o_force) {
+      $epoch+=$offset
+   } 
+   if ($NOW-$epoch>5) {
+      # 5 sec grace period for busy systems
+      die "ERROR: timespec $timespec is in the past: $time"
+   }
+   $event{$epoch}->{timespec}=$timespec;
+   $event{$epoch}->{time}=$time;
+   $event{$epoch}->{cmd}=$cmd;
+}

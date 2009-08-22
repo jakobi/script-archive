@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# vi as pager
+# " possibly unset shell vars
+# " and in bashrc
+# export PAGER="/bin/sh -c \"unset PAGER;col -b -x | vim -R -c 'set ft=man nomod nolist' -c 'map q :q<CR>' "    -c 'map <SPACE> <C-D>' -c 'map b <C-U>' \ "    -c 'nmap K :Man <C-R>=expand(\\\"<cword>\\\")<CR><CR>' -
+
+unset PAGER 
+
+unset type filter input
+if [ "$1" = "" ]; then
+   type="ft=man"
+   filter="col -b -x"
+   input="-"
+fi
+
+cmd="vim -R -c 'set nomod $type nolist'"
+cmd=$cmd" -c 'map b <C-U>'"
+cmd=$cmd" -c 'map <SPACE> <C-D>'"
+cmd=$cmd" ${1:+$@} $input"
+ 
+# some possible mappings  
+# cmd=$cmd" -c 'map q :q<CR>'"
+# cmd=$cmd" -c 'map K :Man <C-R>=expand(<cword>)<CR><CR>'"
+
+echo "running: ${filter:+$filter | }$cmd"
+if [ "$filter" ]; then
+   eval "$filter | $cmd"
+else 
+   eval "$cmd"
+fi

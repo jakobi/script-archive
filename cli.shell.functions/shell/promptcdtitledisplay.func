@@ -1,0 +1,61 @@
+export LINES COLUMNS
+export DISPLAY
+typeset +x PROMPT_COMMAND PS1
+
+# see X.example for setting / guessing displays and remote hosts to use,
+# in combination with window titles and snafu
+
+
+
+# interactive only
+if [ "$PS1" != "" ]; then 
+
+   # default prompt for all shells
+   PS1='($?) ${debian_chroot:+($debian_chroot) }`date +%H:%M:%S` $LOGNAME@$HOSTNAME:$PWD
+#$SHELL$SHNEST !> '
+
+   # PUT CD OVERRIDE FOR INTERACTIVE USE HERE
+
+   if [ -n "$_IS_BASH" ]; then # bash-only
+      # after each command check LINES/COLUMNS
+      if [ "$VIM_ACTIVE" = "" ]; then
+         shopt -s checkwinsize 
+
+         # PS1 tricks: \[ ... \] to embed non-printing chars in the prompt, 
+         #             might fix the length counting problem, but don't put 
+         #             part of the 1st line of a dual line in there...
+         # consider a trick like '[0...0m' to normalize attribs AND 
+         # pad the string to a correct multiple of 8 for using tab on non-printable 
+         # easily confused shells like csh
+         PS1="#(\$?) ${debian_chroot:+($debian_chroot) }\\t \\u@\\h:\\w\n#\\s$SHNEST > "
+
+         # If this is an xterm set the title to user@host:dir
+         _TERM=$TERM
+         [ -n "$STY" -a "$TERM" = "vt100" ] && TERM=screen # for screen, if TERM has been mangled
+         case "$TERM" in
+            xterm*|rxvt*)
+               PROMPT_COMMAND='echo -ne "\033]0;${USER}@${HOSTNAME}: ${PWD/$HOME/~}\007"'
+               ;;
+            screen*)
+               # also have a dynamic screen title parsing the prompt for a command
+               # (use with ^a-: shelltitle '> |bash'). It is also possible to bind
+               # a command with a screen-window title, e.g. ^a-R: bind R screen -t '% |root:' su 
+               # or to set it manually: ^a-A
+               PROMPT_COMMAND='echo -ne "\033]0;${USER}@${HOSTNAME}: ${PWD/$HOME/~}\007\033k\033\134"'
+               # \134 is backslash; double \ when used in PS1: \\033k\\033\\134
+               #PS1="#(\$?) ${debian_chroot:+($debian_chroot) }\\t \\u@\\h:\\w\\n#\\s$SHNEST > "
+               ;;
+            *) ;;
+         esac
+         TERM=$_TERM
+      fi
+   fi
+fi
+
+
+
+alias rs='eval `resize`'
+
+
+
+# vim:filetype=sh

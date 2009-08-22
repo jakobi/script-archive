@@ -1,4 +1,4 @@
-i[*
+[*
    $ENV{__EMB_EXTRATITLE}="HTML";
    $ENV{__EMB_COUNT}++; 
    if (1==$ENV{__EMB_COUNT}) {
@@ -6,20 +6,25 @@ i[*
    } else {
 *]
 
-<p>Commands  dealing with HTML. Most are pretty ancient, but sometimes
-still surprisingly useful.</p>
+<p>Commands  dealing with HTML. Most of these are pretty ancient,  but
+sometimes still surprisingly useful.</p>
 
 <H3>Major Commands (early 90's style)</H3>
 
 <ul>
    <li><B>COLLECT</B> (turns a set of html files into a single html document)
    <li><B>DIFF, DIFFTREE</B> (from single html documents to directories) 
-       as well as an old copy of Mr. Weiler HtmlDiff
-   <li>htmlcheck and files (a truly ancient html validator)
+   <li><b>htmlcheck and files</b> (a truly ancient html validator; I think the configuration
+       and some suppression of warning was all I changed)
    <li><B>LINKS</B> (extracts the links from an HTML document)
    <li><B>XLINKS</B> (link extraction and helper for spidering)
    <li><b>db_cgi.p</b> is the retired DBFW's grab-bag of utility functions. Some 
       scripts may still depend on them.
+   <li><b>dir2html.pl</b> old style configurable dirtree filelist using .name
+      and .skip files for control. <b>dir2array</b> is a more recent variant:
+      just get a hash using the same principles as dir2html.pl, and dump that
+      for use in an embperl template. Example code incl. the github site creation
+      is in a subdir in this section as well.
 </ul>
 
 

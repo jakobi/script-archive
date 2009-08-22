@@ -1,0 +1,40 @@
+#!/bin/bash
+
+
+if [ "$1" = "" -o "$1" = "-help" -o "$1" = "--help" ]; then
+   cat <<EOF
+date.before  DATE
+date.before  DATE  DATE_TO_USE_INSTEAD_OF_now
+
+RC is the result of comparing DATE to 'now', using
+the EPOCH representation in seconds for both DATESPECS.
+Use date.before DATE" 0" "now 0"
+
+examples: 
+ - date.before 'feb 3 2009'   # now is before DATE
+   return true until and incl. the end of the 2nd february
+ - date.after  '12:00'        # now is (on or) after DATE
+ - run CMD2 iff CMD1 finishes before midnight:
+   t=\$(date -d 'tomorrow 0'); CMD1; date.before "\$t" && CMD2 
+
+time of day examples and further DATE examples:
+ - to limit comparisons to whole days instead of epoch values
+   including time of day, append " 0" to both DATE specs.
+ - now, today, 'this day', tomorrow include current times
+ - in contrast 'dec 10', 'next monday' return midnight times
+ - '00:00' or just 0 ensures midnight time values, so
+   'tomorrow 0' is the next midnight / begin of the next
+   day or simply 'tomorrow 00:00'
+EOF
+   exit 1;
+fi
+
+
+now="${2:-now}"
+
+
+if echo "./$0" | grep /date.before >/dev/null; then
+   [[ $(date -d "$now" +%s) -lt $(date -d "$1" +%s) ]]
+else
+   [[ $(date -d "$now" +%s) -ge $(date -d "$1" +%s) ]]
+fi 

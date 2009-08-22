@@ -14,12 +14,13 @@ vim script file into presentable sections. Don't hold your breath.</p>
 <ul>
    <li>shell scripts
       <ul> 
-         <li><b>vimscript</b> uses vim as interpreter for file containing
+         <li>experimental: <b>vimscript</b> uses vim as interpreter for file containing
             non-interactive vim script. Can be used with pipes. Note that the
             script still requires a TTY due to short-comings of vim's head-less mode.
             For the time being, do <i>not</i> try to run multiple scripts in parallel; 
             the tempfile handling needs fixing. (bash; full rewrite of the vimscripts example) 
-         <li>See also <b>pipe.vim</b> and <b>vimless</b> elsewhere in the archive.
+        <li><b>pipe.vim</b> aka <b>vimpipe</b>, <b>vimless</b> (wrappers to use interactively
+            use vim within a pipe, e.g. for grep | pipe.vim | Grep.xchange)
       </ul>
    <li>vim scripts
       <ul>

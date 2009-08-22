@@ -1,0 +1,78 @@
+#!/usr/bin/perl
+
+# just a reminder on this open trick.
+# for oneshots, consider: dd if=F iflag=nonblock
+
+use Fcntl; 
+$basename=$0; $basename=~s@.*/@@o;
+
+$bufsize=262144;
+$o_maxstretch=100; # max stretch of consecutive blocks printed per file
+                   # w/o checking other files
+$o_sleep=1;        # sleep time
+$o_loop=1;         # set to 0 to execute loop only once
+$|=1;
+
+while(@ARGV){
+   $_=shift;
+   if(/^-1$/o)                            {$o_loop=0; next}
+   if(/^-s$/o)                            {$o_sleep=shift; next}
+   if(/^-v|-?-verbose$/o)                 {$o_verbose++; next}
+   if(/^-h|-?-help$/o)                    {
+      print main::STDERR "$basename [-1] [-s SECONDS] [-v] FILES # non blocking tail -f\n";
+      exit 1}
+
+   if(/^--$/o) {last}
+   unshift @ARGV, $_; last
+};
+
+
+foreach (@ARGV) {
+   my $FH;
+   # NOTE that w/o O_NONBLOCK, even sysopen does block before even
+   #      trying the first explicit read. Thus the select isn't
+   #      really required with O_NONBLOCK, as the sysread subsumes
+   #      the test. NOTE that eof() is even less useful (trying
+   #      a 1byte read from buffer or file)
+   sysopen($FH,"$_",O_RDONLY | O_NONBLOCK); 
+   push @FH, $FH;
+   push @FN, $_;
+}
+
+
+$lf="";
+$lfi=-1;
+$time="";
+do{ 
+   file: foreach $i (0..$#FH) {
+      $j=$o_maxstretch;
+      while(1){
+         $time="";
+         $buf=""; 
+         sysread($FH[$i],$buf,$bufsize); 
+         if($buf eq "") {
+            if($o_verbose>1) {
+               print $lf if $lf and $j==$o_maxstretch and $i!=$lfi;
+               print "\n$FN[$i] (no data).\n";
+               $lf=""; 
+               $lfi=$i;
+            }
+         } else {
+            if (not $time) {
+               @time=localtime;
+               $time=sprintf("%02d%02d %02d:%02d:%02d", $time[4]+1,$time[3,2,1,0])
+            }
+            print $lf if $lf and $j==$o_maxstretch and $i!=$lfi;
+            print "\n$FN[$i] ($time):\n" if $o_verbose>1 or $o_verbose and $i!=$lfi;
+            print $buf;
+            $lf = ( substr($buf,-1,1) eq "\n" ) ? "" : "\n";
+            $lfi= $i;
+         }
+         $j--;
+         if (not $j or $buf eq "") {
+            next file;
+         }
+      }
+   }
+   sleep $o_sleep;
+} while($o_loop);

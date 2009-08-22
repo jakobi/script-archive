@@ -1,0 +1,92 @@
+#!/usr/bin/perl
+
+# /usr/share/doc/libperlmenu-perl/examples/ezview
+# stty sane ^j is helpful. setterm reset.
+# simplified to just a (slurping) multi-select usable within a pipe.
+
+#***************************************************************************
+# EasyView -- Unix File Viewer/Editor Interface
+#             (a "practical" demo for menu.pl)
+#
+# Notes:   Perl4 - Requires curseperl
+#          Perl5 - Requires William Setzer's "Curses" extension
+#
+# Author:  Steven L. Kunz
+#          Networked Applications
+#          Iowa State University Computation Center
+#          Ames, IA  50011
+#          Email: skunz@iastate.edu
+#
+# Date:    February 1997
+#****************************************************************************
+
+# Perl5+Curses ONLY!
+BEGIN { 
+   $Curses::OldCurses = 1; 
+}
+
+use Curses;                     # PerlMenu needs "Curses"
+use perlmenu;                   # Main menu package (Perl5 only)
+require "/usr/share/doc/libperlmenu-perl/examples/menuutil.pl"; # For "pause" and "print_nl" routines.
+
+$| = 1;			# Flush after every write to stdout
+$SIG{'INT'} = 'cleanup';	# Set signal handler
+
+while (@tmp=<>) {
+   push @line, @tmp;
+   @tmp=();
+} 
+
+# ensure a tty for curses even if we're inside a pipe
+($FH_STDIN0,$FH_STDOUT0,$FH_STDERR0)=(main::STDIN,main::STDOUT,main::STDERR);
+not -t main::STDIN and open(main::STDIN, "<", "/dev/tty");
+not -t main::STDOUT and do {open(main::STDOUT, ">", "/dev/tty"); open(main::STDERR, ">", "/dev/tty")};
+
+$last_arrow = 0;	# For arrow latching
+$last_top = 0;		# For arrow latching
+$lines = &list_select(1,"Select one or more lines to pass on");
+if ($lines !~ /\A\%(UP|NONE)\%\z/) { 
+   split(/\0,/,$lines); # separator is \0 PLUS ',' from menu_display
+   foreach (@_) { 
+      print $FH_STDOUT0 "$_\n";
+   }
+}
+
+system "stty sane";
+exit;
+
+# ---------------------------------------------------------------
+
+#  list_select -- Load a formatted directory list into a menu.
+#  Arguments:  Boolean flag indicating numbered menu (1=yes), directory 
+#              name string and top-title string for menu
+#  Returns:    File name (or "%UP%" or "%NONE%")
+sub list_select {
+  local($numbered,$title) = @_;
+  local($last_arrow,$last_top) = 0;
+  &menu_init($numbered,$title);
+  entry: foreach(@line) {
+    chomp;
+    $sel_action = $_;
+    $sel_text   = $_;
+    &menu_item($sel_text,$sel_action."\0");
+  }
+  if ($numbered) {
+    $fn = &menu_display_mult("","");
+  } else {
+    $fn = &menu_display("");
+  }
+  $fn;
+}
+
+# cleanup -- called upon exit
+sub cleanup {
+  #&clear;     # if we had a curses window; possibly we'd o
+               # need to give each one explicitely or we'd need
+               # to check their 'inuse-ness' or how to suppress
+               # the output.
+  #&refresh;
+  #&endwin;
+  system "stty sane"; # PJ
+  exit;
+}

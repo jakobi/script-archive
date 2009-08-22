@@ -1,0 +1,111 @@
+#!/usr/bin/perl
+
+# $0 OPTIONSSTRING FIREFOX2BOOKMARKFILE # just dump the bookmarks.html
+
+# summary:     helper for firefoxgrep
+# copyright:   GPL v3
+# created:     jakobi@acm.org 200711xx
+# last change: jakobi@acm.org 20071220
+
+
+use strict;
+use HTML::TreeBuilder;
+use vars;
+
+my($o_tree, $file)=@ARGV;
+
+my ($o_verbose);
+my (%href,%desc,%dd,%depth,@desc);
+
+#$o_verbose=1;
+
+my $tree = HTML::TreeBuilder->new;
+open(my $fh, "<", $file) || die;
+$tree->parse_file($fh);
+
+
+# the file is already in hierarchic order
+#my($node,$parent)=($f->address,($f->look_up("_tag", undef))[1]);
+
+# 1. collect the dd descriptions and re-associate them with their preceeding tag of interest
+my($node, $tag, $previous);
+foreach my $f ($tree->descendants) {
+
+   $node=$f->address; # current elem "address"
+   $tag=$f->tag;      # html tag for this elem
+   if ($tag eq 'a' or $tag eq 'h3') {
+      $previous=$node;
+   }
+   if ($tag eq 'dd' and $previous and not $dd{$previous}) {
+      next if $dd{$previous}; # cannot happen
+      # $dd{$previous}=&mangle($f->as_text); # the whole tree subtree and some [hmm after and before?]
+      # content_list entry 0 should be the text until the very next tag
+      # [hopefully the normal bookmark h3, and stuff, and not a mere <b>]
+      $dd{$previous}=&mangle(ref(($f->content_list)[0]) ? "" : ($f->content_list)[0] );
+   }
+}
+# 2. now for the tags of interest themselves
+my($node, $tag, @folder, $folder);
+foreach my $f ($tree->descendants) {
+
+   $node=$f->address; # current elem "address"
+   $tag=$f->tag;      # html tag for this elem
+   $folder;           # parent address
+   @folder;           # stack containing grandparents and higher
+
+   next unless $tag eq "a" or $tag eq "h3";
+   $depth{$node}=$f->depth;
+
+   print main::STDERR ".FOLDER   ", $folder, " -- ", join("+", @folder), "\n" if $o_verbose;
+   while ($folder and $depth{$folder}>=$depth{$node} and $tag eq "a" or
+          $folder and $depth{$folder}>=$depth{$node} and $tag eq "h3") {
+      $folder=undef;
+      $folder=pop(@folder) if @folder;
+      print main::STDERR ".FOLDER   ", $folder, " -- ", join("+", @folder), "\n" if $o_verbose;
+   }
+
+   $href{$node} =$f->attr("href") or "none";
+   $desc{$node} ="";
+   $desc{$node}.=$desc{$folder} if defined $folder and defined $desc{$folder} and $desc{$folder} and $o_tree=~/ folders /o;
+
+   if ($tag eq 'a') { # tag a
+      $desc{$node}.=&mangle($f->as_text)." :: " if defined $f->as_text and $f->as_text and $o_tree=~/ name /o;
+      $desc{$node}.=" == ".$dd{$node}." == :: " if $dd{$node} and $o_tree=~/ description /o;
+      if (defined $f->attr("SHORTCUTURL") and $o_tree=~/ keyword /o) {
+         $desc{$node}=~s/ :: $//;
+         $desc{$node}.=" ::".$f->attr("SHORTCUTURL").":: ";
+      }
+      $desc{$node}.=$href{$node} if defined $href{$node} and $o_tree=~/ url /o;
+      push @desc,"$desc{$node}\n";
+   }
+
+   if ($tag eq 'h3') {           # tag h3
+      $desc{$node}.=&mangle($f->as_text)." :: " if defined $f->as_text and $f->as_text;
+      $desc{$node}.=" == ".$dd{$node}." == :: " if $dd{$node} and $o_tree=~/ description /o;
+      push @folder,$folder if $folder;
+      $folder=$node;
+   }
+
+   if ($o_verbose) {
+      print main::STDERR "CURRENT  ", $f->tag, "-", $f->depth, " - ", $f->address, "-", $f->as_text, "\n";
+      print main::STDERR "DESCPATH ", $desc{$node}, "\n";
+      print main::STDERR "\n";
+   }
+}
+
+print grep /\S/, @desc;
+exit;
+
+
+####################################################################
+
+# ensure that :: / ::: / == is usable as keyword / name separator for grepping
+sub mangle {
+   local($_)=@_;
+   $_="" if not defined $_;
+   s/ ::/ : :/go; s/:: /: : /go;
+   s/ ==/ = =/go; s/== /= = /go;
+   s/\A\s*//go; s/\s*\Z//go;
+   return($_);
+}
+

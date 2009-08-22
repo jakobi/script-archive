@@ -1,0 +1,395 @@
+#!/usr/bin/perl
+
+# known bugs: UTF8: miscounts multibyte chars
+
+# Julius C. Duque
+# v1.1.1      2003 November 12 Wednesday   JD
+# v1.2.0      2003 November 14 Friday      JD added hyphenation
+# v1.3.0      2003 November 16 Sunday      JD added hyphenation of overfull lines
+#             2005                         PJ made TeX::Hyphen optional
+# v1.3.0-2pj  2009 July     26             PJ added ignbackslash option (perl quoting semantics)
+my $version="v1.3.0-2pj";
+
+use diagnostics;
+use strict;
+use warnings;
+use Getopt::Long;
+# PJ use TeX::Hyphen;
+
+# PJ TODO: add reformatting for #-comment paragraphs
+
+my ($width, $hyphenate, $left, $centered, $right, $both);
+my ($indent, $newline, $ignbackslash);
+
+unshift @ARGV, split(/\s+/, $_) if $_=$ENV{PARADJ}; # PJ
+$Getopt::Long::ignorecase=0;                        # PJ
+GetOptions(
+  "width=i"      => \$width, 
+  "hyphenate"    => \$hyphenate,
+  "left"         => \$left, 
+  "centered"     => \$centered,
+  "right"        => \$right, 
+  "both"         => \$both, 
+  "i:i"          => \$indent, 
+  "indent:i"     => \$indent, 
+  "I"            => \$ignbackslash,
+  "ignbackslash" => \$ignbackslash,
+  "newline"      => \$newline,
+);
+
+# PJ $hyp = new TeX::Hyphen;
+my $hyp;
+if ($hyphenate) {
+   eval "use TeX::Hyphen;"; die $@ if $@;
+   $hyp=new TeX::Hyphen;
+   $ignbackslash=undef;
+} 
+
+$width=72 if (!$width);
+$indent = 0 if (!$indent);
+
+local $/ = "";
+
+my $tmp=0;
+while (<>) {
+  my @linein = split;
+  $tmp++;
+  print "\n" if ($newline and @linein and $tmp>1); # BUG PJ spurious final newline
+  printpar(@linein);
+}
+
+sub printpar
+{
+
+  my (@par) = @_;
+  my ($par0)= ("");
+
+  sub ignbackslash {
+     local($_)=@_;
+     s/(\\*)\1\\?/$1/g;
+     return $_;
+  }
+  if ($ignbackslash) { # PJ strip backslashes (leaving floor(n/2) behind)
+     $par0=join(" ", @par);
+     @par=map {&ignbackslash($_)} @par;
+  }
+
+  my $firstline = 0;
+
+  while (@par) {
+    $firstline++;
+    my ($buffer, $word);
+    my ($charcount, $wordlen) = (0, 0);
+    my $linewidth = $width;
+
+    if ($firstline == 1) {
+      $linewidth -= $indent;
+      print " " x $indent;
+    }
+
+    while (($charcount < $linewidth) and (@par)) {
+      $word = shift @par;
+      $buffer .= $word;
+      $wordlen = length($word);
+      $charcount += $wordlen;
+      $buffer .= " ";
+      $charcount++;
+    }
+
+    chop $buffer;
+    $charcount--;
+
+    if ($charcount == $wordlen) {
+      $linewidth = $wordlen;
+      my ($pos, $pre_word_len) = (0, 0);
+      if ($hyphenate) {
+        if ($word =~ /^([^a-zA-Z]*)([a-zA-Z-']+)([^a-zA-Z]*)$/) {
+          my $pre_word = $1;
+          $pre_word_len = length($pre_word);
+          my $stripped_word = $2;
+          $pos = hyphenate_word($stripped_word, $width);
+          $pos = 0 if ($wordlen <= $width);
+        }
+
+        if ($pos) {
+          $charcount = $pre_word_len + $pos;
+          my $post_word = substr $word, $charcount;
+          unshift(@par, $post_word);
+          $buffer = substr $word, 0, $charcount;
+          $buffer .= "-";
+          $charcount++;
+        }
+      }
+    }
+
+    my $lineout = $buffer;
+
+    if ($charcount > $linewidth) {
+      my ($pos, $pre_word_len) = (0, 0);
+      if ($hyphenate) {
+        if ($word =~ /^([^a-zA-Z]*)([a-zA-Z-']+)([^a-zA-Z]*)$/) {
+          my $pre_word = $1;
+          $pre_word_len = length($pre_word);
+          my $stripped_word = $2;
+          my $unfilled = $linewidth - $charcount + $wordlen
+            - $pre_word_len + 1;
+
+          $pos = hyphenate_word($stripped_word, $unfilled);
+        }
+      }
+
+      $charcount -= $wordlen;
+
+      if ($pos == 0) {
+        $charcount--;
+        unshift(@par, $word);
+      } else {
+        my $post_word = substr $word, ($pre_word_len + $pos);
+        unshift(@par, $post_word);
+        $charcount = $charcount + $pre_word_len + $pos;
+      }
+
+      $lineout = substr $buffer, 0, $charcount;
+
+      if ($pos) {
+        $lineout .= "-";
+        $charcount++;
+      }
+    }
+
+    my $spaces_to_fill = $linewidth - $charcount;
+
+    if ($centered) {
+      my $leftfill = int($spaces_to_fill/2);
+      print " " x $leftfill;
+    } elsif ($right) {
+      print " " x $spaces_to_fill;
+    } elsif ($both) {
+      my $tempbuf = $lineout;
+      my $replacements_made = 0;
+
+      if (@par) {
+        my $reps = 1;
+
+        while (length($tempbuf) < $linewidth) {
+          last if ($tempbuf !~ /\s/);
+          if ($tempbuf =~ /(\S+ {$reps})(\S+)/) {
+            $tempbuf =~ s/(\S+ {$reps})(\S+)/$1 $2/;
+            $replacements_made++;
+            $tempbuf = reverse $tempbuf;
+          } else {
+            $reps++;
+          }
+        }
+      }
+
+      if ($replacements_made % 2 == 0) {
+        $lineout = $tempbuf;
+      } else {
+        $lineout = reverse $tempbuf;
+      }
+    }
+
+    if ($ignbackslash) { # PJ
+#warn "# IN  $lineout\n";
+       my($tmp,$pre,$word,$word1,$word2,$post,$lineout0)=("","","","","","","");
+       ($tmp,$lineout,$lineout0)=($lineout,"",$lineout);
+       while($tmp=~s/\A(\s*)(\S+)(\s+|\z)//g) {
+          ($pre,$word,$post)=($1,$2,$3);
+          $word1=$1 if $par0=~s/\A\s*(\S+)(\s+|\z)//;
+          $word2=&ignbackslash($word1);
+          if ($word2 ne $word) {
+             warn "\n\n# $0 ERROR: lost sync for ignbackslash\n";
+             warn     "# @ $word\n";
+             warn     "# = $lineout0\n";
+             warn     "# - $tmp\n";
+             warn     "# + $lineout\n";
+#            warn     "#   $par0\n";
+             warn     "\n";
+             $ignbackslash=undef;
+             $lineout=$lineout0;
+             last;
+          }
+          $lineout.=$pre.$word1.$post;
+       }
+#warn "# OUT $lineout\n";
+    }
+    print "$lineout\n";
+  }
+}
+
+sub hyphenate_word
+{
+  my ($tword, $unfilled) = @_;
+  my @hyphen_places = $hyp->hyphenate($tword);
+
+  if (@hyphen_places) {
+    @hyphen_places = reverse @hyphen_places;
+
+    foreach my $places (@hyphen_places) {
+      return $places if ($places < $unfilled - 1);
+    }
+  }
+
+  return 0;
+}
+
+sub syntax
+{
+  print <<EOF;
+Usage: $0 --width=n [options] file1 [file2 file3 ...]
+       cat file1 [file2 file3 ...] | $0 --width=n [options]
+
+version: $version
+
+reformat paragraphs.
+
+Options:
+  -b          --both          both left- and right-justified
+  -c          --centered      centered
+  -l          --left          left-justified (default)
+  -r          --right         right-justified
+
+  -h          --hyphenate     hyphenate word that doesn't fit
+  -i n  -i=n  --indent=n      leave n spaces for initial indention (0)
+  -I          --ignbackslash  ignore backslash (turned off by -h)
+  -n          --newline       output an empty line between paragraphs
+  -w n  -w=n  --width=n       line width is n chars long ($width)
+EOF
+  exit 0;
+}
+
+=head1 NAME
+
+paradj - a small Perl script that reformats lines of ASCII text so that
+the resulting lines are  justified in any of the following formats:
+left-justified  (default), right-justified, centered, or both left- and
+right-justified.
+
+=head1 README
+
+Paragraph Adjuster with Hyphenation (PAwH) is a small Perl script that
+reformats lines of ASCII text so that the resulting lines are justified
+in  any  of  the following  formats:  left-justified  (default),
+right-justified, centered, or both left- and right-justified. PAwH has
+various  switches, most are optional, to control its output. The  only
+mandatory switch is the line width (--width). For PAwH to work properly,
+input paragraphs must be separated by blank lines.
+
+PAwH is also capable of hyphenating a word that cannot be accommodated
+on a line.
+
+=head1 DESCRIPTION
+
+Paragraph Adjuster with Hyphenation (PAwH) is a small Perl script that
+reformats lines of ASCII text so that the resulting lines are justified
+in  any  of  the following  formats:  left-justified  (default),
+right-justified, centered, or both left- and right-justified. PAwH has
+various  switches, most are optional, to control its output. The  only
+mandatory switch is the line width (--width). For PAwH to work properly,
+input paragraphs must be separated by blank lines.
+
+PAwH is also capable of hyphenating a word that cannot be accommodated
+on a line.
+
+=head1 USAGE
+
+You can use PAwH in any of two ways:
+
+./paradj.pl.pl --width=n [options] file1 [file2 file3 ...]
+
+or
+
+cat file1 [file2 file3 ...] | ./paradj.pl --width=n [options]
+
+where file1, file2, file3, and so on, are the files to be reformatted.
+There's only one output, though.
+
+=head1 SWITCHES
+
+The available switches are:
+
+--both (or -b)
+    Output is both left- and right-justified
+
+--centered (or -c)
+    Output is centered
+
+--left (or -l)
+    Output is left-justified (default)
+
+--right (or -r)
+    Output is right-justified
+
+--hyphenate (or -h)
+    Hyphenate word that doesn't fit on a line
+
+--indent=n (or -i=n or -i n)
+    Leave n spaces for initial indention (defaults to 0)
+
+--ignbackslash (or -I)
+    Ignore baskslash characters during calculations
+
+--newline (or -n)
+    Insert blank lines between paragraphs
+
+--width=n (or -w=n or -w n)
+    Line width is n chars long
+
+
+=head1 EXAMPLES
+
+The  following command reformats the file, LICENSE,  so that the line
+width is at most 70 characters,  both left-  and right-justified, with
+blank lines inserted between consecutive  paragraphs,  and words that
+can't fit at the end of lines are hyphenated.
+
+paradj.pl --width=70 --both --newline --hyphenate LICENSE
+
+You can also use the shortened version:
+
+paradj.pl -w=70 -b -n -h LICENSE
+
+If  you  want to indent each paragraph, just use the --indent  switch.
+Say, you want to indent the LICENSE file with 4 leading spaces, type:
+
+paradj.pl --width=70 --both --newline --hyphenate --indent=4 LICENSE
+
+or
+
+paradj.pl -w=70 -b -n -h -i=4 LICENSE
+
+
+=head1 GUI VERSION
+
+There is also a Perl/Tk version of paradj.pl, called paradj-tk.pl.
+
+=head1 PREREQUISITE
+
+You  need Jan Pazdziora's Perl module, TeX::Hyphen, available from the
+Comprehensive Perl Archive Network (CPAN), to use the hyphenation
+feature. The latest is version 0.140.
+
+For  Windows  users,  you can install TeX::Hyphen by  following  these
+steps:
+
+1. Uncompress the TeX::Hyphen module, TeX-Hyphen-0.140.tar.gz.
+
+2.  Descend (cd) into the TeX-Hyphen-0.140/lib and copy the TeX directory
+into <Perl directory>\lib. For example, if your Perl binaries are
+installed on E:\Perl, copy the TeX directory into E:\Perl\lib.
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright (C) 2003 Julius C. Duque <{jcduque}{at}{lycos}{dot}{com}>
+
+This  library is free software; you can redistribute it and/or  modify
+it under the same terms as the GNU General Public License.
+
+=pod SCRIPT CATEGORIES
+
+CPAN/Administrative
+Fun/Educational
+
+=cut
+

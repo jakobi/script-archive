@@ -1,0 +1,38 @@
+#!/usr/bin/perl
+
+# emvs edited mv helper, sorting find output correctly:
+# first the dir, then dir/, then subdirs, then anything
+# longer name than dir --> thus dir-1 is sorted BEHIND 
+# dir/1 and dir (normal naive lex sort places dir-1 
+# BETWEEN dir and dir/, thus renaming basedirs needlessly
+# requires changes in 2 places - even if the dir always
+# comes before any children).
+
+while($_=shift) {
+   /^-r$/            and do {$reverse=1;next}; # reverse
+   /^-0$/            and do {$/="\0";next};    # IO is \0-based lines
+   /^-h$|^-?-help$/  and do {"$0 [-0] [-r] ... # sort dirtrees"; exit 1};
+   /^--$/            and do {last};
+   /()/              and do {unshift @ARGV,$_; last};
+}
+
+while(<>) {
+$i++;
+   s@$/\z@@g; 
+   while(s@/\./@/@g){;} s@/+@/@g; # cleanup spurious /
+   s@/@\0@g;                     # remap / to \0
+   push @files,$_;
+}
+
+
+if ($files[1]=~/^\s*\d\t/) { # skip line numbers?
+   @files=map {$_->[1]} sort {$a->[0] cmp $b->[0]} map {$o=$_;s/^\s*\d+\t//;[$_,$o]} @files;
+} else {
+   @files=sort {$a cmp $b} @files;
+}
+@files=reverse @files if $reverse;
+
+
+grep {s@\0@/@g;s@\z@$/@;} @files; # remap \0 to / and add line-end
+print @files;
+exit 0;

@@ -1,0 +1,53 @@
+function gr_x { 
+   for i in /*FIND* /disk*/*FIND*; do
+       case "$i" in
+          *.gz)                zcat < "$i"      ;; # or zegrep to reduce piping
+          *.bzip|*.bz|*.bzip2) bzcat < "$i"     ;; 
+          # - actually we should differentiate between {latin1,utf8} x {nl,\0-terminated}, 
+          #   all of which may also be gzipped, etc. 
+          #   [\0 currently only used for /FIND during backup; and 
+          #    indeed we have wide char probs already in /FIND; 1 for cat, 3 for cat0]
+          # - possibly exclude already seen files from symlinks, caching stat[0,1]:
+          #   normal stat w/o -l first resolves all links/symlinks:
+          #   perl -e 'print join(":",(stat $ARGV[0])[0,1])."\n";'
+          #   -> but for speed, fully rewrite in perl
+          *)                   if head -c 300 < "$i" | tr -c -d '\0' | grep -a . >/dev/null; then
+                                  tr '\0' '\12' < "$i"
+                               else 
+                                  egrep -i "$@" < "$i"
+                               fi
+                               ;;
+       esac
+   done | egrep -v -i -e '^/[^/]*/SYSTEM-BACKUPS' -e '^/[^/]*/automated-backup' | mytcgrep -h -i -B "$@" | sort -u
+}
+
+
+
+# filters
+
+function gr_d { 
+   sed 's@/[^/]*$@@' | sort -u
+   # and just in sed incl uniq: sed 's@/[^/]*$@@'|sed '$!N; /^\(.*\)\n\1$/!P; D'
+}
+function gr_d0 { 
+   # shorten to the final dir/filename with a twist:
+   # go further left while dir is numbered, i.e. \d* c\d* v\d* 
+   perl -lne 's@.*?(((/|^)(?!\d|[vc]\d)[^/]+)(/(?=\d|.\d)[^/]+)*/[^/]+)$@...$1@i; print' | sort -u
+}
+function gr_ds { 
+   # shorten by paren+ removal to a single ~~, then if there's still a monstrous name
+   # in the path, truncate it in the middle. Use $1 to change 'longness'.
+   # tries to allow for the highlighting codes as used on xterm by tput rmso/smso
+   # and e.g. grep.p / hlgrep (3-5bytes). Does NOT add ESC when line is ESC-clean.
+   N=${1:-60} perl -lne 'BEGIN{use POSIX;$n=$ENV{N}||60; $p=q![^/\(\)\[\]\{\}]!; chomp($se=qx(tput rmso)); $m=floor($n/2)};
+      do{ local ($se)=$se;  $se="" if not /x1b/o;
+          s@\($p+\)|\[$p+\]|\{$p+]\}[\. -_]?@~~@go; s@(~~[^~/]?)+~~@~~@go; 
+          ##  s@/([^/]{2}[^/]{$n,})(?=/|$)@do{$2.substr($$1,0,$n/2)."~~".substr($1,-$n/2)}@ge; 
+          #anchor-/    prefix optional glue used to forbid ESC    middle            glue/esc protect     postfix         anchor  
+          s@( (?:/|\A) [^/]{$m}  [^/]{0,5}? )   (?<=[^\x1b]{5})   [^/]{2,}   (?<=[^\x1b]{5})   ( [^/]{0,5}?  [^/]{$m} )  (?=/|$)@$1~~$2@gx;
+          s@~~@$se~~@go;
+      }; print' | sort -u
+}
+
+
+# vim:filetype=sh

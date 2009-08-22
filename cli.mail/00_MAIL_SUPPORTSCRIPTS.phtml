@@ -8,7 +8,7 @@
 
 <p>Some  support  scripts for dealing with mail. Mlnn, the mutt  setup
 and  the procmail setup is probably way too specific, so I'll  exclude
-it for now (is procmail still being actively maintained at all??)</p>
+it for now (<i>is procmail still being actively maintained at all??</i>)</p>
 
 <H3>Commands</H3>
 
@@ -16,9 +16,10 @@ it for now (is procmail still being actively maintained at all??)</p>
    <li><b>mygrepmail</b>. The original code's strictly functional and a pleasure
        to read. Partly because of this I'm still unwilling to fork this one for real.
        Then again, it's a pity that the classic grepmail doesn't know about MIME at all.
-       So here's a modified interim version that (temporarily) de-mimes anything greppable
-       just before the grep. Though it still has some 'modern times' problems with 
-       e.g. encoding mixtures. 
+       So here's a modified interim version that de-mimes anything greppable
+       just before the grep while returing the original email for further processing. 
+       Note that there still are some 'modern times' problems with e.g. encoding mixtures 
+       when using grepmail as part of a pipe.
 </ul>
 
 

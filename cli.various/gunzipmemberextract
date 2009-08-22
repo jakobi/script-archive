@@ -1,0 +1,67 @@
+#!/usr/bin/perl
+
+# usage: $0 [-n] file # with optional 0-based n being the
+#                       file# to extract from the gzip file
+
+# description: decompress gzip-compressed parts from a
+#              gzip file [e.g. created by concatenating
+#              gzipped files]
+# keywords: extract gzip members
+
+
+# bugs: 
+# - braindead simplicity of gzip files [as in TOO simple]
+#   gzip format: ftp://ftp.isi.edu/in-notes/rfc1952.txt
+# - horrible un-speed being O(N^2) * O_decompression 
+
+# the format is a plain stupid: CRC and uncompressed size
+# FOLLOW the last file member, but the compressed size is
+# anyone's guess, as it's not available except as the total
+# file length in the filesystem :(. A simple compressed
+# block length would have helped plenty.
+
+# workarounds:
+# - switch to bzip2, bzip2 at least extract the blocks via
+#   bzip2recover... [but a concatenation of bzipped files
+#   may have multiple blocks per file]
+# - add additional dummy files as inline separators
+#   [which is done in zappend.p!]
+
+$magic="\x1f\x8b";
+
+shift if ($from)=$ARGV[0]=~/^-(\d+)$/;
+$file=$ARGV[0];
+undef $/;
+$gzip=<>;
+die "not a gzip file" if not $gzip=~/\A$magic/;
+
+$i=1; @pos=(0);
+while($i=index($gzip,$magic,$i)) {
+   last if $i<0;
+   push @pos, $i; 
+   $i++;  
+}
+
+print main::STDERR "possible possitions: ", join(", ",@pos), "\n";
+
+foreach $i (@pos) {
+   # $cmd=qq@dd if="$file" ibs=1 skip=$i 2>/dev/null | gzip -d -c| wc -c@;
+   $cmd=qq@dd if="$file" ibs=1 skip=$i 2>/dev/null | gzip --test@;
+   system($cmd);
+   if (not $?) {
+      push(@valid, $i) if not $?;
+   }
+}
+
+for($i=0;$i<=$#valid;$i++) {
+   $len[$i]=$valid[$i+1]-$valid[$i];
+   $len[$i]=-1 if $len[$i]<0;
+   printf main::STDERR "%8d: %-8s %10s\n", $i, $valid[$i], "($len[$i])";
+}
+
+if (defined $from) {
+   $count="count=$len[$from]" if defined $len[$from] and $len[$from]>-1;
+   $cmd=qq@dd if="$file" ibs=1 skip=$valid[$from] $count 2>/dev/null | gzip -c -d@;
+   print main::STDERR "cmd: $cmd\n";
+   system($cmd);
+}

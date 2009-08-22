@@ -1,0 +1,50 @@
+#!/bin/sh
+# emvx - edited mv helper, expanding the session lists and printing
+#        the new lines to include into the editor buffer
+
+# copyleft, etc: see emv proper.
+
+emv=`basename "$0" x`
+orgfile=${orgfile:-/dev/null}
+linfile=${linfile:-/dev/null}
+maxdepth="-maxdepth 1"
+
+# fields to strip when given editor buffer contents
+# now using a more generic perl scrap instead 
+# cut="-f 2-"; [ "$long" != "" ] && cut="-f 8-" 
+
+while [ "$1" != "" ]; do
+   case "$1" in
+      -l)          shift; long=1;        ;; # avoid (defaults to use same format as invoking emv)
+      -r)          shift; maxdepth=""    ;; # recursive find instead of single level expansion
+      --)          shift; break;         ;;
+      *)           break                 ;;
+   esac
+done
+[ "$long" != "" ] && long="-l"
+export long
+
+if [ "$1" != "" ]; then
+   # bug 1: should we also shell-expand any patterns in $@ (or below on stdin)?
+   # bug 2: quote handling for arguments is messy in e.g. vi :-mode
+   #        so the else branch is probably the more useful one...
+   echo
+   echo "# emvx for find "$@" -depth"
+   find ${1:+"$@"} -depth | sort | "$emv" -delta $orgfile $linfile $long -
+   echo
+else
+   echo
+   echo "# emvx for piped region"
+   # strip file numbers and / or meta info from input, cut $cut, or better yet
+   
+   # IFS mangling still required for single variable 
+   #     while|read constructs to protect leading/trailing ws
+   OIFS=$IFS 
+   
+   perl -e 'while(<>){chomp;s/^(\s*$|#.*|\s*\d+\t(\#\[[^\]]*?\]\#\t)?)//g;print "$_\n" if /./}' | \
+      while IFS="\n" read i; do find "$i" $maxdepth -depth | sort; done | \
+      "$emv" -delta $orgfile $linfile $long -
+   
+   #IFS=$OIFS
+   echo
+fi

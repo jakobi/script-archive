@@ -1,0 +1,159 @@
+#!/usr/bin/perl
+
+# mt_dir [list|help|LOCATION]
+# created     PJ 2007XXXX jakobi@acm.org
+# last change PJ 20090617
+# copyright:  (c)2007-2009 PJ, GPL v3 or later
+my $version="0.1";
+
+sub help{
+print main::STDERR <<EOF;
+$0 LOCATION [mc arguments]          # invoke mc at location
+$0 list                             # list locations (\%loc)
+
+version: $version.
+
+given an optional string S and optional mc args,
+start an optional viewer if configured for S and
+invoke mc with dir and dir2 (default: \$PWD).
+of S. 
+
+With -e just the first path is printed, while -x
+returns a shell scrap as specified by the location.
+To cd to the first dir, add this to your profile:
+   function mtdir { cd "\$(mt_dir -e "\$\@")"; } 
+or to eval and then cd to the first dir, which might
+also e.g. extend \$CDPATH according to location:
+   function mtdir { 
+      _mt_tmp="\$(mt_dir -eval "\$\@")"; 
+      eval "\$_mt_tmp"; 
+   }
+
+Notes:
+  - use a shell function to avoid spawning a subshell, e.g.
+    function mtdir { _tmp=\$(mt_dir echo "\$@"); cd "\$_tmp" 2>/dev/null; }
+
+Options:
+  --
+  -c --config F read only config file f (\$skipdefaultconfig)
+  -e --echo     print first path (\$dir)
+  -x --eval     print bourne shell code
+  -h --help
+  -l --list
+  -v --verbose  
+
+Locations (less $0.cfg):
+EOF
+   $|=1;
+   print main::STDERR join "\n  ", "", grep(!/^(-[hl]|-?-?(help|list))$/, sort keys %loc), "";
+   die "\n";
+}
+
+
+$viewer="/usr/local/bin/xv" if not $viewer or not -x $viewer;
+$viewer="/usr/bin/gwenview" if not $viewer or not -x $viewer;
+$viewer="/usr/bin/display"  if not $viewer or not -x $viewer;
+$viewer=$ENV{IMAGEVIEWER} if $ENV{IMAGEVIEWER};
+$list=1 if $viewer=~m@\b(xv|display)($| )@; # global, need of filelist for viewer
+$cmd="";
+
+
+# option processing ("final options" CAN be placed 
+# in %loc, however --help MUST be placed there)
+while($_=$ARGV[0],defined $_){ 
+   /^-?-config$|^-c$/  and do{shift; $skipdefaultconfig=1; do shift or die;next};
+   /^-?-verbose$|^-v$/ and do{shift; $verbose=1;next};
+   /^-?-echo$|^-e$/    and do{shift; $echo=1;   next};
+   /^-?-eval$|^-x$/    and do{shift; $echo=2;   next};
+   /^--$/              and do{shift; $_=shift;  last};
+   /()/                and do{          shift;  last};
+}
+
+
+# act: subroutine, dir: cd-location, view:
+$loc{default} ={dir=>"$ENV{HOME}"};
+$loc{list}=$loc{help}={act=>\&help};
+$loc{"-h"}=$loc{"--help"}=$loc{"-help"}=$loc{help};
+$loc{"-l"}=$loc{"--list"}=$loc{"-list"}=$loc{list};
+if (not $skipdefaultconfig) {
+   for $sfx ("", ".$ENV{LOGNAME}", ".$ENV{HOSTNAME}", 
+                 ".$ENV{LOGNAME}.$ENV{HOSTNAME}", 
+                 ".$ENV{HOSTNAME}.$ENV{LOGNAME}") {
+      for $loc ($0, "$ENV{HOME}/.mt_dir") {
+         $f="$loc$sfx.cfg";
+         if (-f $f) {
+            warn "# mt_dir: sourcing $f\n" if $verbose;
+            do $f or die;
+         }
+      }
+   }
+}
+
+
+# if provided, the target to cd to and possible view
+if (not defined $loc{$_}) {
+   warn "# mt_dir configuration: \$loc{default} is not defined\n"; sleep 3;
+} 
+$_="default" if not defined $loc{$_};
+die "# mt_dir undefined location\n" if not defined $loc{$_};
+$ENV{STARTDIR}=$ENV{PWD};
+
+
+# export selected loc's variables 
+foreach $i (keys %{$loc{$_}}) { $$i=$loc{$_}{$i} };
+
+
+$dir =(glob($dir))[0]  if $dir;
+$dir2=(glob($dir2))[0] if $dir2;
+$dir and ( chdir $dir or die "dir $dir does not exist\n" );
+push (@ARGV, $dir);
+push (@ARGV, $dir2) if $dir2;
+
+
+# perlscrap to run?
+&$act if $act;
+
+
+if ($view) {
+   $cmd="$viewer";
+   $cmd=q@find . -regextype posix-egrep -iregex '.*\.(jpg|png|gif|jpeg)$' -print | sort -z | xargs -0 @.$viewer if $list;
+   $cmd.=" ;";
+}
+
+
+#$cmd.="mc . ". join(" ", map {$_=sq($_)} @ARGV);
+$cmd.="mc ". join(" ", map {$_=sq($_)} @ARGV);
+
+
+$varcmd=
+   "export _mt_dir_startdir='".sq($ENV{STARTDIR})."';\n".
+   "export _mt_dir='".         sq($dir)          ."'; cd \"\$_mt_dir\"\n".
+   "export _mt_dir2='".        sq($dir2)         ."'\n".
+   "export _mt_dir_viewer='".  sq($viewer)       ."'\n".
+   "export _mt_dir_cmd='".     sq($cmd)          ."'\n".
+   "";
+
+if ($verbose) {
+   print main::STDERR "variables are ...\n$varcmd";
+   print main::STDERR "shellcmd  is  ". ( $shellcmd ? "...\n$shellcmd\n" : "not defined.\n");
+   sleep 2 if $cmd=~/^mc/ and not $echo; # allow to see STDERR before mc
+}
+
+
+if      (1==$echo) {
+   print $dir."\n";
+} elsif (2==$echo) {
+   print "$varcmd$shellcmd\n";
+} else {
+   $shellcmd and     $cmd and $cmd="$varcmd$shellcmd $cmd";
+   $shellcmd and not $cmd and $cmd="$varcmd$shellcmd";
+   exec $cmd if $cmd;
+}
+
+
+sub sq{ # escape hack for single-quoting
+   my($tmp)=@_;
+   $tmp=~s/'/'"'"'/g;
+   return($tmp);
+}
+

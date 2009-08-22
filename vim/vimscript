@@ -1,0 +1,208 @@
+#!/bin/bash
+
+# Vim script command line interpreter for UNIX
+
+# 20040827 DS dsilvia@mchsi.com v1.1
+# 20090615 PJ forked, fixed and rewritten
+# copyright:  (c)2004 DS, (c)2009 PJ, GPL v3 or later
+my $version="1.2pj";
+
+
+# pj 200907
+# major problem: SCRIPTARGV and whitespace/quoting
+
+# originally named vimsh
+#
+# Vim script command line interpreter for UNIX
+# Language:    vim script
+# Maintainer:  Dave Silvia <dsilvia@mchsi.com>
+# Date:        8/27/2004
+#
+# Version 1.1
+#   Added:
+#     -  Command line arguments
+#
+#
+# To use, place vimsh in a directory in your path, e.g.: ~/bin
+
+function help {
+cat <<'EOF'
+
+<block.vimscript> <arguments>
+vimscript <block.vimscript> <arguments>
+
+version: $version
+
+vimscript  is  a wrapper that allows the use of vimscript blocks  from
+shell  scripts  by  wrapping  the block into  a  function  definition,
+executing  it  and  then  invoking it once  with  the  <arguments>  as
+function arguments.
+
+vimscript  executes the code, capturing the output for Vim  internals,
+and  then  echoes the output to the shell. Numeric user input  can  be
+read  by  e.g.  let ans=nr2char(getchar()) or the  input()  series  of
+functions.  It is NOT possible to allow the user to temporarily edit a
+buffer  and then return to the script. Work-Around: Consider :!vi FILE
+or remote vim commands.
+
+The  shell  argument strings are available as a:{1},... and  $ARG1/...
+with  their  count  in a:0 and $ARG0, and list versions in  g:ARG  and
+a:000. 
+
+The  result  of the script is available in ~/.vimscript.out and is  in
+order  of  preference  the content of g:RET, the return value  of  the
+vimscript  if non-zero, or the redirected output of the vim statements
+themselves  (excluding :!-command output). Use :cquit! to force vim to
+return with an arbitrary non-zero shell return-code. Define g:POSTPROC
+to  contain  a  function name to filter the results to be  written  to
+~/.vimscript.out.
+
+Things may become interesting if you run this script without access to
+a  proper pty, or redirect input or output. The result is available in
+the user's ~/.vimscript.out file. (currently ~/bin/vimscript.range 7 9
+</dev/null | hd _seems_ to work; the /dev/null _IS_ required).
+
+See also the original docs of the ancient version in vimscript.txt.
+
+
+Example:
+  #!/usr/bin/env vimscript
+  :!echo 'SH ECHO: Counting from shell argument $1 to $2'
+  echo "VIM ECHO"
+  if $ARG0<2 | echo "Usage: ".expand("%:t")." fromNr toNr" | return | endif
+  let g:nr=$ARG1+0 
+  function Inc()
+     let g:nr=g:nr+1
+  endfunction
+  while g:nr <= $ARG2+0
+     echon g:nr.' '
+     call Inc()
+  endwhile | echo ' '
+  :!echo 'SH ECHO: All Done'
+
+
+Bugs: 
+  - cannot be used in parallel due to use of ~/.vimscript.out.
+
+
+Intrinsic VIMISSUES:
+  - ':!' shell escape commands can be used providing they are not imbedded
+    in Vim script constructs such as loops, functions, etc.  This breaks
+    the code flow and causes vimscript to hang. However, their output is 
+    printed immediately to the console, not synchronous as part of the 
+    vimscript-generated output nor available in the .vimscript.out file: 
+    use system() instead.
+  - echo prints at the beginning, not at the end of the line; use
+    explicit "\n", "\r", echon or echo '' to compensate. This is
+    also the reason for :! to emit those annoying newlines and
+    blanks in addition to the actual shell-output.
+  - there's no way to present the user a buffer for working and
+    then continue with the script: vim has a single interactive
+    event loop, and all the handling is down with bufenter/focus/
+    mappings/autocommands (and using the :-mode can be considered as a
+    buffer switch as well). 
+    To fake it, you'd need to do something like 
+    - call system("xterm -e vi ...") # :!cmd echoes the command
+    - bar=system("vi FILE </dev/tty >/dev/tty 2>&1; echo foo")
+    - the vi -remote / remote() series of functions
+    - restructure everything into a mess of bufenter/bufleave 
+      autocommands due to the single global non-reentrant event loop
+      of vim
+  - as long as vim doesn't gain proper support to be run headless in 
+    a subshell, we've nonsensical screen flashing and need to run in a
+    tty. This can be somewhat reduced, but NOT eliminated. Use
+    pure perl instead for proper stream editing. 
+  
+EOF
+}
+
+export SCRIPT=$1
+shift
+export SCRIPTARGV=$@ 
+
+if [ "$SCRIPT" = "--help" -o "$SCRIPT" = "-help" -o "$SCRIPT" = "-h" -o "$SCRIPT" = "" ]; then
+   help; exit 1
+fi
+
+# numerically indexed zero-based arrays -- however vim cannot access/see them
+# declare -a ARGV or ARGV=("ab" [1]="c d"); access by ${ARGV[1]} - {} required!
+# *, @: "${ARGV[@]}"
+# ${#name[subscript]} - length of ${name[subscript]}
+# ${#name[@]}         - length of array itself
+i=0; for j in "${@}"; do
+   let i=i+1
+   eval "export ARG$i=\$j"
+done
+export ARG0=$i
+
+# start in 'ex' mode, 'readonly', 'noswapfile'
+vim -eRn -c "silent /^function SetUp/,$ yank z | silent @z | call SetUp() | :q" $0
+exit 0
+
+
+
+" ------------------------------------------------------------------------- "
+
+function SetUp()
+   bwipeout
+   execute 'silent edit '.fnameescape($SCRIPT)
+   set noswapfile nomore readonly
+   call Interpret()
+endfunction
+
+function Interpret()
+   let @a=''
+
+   " allow other representations of the shell arguments in $ARG1,... "
+   let [RET,g:RET,g:ARG,g:FARG,g:POSTPROC]=['','',[],'',""]
+   let i=1 | while i<=$ARG0+0
+      exe 'let g:ARG += [ $ARG' . i . ']'
+      if  g:FARG=~'.' | let g:FARG .= ',' | endif
+      let g:FARG .= '$ARG'.i
+      let i=i+1
+   endwhile
+
+   silent 2,$ yank z
+
+   if @z != ''
+      " workaround terminal handling problems: the initial empty echo avoids
+      " some issues and spurious blanks when invoked with io-redirection
+      let @z="function! ATz(...)\<NL>echo ''\<NL>".@z."\<NL>endfunction\<NL>"
+      silent @z
+      redir @A
+      exe 'let RET=ATz(' . g:FARG . ')'
+      redir END
+   endif
+
+   " replace redirected output return value or g:Ret "
+   if RET=~'.' && (  @a=="" || RET != '0' ) 
+      let @a=RET
+   endif
+   if g:RET!=""
+      let @a=g:RET
+   endif
+
+   " filter the output? "
+   if g:POSTPROC!=""
+      exe 'let @a='. g:POSTPROC .'(@a)'
+   endif
+
+   bwipeout!
+" FIXME: allow multiple invocations "
+   call delete(glob("~/.vimscript.out"))
+   silent edit +set\ noswapfile ~/.vimscript.out
+   silent put a
+
+   " at least get rid of spurious initial empty lines, probably a side 
+   " effect of e.g. echo accessing and lack of headless usage support
+   " basically vim is pretty much braindead wrt subshell, shell and
+   " scripted tty interaction and shows a ton of historical buggy cruft.
+   :0s/\v(^$\n)*//g
+
+   silent :w!
+   silent bwipeout!
+   
+   " do not delete .vimscript.out, as vim itself cannot 
+   " be properly used in redirections
+   execute 'silent :!cat '.glob("~/.vimscript.out")
+endfunction

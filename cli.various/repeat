@@ -1,0 +1,47 @@
+#!/usr/bin/perl
+
+# $0 runs a command repeatedly
+
+# /bin/sh equivalent example: while true ; do find /tmp -follow -maxdepth 1 | sort | head -20 > /tmp/redisp$$ ; clear; cat /tmp/redisp$$ ; sleep 1; done
+
+$l=23; $l=$ENV{LINES}   if defined $ENV{LINES};		# rows
+$c=80; $c=$ENV{COLUMNS}	if defined $ENV{COLUMNS};	# columns
+$s=1;							# sleep
+
+arg: while (@ARGV) {
+   if    ($ARGV[0] eq '-') { shift; last; }
+   elsif ($ARGV[0] eq '-v'){ shift; $verbose=1; }
+   elsif ($ARGV[0] eq '-h'){ &help; exit 1; }
+   elsif ($ARGV[0] eq '-s'){ shift; $s=shift; }
+   elsif ($ARGV[0] eq '-l'){ shift; $l=shift; }
+   elsif ($ARGV[0] eq '-c'){ shift; $c=shift; }
+   else { last; }
+}
+
+$tmp="/tmp/$0.$LOGNAME.$$";
+
+while (1) {
+  open(FH, ( "( " . join(" ", @ARGV) . " ) | fold -w $c |" )) or die; @_=<FH>; close FH;
+  system("clear");
+  print @_[0 .. $l-2];
+  sleep $s;
+}
+
+exit;
+
+sub help {
+print STDERR <<EOF;
+$0 OPTIONS COMMANDSTRING
+
+$0 runs COMMANDSTRING repeatedly with a given frequence.
+
+OPTIONS are
+  -c N      columns 
+  -l N      lines
+  -s N      sleep delay time
+
+Notes:
+- basically a while true; do ...; done loop
+- see also: watch
+EOF
+}

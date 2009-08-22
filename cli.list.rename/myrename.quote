@@ -1,0 +1,65 @@
+#!/usr/bin/perl
+
+sub quotesafe (@) { # protect for one-time use in bourne shell double quotes
+   return map {local($_)=$_;s/["`\\\$]/\\$&/g;"$_"} @_;
+}
+sub quotesafe1 ($) {
+   return((quotesafe(@_))[0])
+}
+
+sub squotesafe (@) { # protect for one-time use in bourne shell single quotes
+   return map {local($_)=$_;s/[']/'"'"'/g;"$_"} @_;
+}
+sub squotesafe1 ($) {
+   return((squotesafe(@_))[0])
+}     
+
+sub usage {
+   print main::STDERR <<EOF;
+$0       [options]  FILES
+cat | $0 [options] 
+$0       [options] -args NAMES 
+
+make input safe for bourne shell use within quotes.
+Note that the output mixes both single and double
+quotes freely.
+
+Options:
+ -0         line end for input and output is \\0
+ -o         also add outer quotes around string
+ -s         use single quotes
+ -d         use double quotes (default)
+ -args      use remaining arguments as input lines
+
+EOF
+}
+
+$o_char        ='"';
+$o_inputfromarg=0;
+$o_outerquotes=0;
+while($_=shift,defined $_) {
+   /^-0$/       and do{$/="\0";next};
+   /^-v$/       and do{$o_verbose++;next};
+   /^-s$/       and do{$o_char="'";next};
+   /^-d$/       and do{$o_char='"';next};
+   /^-o$/       and do{$o_outerquotes=1;next};
+   /^-?-args?$/ and do{$o_inputfromarg=1;next};
+   /^--$/       and last;
+   /^-[h\?]$|^-?-help$/ and do{&usage;exit 1};
+   /()/         and unshift @ARGV,$_ and last;
+}
+
+while(($o_inputfromarg and ($_=shift @ARGV, 1) or $_=<>), defined $_) {
+   chomp; # strip $/ aka IRS
+   if ($o_verbose) {
+      warn "ERR vertical $_\n"  if /[\r\n]/o;
+      warn "ERR \\0       $_\n" if /[\0]/o;
+      warn "ERR cont     $_\n"  if /[\\]\z/o;
+   }
+print "# $_ \n";
+   $_= ( $o_char eq qq@"@ ) ? quotesafe1($_) : squotesafe1($_);
+   $_=$o_char . $_ . $o_char if $o_outerquotes;
+   print $_.$/;
+}
+
+1;

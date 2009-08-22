@@ -1,0 +1,248 @@
+#!/usr/bin/perl -w
+
+# $0 OPTIONSSTRING FIREFOX3PLACES # just dump the bookmarks in places.sqlite
+
+# summary:     helper for firefoxgrep
+# copyright:   (c) 2009 jakobi@acm.org, GPL v3
+# created:     jakobi@acm.org 20090211
+# last change: jakobi@acm.org 20090620
+
+# in addition to the html dumper, we use ::: as delimeter in listing
+# multiple pathes (e.g. due to tags or similar) instead of returning
+# multiple entries [as with tags, multiple bookmarks pathes are the
+# normal case]
+
+# bugs: 
+# - none, like mutt, there are bound to be fleas at best.
+# except...
+# - flea#0: does not deal with the Unsorted Bookmarks table
+
+# sqlite3 FILE.sqlite; then e.g. .help / .schema / .dump
+
+use strict 'vars';
+use Data::Dumper;
+
+
+package bm;
+my($o_tree, $file)=@ARGV;
+
+system(qq!cp '$file.journal' '${file}0.journal' 2>/dev/null; cp '$file' '${file}0'!); $file.="0"; # enforce creation of a lockfree corrupt db copy
+
+my(%node, %place);
+
+use base 'Class::DBI';
+bm->connection("dbi:SQLite:$file");
+
+
+# define the tables and classes
+# skip: moz_bookmarks_roots (all others have id attrib;
+#                            roots only has 5 uninteresting members anyway)
+foreach (qw/moz_bookmarks moz_keywords 
+            moz_anno_attributes moz_annos moz_items_annos 
+            moz_places 
+            moz_favicons
+            moz_historyvisits/) {
+   my($eval);
+   $eval=
+   qq!
+      package bm::$_; 
+      use base 'bm';
+      bm::$_->table('$_');
+      bm::$_->columns(All=>qw/*/);
+      \$bm::bm{$_}=\\\%bm::$_;
+      my \@tmp = ();
+      \@tmp=bm::$_->retrieve_all;
+      foreach(\@tmp) { 
+         \$bm::! . $_  . '{$_->{id}}=$_; 
+      } ';
+    eval $eval;
+}
+
+
+### recreate folder hierarchy (and single-level tag-hierarchy)
+
+# tree elements, rooted at node{0}
+foreach(keys %bm::moz_bookmarks) {
+   my($i, $k, $id, $parent);
+   $i=$bm::moz_bookmarks{$_};
+   $id=$i->{id};
+
+   # folder+tag hierarchy [moz_bookmarks local]
+   $parent=0; $parent=$i->{parent} if $i->{parent};
+   $node{$id}{parent}=$parent;
+   push @{$node{$parent}{children}}, $id;
+   $node{$id}{type}=$i->{type} if $i->{type};
+   $node{$id}{folder_type}=$i->{folder_type} if $i->{folder_type};
+
+   # copy title
+   $k=mangle($i->{title});
+
+   # ::title:: in case of the moz_bookmarks entry being a tag
+   # (tag entries are a single level hierarchy of type=3, with parent=4,
+   #  and no foreign key, i.e. they've a child linking to the moz_places entry)
+   if ($k=~/\S/o) {
+      $node{$id}{title}=$k;
+      # use ::title:: in case of a tag 
+      if (  defined $node{$id}{type} and 2==$node{$id}{type} and
+            defined $node{$id}{parent} and 4==$node{$id}{parent}) {
+         $node{$id}{title}="::".$k."::";
+      }
+   }
+
+   # copy fk [pointing to id attribute of moz_places]
+   $node{$id}{fk}=   $i->{fk}    if defined $i->{fk};
+
+   # augment with keyword info [moz_booksmarks pointing to moz_keywords]
+   $k=$i->{keyword_id};
+   $k=$bm::moz_keywords{$k} if defined $k; # lint dummy
+   $k=$bm::moz_keywords{$k} if defined $k;
+   $k=mangle($k->{keyword}) if defined $k;
+   $node{$id}{keyword} = $k if defined $k and $k=~/\S/;
+}
+
+# sort children acc to position attribute
+foreach(keys %node) {
+   if ($node{$_}{children}) {
+      @{$node{$_}{children}} = 
+         map { $_->[1] } 
+         sort{ $a->[0] <=> $b->[0] } 
+         map { [ $bm::moz_bookmarks{$_}->{position}, $_] } 
+         @{$node{$_}{children}};
+   }
+}
+
+# augment %node with descriptions from moz_items_annos
+# [moz_annos is the same for places, but currently only charset information]
+foreach(keys %bm::moz_items_annos) {
+   my($i);
+   $i=$bm::moz_items_annos{$_};
+   next if $i->{anno_attribute_id}!=1; # i.e. bookmarkProperties
+   #next if $i->{type}!=3; # at least my example did set this one, too
+   next if not defined $i->{item_id};
+   next if not $i->{content} or $i->{content}!~/[a-z]/i;
+   $node{$i->{item_id}}{desc}.=" == " if $node{$i->{item_id}}{desc};
+   $node{$i->{item_id}}{desc}.=$i->{content};
+}
+
+# suppress some highlevel titles
+$node{0}{title}=$node{1}{title}=$node{2}{title}=$node{3}{title}=$node{4}{title}=undef;
+$node{0}{desc}=$node{1}{desc}=$node{2}{desc}=$node{3}{desc}=$node{4}{desc}=undef;
+my $root=2;
+#     with node{0} -> node{1} -> (2 Bookmarks 3 Toolbar 4 Tags 5 empty? 1691 ?)
+
+
+# flatten and collect the hierarchy info to %places
+sub collectpath {
+   my($id)=@_;
+   my($tmp,$i);
+   $i=$node{$id};
+
+   # :: == description [moz_items_annos] == ::
+   # :: name / tag / title [moz_bookmarks] :: 
+   $i->{path}="";
+   if (defined $i->{parent}) {
+      if (  $o_tree=~/ folders /o and 
+            defined $node{$i->{parent}}{path}) {
+         $i->{path}=$node{$i->{parent}}{path};
+      }
+      # if we do want to see tags, but not the normal folders
+      if (  $o_tree=~/ tag / and not $o_tree=~/ folders /o and
+            defined $node{$i->{parent}}{type} and 2==$node{$i->{parent}}{type} and
+            defined $node{$i->{parent}}{parent} and 4==$node{$i->{parent}}{parent} and
+            $node{$i->{parent}}{title} ) {
+         $i->{path}=$node{$i->{parent}}{title}
+      }
+   }
+   
+   if ($i->{title} and $o_tree=~/ name /o) {
+      $tmp.=" :: " if $tmp;
+      # $bm::moz_bookmarks{$id}->{type}: 2: tag folder or normal folder, 1: plain
+      # $bm::moz_bookmarks{$id}->{position} multiple entries for the same place
+      #                                     increment {position}. 
+      #                                     e.g. multiple version 2 entries for
+      #                                     a single bookmark
+      #$tmp.= $bm::moz_bookmarks{$id}->{type}        . "-" . 
+      #       $bm::moz_bookmarks{$id}->{folder_type} . "-" .
+      #       $bm::moz_bookmarks{$id}->{position}    . "->".
+      #       $bm::moz_bookmarks{$id}->{title};
+      $tmp.=$i->{title};
+   }
+   
+   if ($i->{desc} and $o_tree=~/ description /o) {
+      $tmp.=" :: " if $tmp;
+      $tmp.= " == " . $i->{desc} . " == ";
+   }
+   
+   if ($i->{keyword} and $o_tree=~/ keyword /o) {
+      $tmp.=" :: " if $tmp;
+      $tmp.= " ::" . $i->{keyword} . ":: ";
+   }
+   $i->{path}.=" :: " if $tmp and $i->{path};
+   $i->{path}.=$tmp if $tmp;
+
+   # store above path in %place if fk exists
+   # PJ BUG: there's a possibility in the DS for multiple children with 
+   #         the same fk and the same parent to add the parent's path more
+   #         than once in $place. How much of a memory wastage is it?
+   #         if so, we'd need to substructure place and add both the
+   #         parent's path and our own portion in tmp
+   if ($i->{fk} ) {
+      # path ::: path [e.g. for bookmarks with keywords]
+      $place{$i->{fk}} = ""         if not $place{$i->{fk}};
+      if ($i->{path}) {
+         # just avoid trivial dupes for all identical pathes for now
+         # [e.g. o_tree only " names "]
+         if ($place{$i->{fk}} ne $i->{path}) {
+            $place{$i->{fk}}.=" ::: "     if     $place{$i->{fk}};
+            $place{$i->{fk}}.=$i->{path};
+         }
+      }
+   }
+
+   foreach $tmp (@{$i->{children}}) { collectpath($tmp); }
+}
+collectpath(0); # %node
+
+sub printpath {
+   my($id)=@_;
+   my($tmp,$k,$place,$i);
+   $i=$node{$id};
+   if ($i->{fk} and defined $place{$i->{fk}}) { 
+      # we're at the 1st leaf pointing to a place
+      $tmp="";
+      $tmp =$place{$i->{fk}};
+      $place{$i->{fk}}=undef; # do not revisit
+      $place=$bm::moz_places{$i->{fk}}; # lint dummy
+      $place=$bm::moz_places{$i->{fk}};
+      $k=mangle($place->{title}) if defined $place->{title};
+      if ($k and $o_tree=~/ name /o and $tmp!~/\Q$k\E/) { 
+         # skip if exactly title already within the path
+         $tmp.=" :: " if $tmp;     # in == .. == ?
+         $tmp.=$k;
+      }
+      $k=""; $k=$place->{url} if defined $place->{url} and $o_tree=~/ url /o; # do NOT mangle the url
+      if ($k) {
+         $tmp.=" :: " if $tmp;
+         $tmp.=$k;
+      }
+      print $tmp . "\n" if $tmp=~/\S/;
+   }
+   foreach $tmp (@{$i->{children}}) { printpath($tmp); }
+}
+printpath($root); # %node, the root of the subtree for the bookmarks menu
+
+#print main::Dumper(%bm::bm);
+exit;
+
+####################################################################
+
+# ensure that :: / ::: / == is usable as keyword / name separator for grepping
+sub mangle {
+   local($_)=@_;
+   $_="" if not defined $_;
+   s/ ::/ : :/go; s/:: /: : /go;
+   s/ ==/ = =/go; s/== /= = /go;
+   s/\A\s*//go; s/\s*\Z//go;
+   return($_);
+}
+

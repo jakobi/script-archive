@@ -1,0 +1,217 @@
+#!/usr/bin/perl
+
+# created Tom Christiansen <tchrist@convex.com> 6 June 91
+# last change PJ 20090615
+# perl artistic licence
+
+# PJ added check for trailing '|' -
+#
+#    ( echo aa; cat /var/log/messages; sleep 1; echo bb; sleep 1; echo cc) | 
+#    teefork -u '|perl -lpe "$|=1; s/^/111/"'             # reader, writes also to our stdout
+#               '|perl -lpe "$|=1; s/^/222/"'             # reader, writes also to our stdout
+#               'cat /etc/hosts; false |'                 # write-only; writes also ...
+#
+#    exit codes: 140 + rc if a close still has unflushable
+#    data or an open fails, otherwise number of processes
+#    with a non-zero rc on close. This nicely translates
+#    to a summarizing-only set -o pipefail :).
+# 
+#    Modification PJ:
+#    
+#    "command |" now will print to our stdout/stderr 
+#    but teefork will no longer print to their input, 
+#    thus no longer clobbering the process return code
+#    when perl earlier failed at close due to a non-empty
+#    buffer.
+#    --> tee-fork -u is now also a proper eet-fork.
+#
+#    BUGS concerning -u and hangups
+#
+#    - if one FH blocks on write (e.g. the tiny buffers on ptys) 
+#      without -u, teefork itself hangs. With -u, we risk loss of 
+#      output; worse, we should probably _really_ block on being
+#      unable to print to stdout.
+#  --> solution would be to verify the amount written per handle
+#      and maintain buffering (in case a stuck filehandle again
+#      accepts data). Probably only upto a maxsize before giving up.
+#  --> actually even with -u unbuffered output uses the normal libc/print
+#      and thus blocks; after less than 140K, see below:
+#      perl -e 'sleep 10;$i=0; while(1){$i+=256; warn "printing $i\n"; print "x" x 255 ."\n"}' | wc -c
+#      For a bash pipe it's: 69376 plus less than 256 bytes; which probably 
+#      means that larger dd blocks do get split in interesting ways. 
+#      perl -e 'sleep 20;$i=0; while(1){$i+=256; warn "printing $i\n"; print "x" x 255 ."\n"}' | teefork -n "|wc -c"
+#      for teefork -u with perl open it's its the same, regardless of
+#      -u or not [actually it's nearly double that, as I see the buffered output
+#      of the first perl piped into the input [which does store 
+#      certainly <= 4K in the libc line-based mode] of the second
+#      going either unbuffered or NOT unbuffered into the input of wc.
+#      and 64K on output and 4K on either libc input or the kernel is exactly 
+#      69632. Now the question's is the exact distribution on ouput for perl
+#      output for lib, input and kernel. dd bs=1 hangs on WRITING at exactly
+#      64K, as it shouldn't relay on libc, that the size of the kernel buffer.
+#      well, better than 4K it is.
+#
+#    - teefork should use at least sysread and write and
+#      also turn reads from stdin a) non-blocking and b)
+#      NON LINE BUFFERED! --> needless waits for EOF or
+#      a random line end on \0 lines or binary data
+#
+#    - if we're doing this, we probably should also look into 
+#      whether we need to restart a syswrite on signals.
+#      (if sys* returns undef, we can check errno $! and may
+#      need to restart the write...; though with just print and $|=1
+#      the restarts themselves shouldn't propagate to us, print
+#      returns mere false, when the write failed (hopefully
+#      completely instead of partially...; the buffering 
+#      layer hopefully covers splitting in smaller writes
+#      and recovering all recoverable errors)).
+#
+#  For more or less line based stuff, that can or even should 
+#  propagate blocking to the head of pipe, its a fully acceptable
+#  tool.
+#
+#  Do NOT USE -u unless data-loss is _REALLY_ preferable to 
+#  propagating hangs. Given that I couldn't trigger the issue,
+#  it _MIGHT_ be acceptable for stuff like monitoring and logs.
+#
+#  Triggering a misfeature of libc: forked process probably
+#  get the very same filehandle and buffering in case of redirects
+#  from disk files: 
+#  OK           for i in 1 2 3 4 5 6 7 8 9 0; do cat /bin/bash; done | teefork -n '|perl -pe "$|=1; s/^//" | wc -c' '|perl -pe "$|=1; s/^//"|  cat > x
+#  10% DATALOSS for i in 1 2 3 4 5 6 7 8 9 0; do cat /bin/bash; done | teefork -n '|cat' '|cat' '|cat' > x
+#  10% DATALOSS for i in 1 2 3 4 5 6 7 8 9 0; do cat /bin/bash; done | teefork -n '|perl -pe "$|=1; s/^//"' '|perl -pe "$|=1; s/^//"' > x
+#
+#  a measly useless cat is suddenly very important as it - on linux -
+#  fixes the data loss, as it seems to synch the writers which the
+#  direct file handle did NOT... (the shell probably passes on the
+#  fh and each fork is responsible to guarantee that only one process
+#  is able to access the fh. which works for only for stdout connected
+#  to a fifo, as that doesn't allow seeks and properly blocks the writers??
+#
+#  --> OK stable no data loss w/o -u when used with useless cats.
+#
+# getting even -u to hang (so the data's safe, w/o having
+# teefork to add a memory or disk-based buffer): teefork
+# completely hangs if a child get's kill -STOP.
+# while true; do for i in $(range 1..1000 ) ; do cat /bin/bash; done | \
+# teefork -u '|perl -pe "$|=1; s/^//"' '|perl -pe "$|=1; s/^//"' | wc -c; done | nl
+# [currently 2500776000 bytes per iteration, ALWAYS, even over STOP/CONT]
+# however STOP one child, and after a sec or so the other's idle and
+# teefork is blocked.
+# 
+# --> FAIL due to hang, OK due to data-being safe.
+
+
+
+
+####################################################################################################33
+
+
+#From: tchrist@convex.COM (Tom Christiansen)
+#Subject: Re: tee like program to pipe to another program?
+#Date: 6 Jun 91 15:01:09 GMT
+#Reply-To: tchrist@convex.COM (Tom Christiansen)
+#Organization: CONVEX Software Development, Richardson, TX
+#Nntp-Posting-Host: pixel.convex.com
+#
+#
+#(Put followups wherever you want -- I just didn't want them to 
+#land in alt.sources unless they were also source.)
+#
+#From the keyboard of dkeisen@leland.Stanford.EDU (Dave Eisen):
+#:In article <1991Jun6.093939.9346@dartvax.dartmouth.edu> pete@othello.dartmouth.edu (Pete Schmitt) writes:
+#:>Is there a tee like program that will pipe down to another program?
+#:>
+#:
+#:Sure. It's called "tee".
+#:
+#:Something like:
+#:
+#:program1 | tee /dev/tty | program2
+#:
+#:should do what you want.
+#
+#I suspect that this is not want the original poster wanted.  While its
+#true that it does work in this case, it's not going to work if you want
+#to "tee off" to a list of processes.
+#
+#Here's a program that's a supersets of the original tee, so I think
+#you can just put it in your own bin and call it tee; I did..  
+#
+#Instead of just file specs, you can give pipe specs like this "|program".
+#So for the simple suggestion above, the usage would be
+#
+#    program1 | tee "|program2"
+#
+#which isn't particularly interesting.  This is:
+#
+#    program1 | tee "|program2" "|program3" "|program4"
+#
+#It still understands -a for append and -i for ignoring interrupts
+#(which I've never used), as well as a new -u for "unbuffered" output,
+#especially useful with pipes.  You can also mix your appends and
+#overwrites by specifying ">>file" for appending.  "file" is the same as
+#">file", unless the -a flag is on, in which case it's ">>file".  
+#You can always use ">file" or ">>file" to override the default.
+#For example, not using any defaults:
+#
+#$ prog1 | tee -u ">file1" "|prog2" ">>file2" "|prog3 | prog4" ">file3" ">>file4"
+#
+#prog1 runs into tee, which duplicates its output to several different
+#places.  first, a copy goes to stdout (redirect into /dev/null if you
+#don't want this.) file1 and file3 get overwritten, file2 and file4 get
+#appended to, and prog2 and prog3 get run.  oh, and prog3 runs into prog4.
+#
+#Program follows; not bad for ~30 lines of code, eh? :-)
+#
+#--tom
+
+#/usr/bin/perl
+#
+# tee clone that groks process tees (should work even with old perls)
+# Tom Christiansen <tchrist@convex.com>
+# 6 June 91
+
+while ($ARGV[0] =~ /^-(.+)/ && (shift, ($_ = $1), 1)) {
+    next if /^$/;
+    s/i// && (++$ignore_ints, redo); 
+    s/a// && (++$append,      redo);
+    s/u// && (++$unbuffer,    redo);
+    s/n// && (++$nostdout,    redo);
+    die "usage tee [-ainu] [filenames] ...\n";
+} 
+if ($ignore_ints) { 
+    for $sig ('INT', 'TERM', 'HUP', 'QUIT') { $SIG{$sig} = 'IGNORE'; } 
+}
+$mode = $append ? '>>' : '>';
+$fh = 'FH000';
+%fh = ('STDOUT', 'standard output') if not $nostdout;
+$| = 1 if $unbuffer;
+
+for (@ARGV) {
+    $cmd=$_;
+    if (/^((?!^\|).*(?<!\\)\|)\s*$/) { # PJ
+       $_="||NOINPUT|| $_"; $cmd="|$1";
+    }
+    if (!open($fh, (/^[^>|]/ && $mode) . $cmd)) {
+	warn "$0: cannot open $_: $!\n"; # like sun's; i prefer die
+	$status++;
+	next;
+    }
+    select((select($fh), $| = 1)[0]) if $unbuffer;
+    $fh{$fh++} = $_ 
+} 
+while (<STDIN>) {
+    for $fh (keys %fh) {
+        next if $fh{$fh}=~/^\|\|\w+\|\|/; # PJ
+	warn "print fail to $f{$fh}" if not print $fh $_;
+    } 
+} 
+for $fh (keys %fh) { 
+    close($fh) && next;
+    warn "# teefork: non-zero rc $! for $fh{$fh}: $!\n";
+    $status++;
+}
+exit $status;
+
+

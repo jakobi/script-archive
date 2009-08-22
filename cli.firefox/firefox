@@ -1,0 +1,300 @@
+#!/bin/bash
+
+# created     jakobi@acm.org 2004xxxx
+# last change jakobi@acm.org 20080107
+# copyright: (c) 2004-2009, jakobi@acm.org, GPL v3 or later
+
+
+# given URLs on ARGV or STDIN ($0 -stdin), load them into firefox.
+#
+# as this script is itself called firefox, be sure to point 
+# $f / $f3 below to your actual firefox.
+#
+# related scripts:
+# - firefoxstdin accepts URLs from stdin and tries to correct
+#   pasted incomplete or mail-damaged urls, invoking firefox
+#   (this script) for each url in the resulting set. It also
+#   acts as wrapper to expand GREP patterns like
+#     echo "GREP 'daily ::'   | firefoxstdin
+#   which is pretty much the same as
+#     firefoxgrep 'daily :: ' | firefox -
+#   and a few selected shortcuts in firefox and firefoxstdin
+#     firefoxstdin -daily 
+#   or including the URLs to scan weekly:
+#     firefox -daily -weekly
+#
+#   if you add new shortcut args like -daily in firefoxstdin, 
+#   you can list them in the case statement below to 
+#   automatically exec firefoxstdin from this script. 
+#   search for 'shortcut args'
+#
+# - firefoxgrep, firefoxgrephtml, firefoxgrepsqlite
+#   contain the code to grep in firefox bookmarks. By
+#   default, firefoxgrep returns the urls of matching
+#   bookmark entries (the match also considering 
+#   parent folders, etc). 
+#
+# together these scripts supply the missing commandline
+# functionality wrt 
+# - bookmarks, including 
+#   - searching bookmarks and opening matching bookmarks
+#   - opening pre-defined selections like -daily above
+# - opening tabs for multiple urls
+# - thunderbird integration (mailto URLs)
+
+
+# bug/todo
+# - the firefox script itself is still a bash script,
+#   farming out any more complicated processing to other
+#   perl scripts, resulting in reinvocations and a lot of
+#   forks (still cheap compared to mozilla).
+#
+#   if it were to break in interesting ways, it would be
+#   worthwile to make firefoxstdin check $0 and the -stdin
+#   options for its original behaviour, and implement the 
+#   functionality of the firefox bash script, maybe with
+#   a new -grep option thrown in.
+
+
+# notes
+# - using multiple profiles at once in a single user:
+#   - start the instance in the foreground by
+#     firefox -P test -no-remote URLs # or export MOZ_NO_REMOTE=1
+#     [both $0 and /usr/lib/firefox/firefox work for this]
+#   - use -ProfileManager -no-remote [not -p] to open the chooser
+#   - -remote/-ping always accesses the first running instance: any -P PROF
+#     is ignored; same problem in $0: it is not forwarding -P switches 
+#     to multiple urls e.g. on stdin)
+#     [but the not forwarding is also happening with -safe-mode, etc]
+#   - set about:config: browser.tabs.loadDivertedInBackground true !
+#   - use --no-xshm to fork a separate copy of a browser for an URL instead of 
+#     loading the url into the existing browser
+# 
+#   because of the above problems, we do not test for -P options in
+#   this script, but rather forward all arg lists starting with 
+#   unknown options like -P to firefox (or firefox3).
+
+
+# variables with user settings 
+t=thunderbird
+f3=/usr/bin/firefox-3.0
+f=$(which firefox-3.5)
+fs=/usr/bin/mozilla                # 64bit
+#fs=/usr/local/seamonkey/seamonkey # 32bit official build - currently FAIL
+kill=zap                # interactive improved pkill
+fl=$HOME/.firefox.log   # for this session: $fl, $fl.url
+nice=-7
+
+export DISPLAY=${DISPLAY:-:0}
+
+# internal variables
+pingcnt=0
+test ! -f $f && f=/usr/local/bin/firefox
+test ! -f $f && f=/usr/local/firefox/firefox
+export firefox_to_start=-1;
+export thunderbird_to_start=-1;
+
+
+
+# functions
+
+function checkfirefox {
+   firefox_to_start=1
+   firefoxversion=${f##*-}
+   firefoxversion="-"$firefoxversion'(\.[0-9][0-9]*)?(\.[0-9][0-9]*)?'
+   ps -fu `whoami` | grep -v grep | egrep -e '[ /]firefox-bin' -e "firefox$firefoxversion/firefox" > /dev/null && firefox_to_start=0
+}
+
+function _f {
+   [ "$firefox_to_start" = "-1" ] && checkfirefox
+   if [ "$firefox_to_start" = "1" ]; then
+      P=$HOME/.firefox/prefs.js; B=$HOME/.firefox/bookmarks.html
+      ( cp -f $B.1 $B.2; cp -f $B $B.1 ) 2>/dev/null # bookmark backup
+      ( cp -f $P.1 $P.2; cp -f $P $P.1 ) 2>/dev/null # prefs backup
+
+      firefox_to_start=0
+      echo    $f '"'"${1:+$@}"'"'
+      ( date > $fl.url; nice $nice $f -no-remote "${1:+$@}" > $fl 2>&1 </dev/null ) & # start firefox
+echo "#START  $f -no-remote ${1:+$@}"
+      _sleep 2; _ping $f; _sleep 2
+   else
+      # always ping, there's a problem with resolver timeouts?
+      if _ping $f || { _sleep 2; _ping $f ;} ; then # or use mozilla remote?
+         # restart the command in case of some strange async X problem 
+echo "#TRY    $f --sync -noraise -remote 'openURL($1,new-tab)'"
+         $f --sync -noraise -remote "openURL($1,new-tab)" ||\
+         { _sleep 2;_ping $f && $f --sync -noraise -remote "openURL($1,new-tab)" ;}||\
+         echo "#FAILED"
+         _sleep 1
+      else
+         echo "#ERROR  cannot ping - skipping $1"
+      fi
+   fi
+}
+
+function _sleep {
+   [ "$noexec" = "" ] && sleep $1
+}
+
+function _t {
+   if [ "$thunderbird_to_start" = "-1" ]; then
+      thunderbird_to_start=1
+      ps -u `whoami` | egrep -e thunderbird-bin -e thunderbird > /dev/null && thunderbird_to_start=0
+   fi
+   if [ "$thunderbird_to_start" = "1" ]; then
+      # should we open the inbox by default, too?
+      nice $nice $t    "${1:+$@}" >/dev/null 2>&1 </dev/null &
+      echo    $t '"'"${1:+$@}"'"'
+      thunderbird_to_start=0
+      _sleep 2; _ping $t; _sleep 2
+   else
+      if _ping $t ; then
+         # avoid the remote stuff for now, otherwise we'd need to 
+         # translate from cli to the three working tb-specific remote cmds
+         $t -noraise "${1:+$@}" # new-window or new-tab
+         echo $t -noraise "'""${1:+$@}""'"
+         _sleep 1
+      else
+         echo "cannot ping - skipping $1"
+      fi
+   fi
+}
+
+function _ping {
+   i=10; 
+   [ "$pingcnt" -eq "0" ] && i=20 # allow longer startup time?
+   let pingcnt=pingcnt+1
+   while ! { $1 --sync -remote "ping()" && $1 --sync -remote "ping()"; } ; do
+      sleep 1; let i=i-1
+      [ "$i" = "0" ] && echo "cannot ping $1 instance" && exit 1;
+   done
+}
+
+function _decode {
+   print MAIN::STDERR "NOT YET IMPLEMENTED"; exit 20;
+}
+
+function _encode {
+   # leave encoded %XX and # alone!
+   # for some cases, try decoding quoted printable 
+   # to avoid this, encode = by using %3D (need to try both urls instead?
+   # -> change to return 1 word or multiple words,
+   # then invoke action for each of the possible encoding we&encode_semantics return?)
+   perl -e '$_=shift;
+         s/([^A-Z0-9\/:\-_+\.;=\?\&\%\#])/do{sprintf "%%%02X",ord($1)}/gei; # for now, no ',' here
+         print' "$1"
+}
+
+function _encode_semantics {
+   case "$1" in
+      http://*|https://*|file:/*|ftp://*) 
+         _encode "$1" ;;
+      *)
+         if [ -f "$1" -o -d "$1" ]; then
+	    if [ "${1#/}" != "$1" ]; then # leading / - absolute path
+               _encode "file://localhost$1"
+	    else
+               _encode "file://localhost$PWD/$1"
+	    fi
+         else
+            _encode "http://$1"
+         fi ;;
+   esac
+}
+
+function _browsefile {
+   echo "$1" >> $fl.url
+   case $1 in
+      -mail)                _t                 ;;
+      -news)                _t -news           ;;
+      mailto:*)             _t -compose `_encode "$1"` ;;
+      news:*)               _t -news `_encode "$1"`    ;;
+      http://*|https://*|file:/*|ftp://*) 
+                            _f `_encode_semantics "$1"` ;;
+      *@*)                  if [ ! -r "$1" ]; then 
+                               _t -compose `_encode "mailto:$1"`
+               			    else
+			                      _f `_encode_semantics "$1"`
+			                   fi ;;
+      *)                    _f `_encode_semantics "$1"` ;;
+   esac
+}
+
+
+
+while [ "$1" != "" ]; do
+   case "$1" in
+      -n|-no-exec)                 shift; noexec="-n"; f="/bin/echo No-Exec"; t=$f ;;
+
+      -3)                          f=$f3; shift ;;
+      -sm|-sea|-seamonkey)         f=$fs; shift
+                                   firefox_to_start=1
+                                   ps -u `whoami` | egrep -e seamonkey-bin   -e seamonkey > /dev/null && firefox_to_start=0
+                                   ;; 
+
+      # consider these to begin the list of urls [being handled in _browsefile]
+      -mail|-news)                 break ;;
+
+      # options invoking firefoxstdin/bookmark processing and RETURN
+      #-k|-kw|-key|-keyword)       shift; firefoxgrep -i -w -U -k "$1" "$2" | firefoxstdin; shift; shift ;;     
+      -k|-kw|-key|-keyword)        shift; firefoxstdin $noexec -key  "$1" "$2"; shift; shift ;;
+      -grep)                       shift; firefoxstdin $noexec -grep "$1";      shift ;;           # use ::$1:: to match whole field
+      
+
+      # all further options exec() or exit() instead of processing further args in $0
+      
+      # switch to firefoxstdin
+      -|stdin|STDIN|-stdin|-STDIN) shift;  exec firefoxstdin ${1:+"$@"} ;;
+      
+      # add your shortcut args below -- case patterns do not expand vars :(
+      -example|daily|-weekly|-nightly|-monthly|-news.daily|-jobs.daily|-job.daily)  
+                                   tmp="$0.$1";
+                                   if [ -f "$tmp" ]; then
+                                      cat "$tmp" | firefoxstdin
+                                   else
+                                      firefoxstdin "$1" # ${1:+"$@"}
+                                   fi; shift ;;     
+      
+      # exit with suitable test status code
+      -procall)                    ps -ef | egrep -v egrep | egrep -e 'firefox*/firefox' -e thunderbird -e firefox-bin -e 'firefox.*-bin' -e mozilla; exit $? ;;
+      -proc)                       firefoxversion=${f##*-}; ps -ef | egrep -v egrep | grep "firefox-$firefoxversion/firefox"; exit $? ;;
+      -kill)                       firefoxversion=${f##*-}; $kill "firefox-$firefoxversion/firefox"; exit $? ;;
+      -ping)                       $f -remote "ping()"; exit $? ;;
+      -ping-tb)                    $t -remote "ping()"; exit $? ;;
+
+      -*)                          exec $f "${1:+$@}" ;; # firefox options
+      +*)                          exec $f "${1:+$@}" ;; # firefox options
+  
+      *)                           break ;;               
+   esac
+done
+
+
+   
+[ "$firefox_to_start" = "-1" -a "$#" = "0" ] && checkfirefox
+if [ "$firefox_to_start" = "1" -a "$1" = "" ]; then
+   ( date > $fl.url; nice $nice $f > $fl 2>&1 </dev/null ) &
+   exit 
+fi
+
+
+
+for opt in "$@"; do
+   _browsefile "$opt"
+   # now check if the URL looks like it is pasted from a quoted-printable
+   # mail body, and pass a de-mangled version to browsefile once again
+   # hint: to avoid this duplication of tabs in case of a valid =3D, etc:
+   #       replace = by %3D 
+#   tmp=$(perl -e '
+#         $_=shift;
+#         if (/=2E|=3D/i) {
+#            s/=([0-9A-F]{2})/pack(C,hex($1))/gei; 
+#            s/([\x60\x22\x27\x21])/do{sprintf "%%%02X",ord($1)}/gei; 
+#            print
+#         }' "$opt");
+#   if [ "$tmp" != "" -a "$tmp" != "$opt" ]; then
+#      _browsefile "$tmp"
+#   fi
+done
+
+exit 

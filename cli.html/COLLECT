@@ -1,0 +1,594 @@
+#!/bin/sh
+#!perl # -w -Sx: line count is one off; -w was tested for some ancient version :).
+eval 'exec perl -Sx $0 ${1:+"$@"}'
+   if 0;
+
+# collect html pages of a html document tree and 
+# return a browsable/printable single-file version
+
+# 199XXXXX PJ   0.1  jakobi@acm.org initial version
+# 19970713 PJ   0.2  
+# 20090803 PJ        copyright update; since 1997: only small fixes/examples added
+#
+# copyright:  (c) 1997-2009 jakobi@acm.org, placed under GPL v3 or later 
+my $version="0.2";
+ 
+# example invocations
+# COLLECT -v -auto wiki/TitleIndex -toc `find . -type f | grep -v -i -e 'BOOK.HTML\$' -e 'X\$' -e '\.png\$' -e '\.jpg\$' -e '\.css\$' -e '\.gif\$' ` > BOOK.HTML
+
+$version='<hr> <font size="-1"> Created by
+<A HREF="http://www.informatik.tu-muenchen.de/~jakobi/scripts/hyperbuch/COLLECT">COLLECT</A>, 
+version 0.2 (1997-07-13),
+jakobi@acm.org</font> ';
+
+
+# This script contains code for the GI/ACM VRG Hyperbuch, which strips headers
+# and footers and allows some special processing. This should NOT interfere when
+# the script is used on other input..., esp. if used with an empty dat file.
+
+
+# BUGS:
+# - explicitely named files for argument options must not contain space 
+#   or other funny chars [otherwise fairly shell-safe]
+# - cannot fix invalid html :)
+# - doesn't try very hard to make *UNIQUE* collection-local links
+# - hates perl5.001m on linux (mixing lexical and dynamic vars?)
+# - converts currently only <A> and <IMG> URLs
+# - -auto assumes that the table-of-contents files list EVERY file
+#   (not only the first file for each chapter
+# - does not detect duplicates / synonymous urls (global replace 
+#   these dangling references afterwards)
+# - see css printing extensions: page numbers and references are still not covered there...
+# - and in addition:
+
+# collection linking is NOT correct if 
+# a) any errors in the input html are also in the output. This may even lead to browser crashes...
+
+
+# usage example 1 (using $0.dat listing only files of the multipart document 
+#    I use ./COLLECT to emphasize that COLLECT.dat should be considered a part 
+#    of the multipart document, too
+# ./COLLECT > book.html
+
+# usage example 2 (create a collection from arbitrary html files)
+# ./COLLECT ORDERED_LIST_OF_FILES > book.html
+
+# usage example 3 (same as example 2, but generates the ORDERED_LIST_OF_FILES  
+#   automatically from some CONTENTFILEs)
+#   get a list of all files in the directory
+# find . -name \*.htm\* -print | perl -lpe 's/^\.\///gi' | sort | uniq | perl -lpe 's/^book.html$//' > allfiles
+#   get an ordered list of all files for the htmltree,
+#   possibly with some naming magic... perl -lpe 's/HTTP:\/\/.*//goi' to 
+#   get the local filename, remove absolute names, ...
+# perl -e 'undef $/; $_=<>; s/HREF\s*=\s*["\x27]?([^"\x27#>\s]+)/do{ print "$1\n"; }/geoi;' CONTENTFILEs | perl -lpe 's/^\.\///gi' | uniq > tocfiles 
+#   get all html files NOT mentioned in CONTENTFILE, too
+# sort tocfiles > stocfiles ; diff allfiles stocfiles | grep '<' | perl -lpe 's/< //g' > missedfiles
+#   and now dump the collection in the derived file ordering
+# COLLECT `cat tocfiles missedfiles` > book.html
+
+
+$bookhead=<<'EOF';
+<HTML>
+<HEAD>
+<!--  LINKINGHEAD -->
+<TITLE>$booktitle</TITLE>
+<STYLE>
+<!--
+P.pagebreak { page-break-after: always }
+-->
+</STYLE>
+</HEAD>
+<BODY>
+<A name="top"></A><H1>$booktitle</H1>
+<!-- /LINKINGHEAD -->
+Collection generated on $date.<BR>
+Please note: Individual input files may be newer than this collection.<p>
+EOF
+
+$booktail=<<'EOF';
+<!--  LINKINGTAIL -->
+<!-- /LINKINGTAIL -->
+$version
+</BODY></HTML>
+EOF
+
+$booksect=<<'EOF';
+<HR SIZE=4><p>
+<CENTER><TABLE BORDER=7 WIDTH="90%" CELLSPACING=0><TR><TD>
+   <TABLE BORDER=0 WIDTH="100%" CELLPADDING=10 CELLSPACING=0>
+      <TR><TD ALIGN="left">$chapter{$absname} <A HREF="$url">$name</A></TD>
+          <TD ALIGN="right" nowrap>$filedate</TD>
+      </TR>
+      <TR><TD COLSPAN=2>
+          <TABLE WIDTH="100%">
+	     <TR><TD>Title:</TD><TD><CENTER><FONT SIZE=5>$title</FONT></CENTER></TD></TR>
+	  </TABLE>
+	  </TD></TR>
+   </TABLE>
+   </TD></TR>
+</TABLE></CENTER><P>
+<HR SIZE=4><p>
+EOF
+
+$dat="$0.dat";
+$sep=""; # if necessary, </OL></UL></DL></OL></UL></DL> or similar goes here 
+         # to balance defective html
+$booktitle="Collection";
+$unique="COLLECT:$$:".scalar(time)."%";
+$0=~/(.*)\/[^\/]+$/;
+push @INC, "$ENV{HOME}/.cgi-bin", "$ENV{HOME}/cgi-bin", "$ENV{HOME}/bin", "$ENV{HOME}/bin-shared", "/usr/proj/gi/cgi-bin/GIwais", "$1";
+require "db_cgi.p"; 
+&db_cgi::setup;
+$h0=&db_cgi::parseurl(""); # an empty root (for auto / header files)
+
+args: while(@ARGV) {
+   if ($ARGV[0] eq '-') {
+      shift; last;
+   } elsif (not $ARGV[0]=~/\S/) {
+      next; # oops?
+   } elsif ($ARGV[0] eq '-auto') {
+      shift; $auto=shift;
+   } elsif ($ARGV[0] eq '-nourltrans') {
+      push @oldargs, $ARGV[0];
+      shift; $nourltrans=1;
+   } elsif ($ARGV[0] eq '-toc') {
+      push @oldargs, $ARGV[0];
+      shift; $displaylistoffiles=1;
+   } elsif ($ARGV[0] eq '-v') {
+      push @oldargs, $ARGV[0];
+      shift; $verbose=1;
+   } elsif ($ARGV[0] eq '-root') {
+      push @oldargs, $ARGV[0], $ARGV[1], $ARGV[2];
+      shift; $root=1; $rold=shift; $rnew=shift; 
+   } elsif ($ARGV[0] eq '-alias') {
+      push @oldargs, $ARGV[0], $ARGV[1];
+      shift; push @alias, shift;
+   } elsif ($ARGV[0] eq '-dat') {
+      push @oldargs, $ARGV[0], $ARGV[1];
+      shift; $dat=shift;
+   } elsif ($ARGV[0] eq '-skip') {
+      push @oldargs, $ARGV[0], $ARGV[1];
+      # allow both interpretations
+      shift; $skip=shift; 
+      $listskip=" ".join(" ",glob($skip))." ";
+      eval {/^$|($skip)/} or $skip='^CANNOT_EVER_IN_A_DREAM_MATCH_SENSIBLE_FILES$' and print main::STDERR "assuming -skip to NOT be a regexp\n";
+   } elsif ($ARGV[0] eq '-first') {
+      #push @oldargs, $ARGV[0], $ARGV[1];
+      shift; $firstfiles=shift;
+   } elsif ($ARGV[0] eq '-last') {
+      #push @oldargs, $ARGV[0], $ARGV[1];
+      shift; $lastfiles=shift;
+   } elsif ($ARGV[0] eq '-unique') {
+      push @oldargs, $ARGV[0], $ARGV[1];
+      shift; $unique=shift;
+   } elsif ($ARGV[0] eq '-noencode') {
+      push @oldargs, $ARGV[0], $ARGV[1];
+      shift; $noencode=shift;
+   } elsif ($ARGV[0] eq '-encode') {
+      push @oldargs, $ARGV[0], $ARGV[1];
+      shift; $encode=shift;
+   } elsif ($ARGV[0] eq '-sep') {
+      push @oldargs, $ARGV[0], $ARGV[1];
+      shift; $sep=shift;
+   } elsif ($ARGV[0] eq '-title') {
+      push @oldargs, $ARGV[0], $ARGV[1];
+      shift; $booktitle=shift;
+   } elsif ($ARGV[0] eq '-head') {
+      push @oldargs, $ARGV[0], $ARGV[1];
+      shift; $_=shift; $bookhead=""; 
+      if ($_) {
+         $basedir=$_; $basedir=~s/[^\/]*$//;
+         $bookhead=`cat $_` if $_;
+         $bookhead=&db_cgi::changeurls($h0, $bookhead, $_, "", "");
+      }
+   } elsif ($ARGV[0] eq '-tail') {
+      push @oldargs, $ARGV[0], $ARGV[1];
+      shift; $_=shift; $booktail=""; 
+      if ($_) {
+         $basedir=$_; $basedir=~s/[^\/]*$//;
+         $booktail=`cat $_` if $_;
+         $booktail=&db_cgi::changeurls($h0, $booktail, $_, "", "");
+      }
+   } elsif ($ARGV[0] eq '-page') {
+      push @oldargs, $ARGV[0], $ARGV[1];
+      shift; $_=shift; $booksect=""; 
+      if ($_) {
+         $basedir=$_; $basedir=~s/[^\/]*$//;
+         $booksect=`cat $_` if $_;
+         $booksect=&db_cgi::changeurls($h0, $booksect, $_, "", "");
+      }
+   } elsif ($ARGV[0] eq '-h') {
+      shift; &help; exit 1;
+   } else {
+      last
+   }
+}
+
+
+
+
+
+
+if ($auto) {
+   local($/); undef $/;
+   $files=$auto;
+
+   $args=join(" ", @ARGV); @ARGV=();
+   $allfiles= " $args " . `find $args -name \\*.htm\\* -type f | sort | uniq ` ;
+   
+   # all references, in the same order as used in the tocfiles
+   $toc=""; 
+   while($files=~/(\S+)/gio) {
+      $tocfile=$1; $basedir=$tocfile; $basedir=~s/[^\/]*$//;
+      open(TOC, "<$tocfile"); $tocdata=<TOC>; close TOC;
+      $tocdata=&db_cgi::changeurls($h0, $tocdata, $tocfile, "", "");
+      $toc.=$tocdata;
+   }
+   $tocfiles=""; $toc=~s/HREF\s*=\s*["\x27]?([^"\x27#>\s]+)/do{ $files.=" $1 " }/geoi;
+
+   # and all requested files
+   $firstfiles=" ".join(" ", glob($firstfiles))." " if $firstfiles;
+   $lastfiles =" ".join(" ", glob($lastfiles)) ." " if $lastfiles;
+   $files=" $firstfiles $files $allfiles ";
+
+   $files=~s/\n/ /go;     $files=~s/(^| )(\.\/+)+/ /go; 
+   $lastfiles=~s/\n/ /go; $lastfiles=~s/(^| )(\.\/+)+/ /go; 
+   $allfiles=~s/\n/ /go;  $allfiles=~s/(^| )(\.\/+)+/ /go;  $allfiles=~s/\n|(^| )(\.\/+)+/ /g;
+   $tocfiles=~s/\n/ /go;  $tocfiles=~s/(^| )(\.\/+)+/ /go;  $tocfiles=~s/\n|(^| )(\.\/+)+/ /g;
+   $args=~s/\n/ /go;      $args=~s/(^| )(\.\/+)+/ /go;      $args=~s/\n|(^| )(\.\/+)+/ /g;
+   
+   # uniq 
+   # while($files=~s/(^|\s)(\S+)(\s[\s\S]+?\s|\s+)\2(\s|$)/ $2 $3 /go) {;}
+   # while($files=~s/(^|\s)(\S+)(\s[\s\S]+?\s|\s+)\2(\s|$)/ $3 $2 /go) {;}
+   # breaks down at 37M or fewer, so
+
+   $_=""; 
+   while($files=~/\S+/go)     { $s=$&; $qs=quotemeta($s); $_.=" $s " if not /\s+$qs\s+/; };
+   $_=$files=" $_ ";
+
+   while($lastfiles=~/\S+/go) { $s=$&; $qs=quotemeta($s); s/\s+$qs\s+/ /g; };
+   $files=" $_ ";
+   $_=" $lastfiles "; 
+   while($lastfiles=~/\S+/go) { $s=$&; $qs=quotemeta($s); s/\s+$qs\s+/ /g; $_.=" $s"; };
+   $files=" $files $_ ";
+
+   #$files=~s!(\S+)!do{ 
+   #   $args=$1;
+   #   $qargs=quotemeta($args);
+   #   $args="" if not $allfiles=~/(^|\s)$qargs(\s|$)/;      
+   #   $args
+   #}!geo;
+   $files=~s/\s+/ /go;
+   print STDERR "Files: $files\n" if $verbose;
+   @args=();
+   @files=split(/\s+/, $files);
+   foreach (@oldargs) {
+      $ii++;
+      print stderr "arg: $ii - $_\n"  if $verbose;
+      push @args, $_;
+   }
+   foreach (@files) {
+      $ii++;
+      next if $skip and /$skip/;
+      next if $skip and $listskip=~/ \Q$_\E /;
+      print stderr "file: $ii - $_\n" if $verbose;
+      push @args, $_ if /\S/;
+   }
+   exec("$0", @args); # careful for large array sizes - we may need to avoid exec in this case E2BIG 
+                      # 16K worked ok on hs1 (check processing of last file)
+   print main::STDERR "OOPS - exec returned $?\n";
+   exit;
+} else {
+   $firstfiles=join(" ", glob($firstfiles)) if $firstfiles;
+   $lastfiles =join(" ", glob($lastfiles))  if $lastfiles;
+   @ARGV = (split(/\s+/, $firstfiles), @ARGV) if $firstfiles;
+   @ARGV = (@ARGV, split(/\s+/,  $lastfiles)) if $lastfiles;
+}
+
+
+$date=localtime(time);
+$qunique=quotemeta($unique);
+eval(&db_cgi::install_expandvars);
+$mode="keeplocal";
+$h0=&db_cgi::parseurl($rnew);
+$h0->{prefix}=$unique;
+$h1=&db_cgi::parseurl($rnew);
+@absname=();
+$book.=" - <A HREF=\"#top\">top</A> - \n";
+
+## 1. get document parts from $0.dat or the command line
+@files=();
+if ($dat and open(Fh,  "$dat")) {
+# if there's a hyperbuch-style config file, read the available information
+while($dat and $_=<Fh>) {
+   $i++;
+   next if not /\S/;
+   next if /^#/;
+   s/^\s+//g; s/\s+$//g;
+   #    id(file) prev    up      next    state   short-title # comment
+   if (/(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)(?:|\s+([^#]+?)(?:|\s+#([\S\s]*)))\s*$/) {
+#print main::STDERR "parsing: $1 : $2 : $3 : $4 : $5 : $6 : $7\n";
+      ($url, $prev, $up, $next, $state, $short, $comment)=($1, $2, $3, $4, $5, $6, $7);
+      $basename=$url; $basename=~s!^.*?([^/]*)$!$1!;
+      $absname=&db_cgi::changeurl($h0, $basename, $url, $rold, $mode);
+      $title{$absname}=$url;
+      $title{$absname}=$short if $short;
+      $comment{$absname}=$comment;
+      $files[$#files+1]=$url;
+      
+      # changeurl values these before use!
+      ($link{$absname,"prev"}, $link{$absname,"up"},  $link{$absname,"next"}) = ($prev, $up, $next); 
+      
+      $state{$absname}=$state; $state{$absname}="" if $state eq "#";
+      $state{$absname}="<FONT COLOR=\"red\">[$state{$absname}]</FONT>" if $state{$absname};
+   } else {
+      print STDERR "Error in configuration at line $i:\n$_\n";
+   }
+}
+close Fh;
+}
+@files=@ARGV if @ARGV;
+die if not @files;
+undef $/;
+
+
+## 1.1 read table of contents (inhalt.html) and get chapter numbering (Hyperbuch-style table of contents called inhalt.html)
+# Example:
+#<TR>
+#<TD>1.1 </TD>
+#
+#<TD><A HREF="vorwort.html">970117: Vorwort: Sinn und Ziel des Hypertext-Online-Buchs
+#</A></TD>
+#
+#<TD>Dr. Nilsson<BR>
+#</TD>
+#</TR>
+# assumes toc in current dir...
+if ($dat and open(Fh,  "inhalt.html")) {
+    $_=<Fh>; close(Fh);
+    while(/<TR[^>]*>[\s\S]*?<TD[^>]*>\s*(?:<B[^>]*>)?\s*(\d+\.?(?:\.\d)?)\s*(?:<\/B[^>]*>)?\s*<\/TD[^>]*>\s*<TD[^>]*>\s*(?:<B[^>]*>)?\s*<A[^>]*?HREF\s*=\s*["']?([A-Z\._\-]+)["']?/igo) {
+#print STDERR "$1 - $2\n";
+       ($chapter, $url)=($1, $2);
+       $tmp{$url}=$1;
+    }   
+    foreach $url (sort keys %tmp) {   
+       $absname=&db_cgi::changeurl($h0, $url, "inhalt.html", $rold, $mode);
+       $chapter{$absname}=$tmp{$url};
+    }
+    %tmp=();
+}
+
+
+## 2. collect pages for our book 
+foreach $file (@files) {
+   $_=$file;
+   next if not /\S/;
+   next if $skip and /$skip/;
+   next if $skip and $listskip=~/ \Q$_\E /;
+   s/^\.\///go;
+   $data=""; $data=<Fh> if open(Fh, $_); close Fh;
+   next if not $data=~/\S/;
+   $name=$_;
+   
+   # encode file?
+   if ($encode and $name=~/$encode/) {
+      $tmp=1;
+   } elsif ($noencode and not $name=~/$noencode/) {
+      $tmp="";
+   } elsif ($name=~/\.html?(\.(en|us|de|uk))*$/io) {
+      # html file, possibly with some of the more common content negotiation suffices?
+      $tmp="";
+   } else {
+      # guess!
+      # some nonsense characters, short comments and the first real tag... - otherwise we'll better encode anyway
+      $tmp=$1 if $data=~/\A([\s\S]{1,200}?(<!--(\s[\s\S]{1,200}?\s|\s)-->\s*|<![^>]{0,200}>\s*){0,3}<[a-z][^>]*>[\s\S]{1,200})/io;
+      if ($tmp=~/<(html|link|body|head|meta|title)(\s[^>]*>|>)/i) {$tmp=0} else {$tmp=1};
+
+      # just emit a link or inline it if $data smells binary
+      if ($name=~/\.(gif|jpg|jpeg|png|bmp)$/io) {
+          $tmp=""; 
+          $data="inlining ". &db_cgi::encodehtml($name) ."<BR><IMG SRC='". &encode($name) ."'>";
+      } elsif ($name=~/\.(pdf|doc)$/io or $data=~/\0/) {
+          # or try file?
+          $tmp=""; 
+          $data="<A HREF='". &encode($name) ."'>Link to ". &db_cgi::encodehtml($name) ."</A>";
+      }
+   }
+   
+   $data=join("", "<PRE>\n", &db_cgi::encodehtml($data), "\n</PRE>\n") if $tmp;
+   
+   $basename=$name; $basename=~s!^.*?([^/]*)$!$1!;
+   $absname=&db_cgi::changeurl($h0, $basename, $name, $rold, $mode);
+   $url=    &db_cgi::changeurl($h1, $basename, $name, $rold, $mode);
+   @filedate=localtime((stat($file))[9]);
+   $filedate=sprintf( "%02d%02d%02d ", $filedate[5]%100, $filedate[4]+1, $filedate[3]);
+   $desc{$absname}="$filedate";
+   $name{$absname}="$name";
+   $url{$absname} ="$url";
+   $absname_e=&encode($absname); push @absname, $absname;
+print main::STDERR "Processing file $file - $absname\n" if $verbose;
+   $data=&db_cgi::changeurls($h0, $data, $name, $rold, $mode." skipimg ")              if not $nourltrans;
+   # skip everything but images - images cannot be embedded in output...
+   $data=&db_cgi::changeurls($h0, $data, $name, $rold, $mode." skipa uselocalfilespwdrelative ")  if not $nourltrans; 
+   $filedate=scalar(localtime((stat($file))[9]));
+   
+   # update local anchor refs and names
+   $data=~ s/(<A(?:\s[^<>]*?\s|\s+)NAME\s*=\s*(?:["']?))/$1${absname_e}_/goi;
+   $data=~s/(<A(?:\s[^<>]*?\s|\s+)HREF\s*=\s*(?:["']?))(#|$qunique#)/$1#${absname_e}_/goi;
+   
+   # header info
+   $title=""; $title=$1 if $data=~/<TITLE[\s\S]*?>(.*?)<\/TITLE[\s\S]*?>/oi;
+   $title=~s/^\s*(VRG.(Hand|Hyper|hypertext)buch:|gi\-muenchen)\s*[\-:]?\s*//io; # strip Hyperbuch subtitle 
+   # allow for a single heading in the (first) LINKINGHEAD and remember it if available
+   $heading=""; 
+   if ($data=~/<!--\s+LINKINGHEAD\s+-->(?:(?!<!--\s+\/LINKINGHEAD\s+-->)[\s\S])*(<H\d[^<>]*>([\s\S]*?)<\/H\d[^<>]*>)/io){
+      $heading=$2; $heading_with_tags=$1;
+   }
+   $heading=$1 if not $heading and $data=~/<H\d[^<>]*>([\s\S]*?)<\/H\d[^<>]*>/io; # need to use first headline outside of linkinghead?
+   $title=$heading if not $title; # fallback to heading
+   $title=$1 if not $title and $data=~m/tit(?:le|el)\s*[:\-]?\s*([^\s:\-].*?)([\t\r ]|<BR><\/?p[^>]*>)*$/mi; # ok, try looking for title:/titel: type lines...
+   $title=$name if not $title;    # giving up: fallback to filename
+   $title{$absname}=$title; 
+
+   # strip html <head>, plus any Hyperbuch-style (e.g. LINKING-generated) header / footer bracketed by the LINKING html comments
+   $data=~s/<\/?html[^>]*>//goi;
+   $data=~s/<\/?body[^>]*>//goi;
+   # head/body and the dummy LINKING tag may overcross
+   $data=~s/(<!--\s+LINKINGHEAD\s+-->)[\s\S]+?(<!--\s+\/LINKINGHEAD\s+-->)/<\/head>/go;
+   $data=~s/(<!--\s+LINKINGTAIL\s+-->)[\s\S]+?(<!--\s+\/LINKINGTAIL\s+-->)/<\/head><hr>/go;
+   $data=~s/<HEAD[\s\S]*?<\/HEAD[\s\S]*?>//goi;
+   $data=~s/<TITLE[\s\S]*?<\/TITLE[\s\S]*?>//goi;
+   $data=~s/<FRAMESET[\s\S]*?<\/FRAMESET[\s\S]*?>//goi;
+   $data=~s/<\/?(HEAD|FRAME|BASE)[^>]*>//goi;
+   $data=~s/<(META|!DOCTYPE|LINK|BODY)[^>]*>//goi;
+
+   # we should also strip framesets and other nonsense...
+
+   # append page title to book
+   # Netscape's tables ARE NOT IMPLEMENTED PROPERLY RECURSIVE in LAYOUT
+   # contrary to spec, it is necessary to supply ALL closing tags...
+   $booksect1 =" <A NAME=\"$absname_e\"></A> - ";
+   $booksect1.=" <A NAME=\"collect_start_$absname_e\" HREF=\"#collect_end_$absname_e\">forward</A> - 
+$booksect
+<p>
+"; 
+   $booksect1=&expandvars($booksect1);
+   $book.=$booksect1;
+   
+   # append page to book
+   $book.="$heading_with_tags\n";
+   $book.="\n\n\n\n<!-- +++++++++++++++++++++++++++++++++++++++ $url -->\n\n\n\n$data";
+   
+   # add internal navigational helps to book
+   $book.="$sep\n<p class=\"pagebreak\">\n<BR clear=all>\n\n\n<!-- +++++++++++++++++++++++++++++++++++++++ end of file $url -->\n\n\n\n - <A NAME=\"collect_end_$absname_e\" HREF=\"#collect_start_$absname_e\">backward</A> - - <A HREF=\"#top\">top</A> - \n";
+
+}
+
+
+$list="<hr><A NAME=\"toc\"></A>Index of files for this collection (root is \"<A HREF=\"$rnew\">$rnew</A>\"):\n<TABLE border=1><p>\n";
+## 3. global fixes
+# localize links between collected files...
+foreach $absname (@absname) {
+   next if not $absname=~/\S/;
+   if ($absname=~/(?:$qunique|(\/+))(index\.html?)$/io) {
+      # allow extending of / to index.html 
+      # (note that this extension is depending on the httpd config)
+      $tmp1=$1; $tmp2=$2; 
+      $tmp=$absname; $tmp=~s/\/?index\.html?$//gio;
+      $q1=quotemeta($tmp.$tmp1) . "(?:\.\/)*(?:" . quotemeta($tmp2) . ")?";
+      $tmp=&encode($tmp.$tmp1);
+      $q2=quotemeta($tmp)       . "(?:\.\/)*(?:" . quotemeta(&encode($tmp2)) . ")?";
+      $absname_e=&encode($absname);
+   } else {
+      $absname_e=&encode($absname);
+      $q1=quotemeta($absname);
+      $q2=quotemeta($absname_e);
+   }
+
+   if (not $nourltrans) {
+      # link to a file of the collection
+      $rc1= $book=~s/(<[Aa](?:\s[^<>]*?\s|\s+)[Hh][Rr][Ee][Ff]\s*=\s*(?:["']?))(?:\.\/)*($q1|$q2)(?=[\s"'><])/$1#$absname_e/g;
+      # link to a site in a file of the collection
+      $rc2= $book=~s/(<[Aa](?:\s[^<>]*?\s|\s+)[Hh][Rr][Ee][Ff]\s*=\s*(?:["']?))(?:\.\/)*($q1|$q2)#/$1#${absname_e}\_/g;
+   }
+   $list.="<TR><TD><A HREF=\"#$absname_e\"> (collected) </A></TD><TD nowrap> $desc{$absname} </TD><TD> $title{$absname}<BR></TD><TD> <A HREF=\"$url{$absname}\">$name{$absname}</A><BR></TD></TR>\n";
+}
+$q=$unique;
+# links to external files - remove remaining unique markers...
+$rc=$book=~s/(=\s*(?:["']?))(?:\.\/)*($q)/$1/go; 
+$list.="</TABLE><p>\n";
+
+
+## 4. clean up
+# return our results; may need manual fixing (input should have been at least valid html!)
+$bookhead=&expandvars($bookhead);
+$booktail=&expandvars($booktail);
+print $bookhead;
+print $list if $displaylistoffiles;
+print $book,$booktail;
+
+exit;
+
+
+############################################################
+sub help {
+   print <<EOF;
+$0 [options] files
+
+collects a set of html pages into a single file.
+
+  -title  title      use title as name for title for the collection
+  -head   file       header template     (some variables)
+  -tail   file       footer template     (may be expanded)
+  -page   file       subpage header      (within the templates)
+  
+  -auto  "files"    try guessing the order for this collection assuming
+                    "files" (glob/list) are toc files for the 
+		    document tree; the  remaining files given on the  
+		    commandline are used as provided. Files without html
+		    suffix are skipped unless mentioned on command line
+		    or in toc files. Don't list inlined files here!
+  -dat    file      config file (see LINKING; default $0.dat)
+  -skip  "files"    skip matching files (glob/list, may also be a regex;
+                    be careful to make the regex not-matching any files).
+  -first "files"    prepend the glob/space separated list of files 
+                    to the list of files for this collection (for use
+		    with -auto)
+  -last  "files"    append the glob/space separated list of files 
+                    to the list of files for this collection (for use
+		    with -auto)
+
+  -nourltrans       skip URL conversion (useful only for printing; 
+                    all files should be in the current directory)
+  -root   old new   extended URL conversion: replace regexp old by 
+                    URL prefix new
+  [-unique string   unique string (for generated links)]
+  
+  -encode   "files" encode files matching regexp
+  -noencode "files" do not encode files matching regexp
+                    (by default, all files without html suffix are encoded,
+		    unless they begin with <html>/... very early)
+  [-sep "string"    string is inserted before each new file (e.g. to fix
+                    missing </UL> or </table> tags)]
+
+  -h                this text
+  -toc              generate a table of contents of collected files
+  -v                verbose processing
+  
+  -alias string     reserved/nyi
+
+Usage example:
+# find non html files and add those as '-last'
+find -type f | egrep -v 'gif\$|jpg\$|htm\$|html\$' 
+# and build a collection for the html 4 draft
+COLLECT -skip book.html -v -toc -title "HTML 4.0 Draft Juli 1997" 
+        -first cover.html -last "sgml/HTML* style/default.css"  
+	-auto contents.html  
+	> book.html
+
+EOF
+   print <<'EOF'
+# or simply (warning - first check the iregex for success - Quoting (S)Hell)
+COLLECT -nourltrans -v -auto "index.html" -toc  `find . -iregex '.*\.\(.?htm.?\|php.?\|txt\|sample\|java\)\(\.\(en\|de\|html?\)\)?'  | sort`  > X
+
+# taming and COLLECTing nmap.org/book/
+LINKS -unsorted -files toc.html > BOOKTOC
+vi BOOKTOC # strip <link src=...> and links from non-toc areas
+COLLECT -v -toc -skip BOOK -auto index.html toc.html $(cat BOOKTOC) *.html *.pdf > BOOK.html
+firefox BOOK.html 
+
+EOF
+}
+
+sub encode {
+   local($_)=@_;
+   s/([^A-Za-z0-9\.])/"-".unpack(H2,$1)/ge;
+   return $_;
+}
+
+__END__
+
+Test: 
+
+cd gi/gi-html
+perl ../../COLLECT -root "" "http://kefk/gi/gi-html/" -toc `find . -name \*.html` ../gi.html > X.html

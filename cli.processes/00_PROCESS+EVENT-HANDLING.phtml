@@ -17,18 +17,20 @@ to  hack  waitcond and in addition make it depend on external  modules
 <H3>Major Commands</H3>
 
 <ul>
-   <li><b>waitcond</b>> (perl) - similar to tagls/Grep.pm, this one also implements
-       boolean expressions on top of regexes. It can grep in files, wait for 
-       (dis)appearance of files or processes, cpu/net/disk usage values, or 
-       just an idle tty. You will probably want to combine
+   <li><b>waitcond</b> (perl) - like tagls/Grep.pm, this one also offers
+       boolean expressions, this time on top of events incl. regexes. 
+       It can grep in files, wait for the (dis)appearance of files or processes, 
+       cpu/net/disk idle values, or just an idle tty. You will probably want to combine
        waitcond with some notification tool like the trumpets of Jericho (or 
-       just ALARM) to be indeed sucessfully notified of the fact that your 20 hour 
+       just ALARM, maybe also something boring like eMail or SMS) to be indeed 
+       sucessfully notified of the fact that your 20 hour 
        compile just failed with a syntax error after just 58 minutes...<BR>
        Simplified variants with different history and codebase are
        <b>fwait/pwait</b>.
-   <li>waitcond.timeout run a command and kill it after a period. Note that
+   <li><b>waitcond.timeout</b> is an extended version of Piotr Roszatycki's script.
+       It runs a command and kills it after a period. Note that
        the timelimit specification allows using a command such as waitcond.
-   <il>zap has come a long way from the its old incarnation in the perl books. 
+   <il><b>zap</b> (perl) has come a long way from the its old incarnation in the camel book. 
        Nowadays it lists, nices or kills processes or process trees 
        matching a regex with or without user interactions 
 </ul>

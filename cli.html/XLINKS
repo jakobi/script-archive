@@ -1,0 +1,178 @@
+#!/bin/sh
+#!perl # -w -Sx: line count is one off; -w was tested for some ancient version :).
+eval 'exec perl -Sx $0 ${1:+"$@"}'
+   if 0;
+
+# extracts links e.g. in preparation for spidering
+# (note that this is unrelated to the CPAN script XLINKS :))
+# 
+# 1996XXXX PJ   0.1  jakobi@acm.org initial version
+# 20071120 PJ   0.21
+# copyright:  (c) 1996-2009 jakobi@acm.org, GPL v2 or later
+my $version="0.21";
+
+
+$skip='^$';
+
+args: while(@ARGV) {
+   if ($ARGV[0] eq '-') {
+      shift; last;
+   } elsif ($ARGV[0] eq '-v') {
+      shift; $verbose=1;
+   } elsif ($ARGV[0] eq '-root') {
+      push @oldargs, $ARGV[0], $ARGV[1], $ARGV[2];
+      shift; $root=1; $rold=$ARGV[0]; shift; $rnew=$ARGV[0]; shift; 
+   } elsif ($ARGV[0] eq '-def') {
+      shift; $listdef=1;
+   } elsif ($ARGV[0] eq '-ref') {
+      shift; $listref=1;
+   } elsif ($ARGV[0] eq '-miss') {
+      shift; $listmiss=1;
+   } elsif ($ARGV[0] eq '-skipmiss') {
+      shift; $skipmiss=shift;
+   } elsif ($ARGV[0] eq '-skip') {
+      shift; $skip=shift;
+   } elsif ($ARGV[0] eq '-parse') {
+      shift; $encode=shift;
+   } elsif ($ARGV[0] eq '-noparse') {
+      shift; $noencode=shift;
+   } elsif ($ARGV[0] eq '-s') {
+      shift; $skipmiss='^(ftp://|http://|mailto:|gopher://)';
+   } elsif ($ARGV[0] eq '-v') {
+      shift; $verbose=1;
+   } elsif ($ARGV[0] eq '-h') {
+      shift; &help; exit 1;
+   } else {
+      last
+   }
+}
+
+
+push @INC, "/home/jakobi/.cgi-bin", "/usr/proj/gi/cgi-bin/GIwais", "$ENV{HOME}/bin";
+require "db_cgi.p"; 
+&db_cgi::setup;
+$date=localtime(time);
+$mode="keeplocal";
+$h0=&db_cgi::parseurl($rnew);
+@absname=();
+$book.=" - <A HREF=\"#top\">top</A> - \n";
+@files=@ARGV;
+undef $/;
+
+
+## 2
+foreach $file (@files) {
+   $_=$file;
+   next if not /\S/;
+   s/^\.\///go;
+   $name=$_; $qname=quotemeta($name);
+   next if $name=~/$skip/o;
+print main::STDERR "Processing file $file - $absname\n" if $verbose;
+   $data=<Fh> if open(Fh, $_); close Fh;
+   next if not $data=~/\S/;
+   $basename=$name; $basename=~s!^.*?([^/]*)$!$1!;
+   $absname=&db_cgi::changeurl($h0, $basename, $name,  $rold, $mode);
+   
+   $def{$absname}.= " $name ";
+
+   # parse or encode file?
+   if ($encode and $name=~/$encode/) {
+      $tmp=1;
+   } elsif ($noencode and not $name=~/$noencode/) {
+      $tmp="";
+   } elsif ($name=~/\.html?(\.(en|us|de|uk))*$/io) {
+      # html file, possibly with some of the more common content negotiation suffices?
+      $tmp="";
+   } else {
+      # guess!
+      # some nonsense characters, short comments and the first real tag... - otherwise we'll better encode anyway
+      $tmp=$1 if $data=~/\A([\s\S]{1,200}?(<!--(\s[\s\S]{1,200}?\s|\s)-->\s*|<![^>]{0,200}>\s*){0,3}<[a-z][^>]*>[\s\S]{1,200})/io;
+      if ($tmp=~/<(html|link|body|head|meta|title)(\s[^>]*>|>)/i) {$tmp=0} else {$tmp=1};
+   }
+   next if $tmp;
+
+   # add defs to  %def
+   $data=~s!(<(A)(?:\s[^<>]*?\s|\s+)(?:NAME)\s*=\s*(["']|))([^"'\s>]*?)(\3(?:[>]|\s[\s\S]*?>))!do {
+      $def{"$absname#$4"}.= " $name ";
+      $&;
+   }!geio;
+
+   # add links to %ref
+   %tmp=(); 
+   $data=~s!(<(A|IMG)(?:\s[^<>]*?\s|\s+)(?:HREF|SRC)\s*=\s*(["']|))([^"'\s>]*?)(\3(?:[>]|\s[\s\S]*?>))!do {
+      $tags=$1; $url=$4; $tage=$5; $skip=$2;
+      $url=~s/^\.\///g;
+      $tmp{$url}++ if $url;
+      ""
+   }!geio;
+   foreach (keys %tmp) {
+      if (/^#/o) {
+         $url="$absname$_";
+      } else {
+         $url=&db_cgi::changeurl($h0, $_, $name, $rold, $mode);
+      }
+      $ref{$url}.="\n  $name:$_ " if not $ref{$url}=~/ $qname[:\s]/;
+   }
+}
+
+
+# handle index files...
+$def=join(" ", " ", sort keys %def, " ");
+foreach $absname (sort keys %ref) {
+   if (not exists $def{$absname}) {
+      $tmp=$absname; $tmp=~s/\/+$//;
+      $qabsname=quotemeta($tmp);
+      $def{"$tmp/$1"}=" ...INDEX-EXPANDED... ".$def{$absname} if $def=~/ $qabsname(?:\/+)([iI][nN][Dd][Ee][Xx]\.[Hh][Tt][Mm][Ll]?) /;
+   }
+}
+
+if ($listdef) {
+   print "DEFINITIONS:\n\n";
+   foreach (sort keys %def) {
+      print "D $_ $def{$_}\n";
+   }
+}
+if ($listref) {
+   print "REFERENCES:\n\n";
+   foreach (sort keys %ref) {
+      print "R $_ $ref{$_}\n";
+   }
+}
+if ($listmiss) {
+   print "MISSING REFERENCES:\n\n";
+   foreach (sort keys %ref) {
+      print "M $_ $ref{$_}\n" if not exists $def{$_} and (not $skipmiss or not /$skipmiss/io);
+   }
+}
+
+
+exit;
+
+
+############################################################
+sub help {
+   print <<EOF;
+$0 [options] files
+
+version: $version
+
+extracts and local-validity checks the links of a set of html pages.
+Can be used as input for spidering.
+
+  -root   old new   extended URL conversion: replace regexp old by 
+                    URL prefix new
+  -def              list defs
+  -ref              list refs
+  -miss             list nonlocal or missing refs not found in defs
+  -skip    "files"  skip files matching regexp
+  -skipmiss "expr"  ignore matching urls
+  -s                shortcut for -skipmiss ftp/http urls
+  -parse   "files"  parse files matching regexp
+  -noparse "files"  do not parse files matching regexp
+                    (by default, all files without html suffix are not 
+                    parsed, unless they begin with <html>/... very early)
+
+Examples: XLINKS -v -skip book.html  -def -ref -miss -s `find . -type f`
+
+EOF
+}

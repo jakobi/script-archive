@@ -1,0 +1,90 @@
+#!/bin/sh
+#!perl
+eval 'exec perl -Sx $0 ${1:+"$@"}'
+   if 0;
+
+# sanitize a dir tree to use SANE 8bit names compatible to unix/windows without umlauts,
+# breaks links (which aren't supported sanely in windows anyway)
+# $0 [-n|-x] PATH ... 
+
+while($_=$ARGV[0]) {
+   /^-n$/ and do {$test=1; shift; next}; 
+   /^-x$/ and do {$pack=1; shift; next}
+}
+
+use File::Find;
+File::Find::finddepth ( { wanted=>\&wanted }, @ARGV );
+#File::Find::find ( { wanted=>\&wanted, bydepth=>1 }, @ARGV );
+
+sub wanted {
+   $origfile=$file=$_;
+   local $_=$_;
+   my($tmp);
+   s@\s@ @go; # no bloody linefeeds on my watch; and no spurious %0D or ? either...
+   s@Þ|Ú@e@go;
+   s@¨@u@go;
+   s@Ä|\x8e@Ae@go;
+   s@Ö|\x99@Oe@go;
+   s@Ü|\x9a@Ue@go;
+   s@ä|õ|\x84@ae@go;
+   s@ö|÷|\x94@oe@go;
+   s@ü|³|\x81@ue@go;
+   s@ß|\xe1@ss@go;
+   # other European chars, considering only latin1 charset 
+   s/Á/A/go;
+   s/â/a/go;
+   s/á/a/go;
+   s/Ç/C/go;
+   s/ç/c/go;
+   s/É/E/go;
+   s/é/e/go;
+   s/È/E/go;
+   s/è/e/go;
+   s/Ë/e/go;
+   s/ë/e/go;
+   s/Í/I/go;
+   s/í/i/go;
+   s/Î/i/go;
+   s/î/i/go;
+   s/ñ/n/go;
+   s/Ó/O/go;
+   s/ó/o/go;
+   s/Ø/O/go;
+   s/ø/o/go;
+   s/Ú/U/go;
+   s/ú/u/go; # see above, charset clash
+   s@´@'@go; # allow apostrophes here, for the time being
+   s@:@;@go;
+   s@\xa0@ @go;
+   $file=$_;
+
+   # disallow esp. ", but also any unknown char...
+   if ($pack) {
+      # a slight problem: = is due to encoding or was already part of the name.
+      # otoh, we want this to be idempotent -> so leave it alone, unless other chars trigger
+      # the encoding anyway; thus the encoded sequence doesn't trigger encoding by itself
+      # unless a  char-to-be-encoded were e.g. to be appended to the already encoded filename.
+      # which is a bad idea in the first place, isn't it.
+      $tmp=$file;
+      $file=~   s@[^ \?\!\#\&~0-9_a-zA-Z\@\-\+\%_\.\,\;\'\(\)\[\]\{\}=]@"=".unpack("H2",$1)@goe;
+      if ($file ne $tmp and $tmp=~/=/) { # note the missing = below
+         $file=$tmp;
+         $file=~s@[^ \?\!\#\&~0-9_a-zA-Z\@\-\+\%_\.\,\;\'\(\)\[\]\{\}]@ "=".unpack("H2",$1)@goe;
+      }
+   } else {
+      $file=~   s@[^ \?\!\#\&~0-9_a-zA-Z\@\-\+\%_\.\,\;\'\(\)\[\]\{\}=]@\?@go;
+   }
+
+   if ($file ne $origfile) {
+      print main::STDERR "bad name $origfile\n         $file\n";
+      print main::STDERR "$File::Find::name\n$File::Find::dir/$file\n";
+      if (-f $file or -d $file) {
+         print main::STDERR "cannot rename - target exists\n";
+      } elsif (not $test) {
+         
+# DANGER!
+	 print main::STDERR "cannot rename - unknown error - dupe?\n" if not rename($origfile,$file);
+      }
+      print "\n";
+   }
+}

@@ -1,0 +1,11 @@
+#!/usr/bin/perl
+# $0 blocks inodes - prints them and returns false on lower values
+$b=shift;
+$i=shift;
+$df_b=`df -k .`;
+$df_i=`df -i .`;
+# regardless of linebreaks or df -k --portability:
+$free_b=0; $free_b=$1 if $df_b=~/(\d+)\s+\d+\%.*\Z/;
+$free_i=0; $free_i=$1 if $df_i=~/(\d+)\s+\d+\%.*\Z/;
+print "$free_b $free_i\n";
+exit( ($b<$free_b and $i<$free_i) ? 0:1 );

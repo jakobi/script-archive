@@ -1,0 +1,12 @@
+#!/usr/bin/perl
+
+# convenient frontend for fwaiting on process termination
+
+$fwait=`which fwait`; chop $fwait;
+if ($ARGV[0]=~/^-h$|^--help$|^-\?$/) {
+   print "$0 - wait for termination of processes\nIt is a frontend for 'fwait not (...)'\n\n";
+   exec($fwait, @ARGV);
+} else {
+   foreach(@ARGV) { $_="ps:$_" if not /^d/ and not /:/; }
+   exec($fwait, qw/ not ( /, @ARGV, qw/ ) /);
+}

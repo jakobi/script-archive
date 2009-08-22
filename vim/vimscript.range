@@ -1,0 +1,13 @@
+#!/usr/bin/env vimscript
+":!echo 'SH ECHO: Counting from shell argument $1 to $2'
+"echo "VIM ECHO"
+"echo ''
+
+if $ARG0<2 | echo "Usage: ".expand("%:t")." fromNr toNr" | return | endif
+let nr=$ARG1+0 
+while nr <= $ARG2+0
+   echon nr.' '
+   let nr=nr+1
+endwhile 
+echo ''
+":!echo 'SH ECHO: All Done'

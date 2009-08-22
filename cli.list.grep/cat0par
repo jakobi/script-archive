@@ -1,0 +1,307 @@
+#!/usr/bin/perl
+
+# Usage cat0par [-0|-00] [DELIMETEROPTIONS] ...
+#
+# stanza/generic record splitting <--> \0-lines 
+
+# created     jakobi@acm.org 2007XXXX - when you do not want to write a real parser...
+# last change jakobi@acm.org 20090615
+# copyright: (c) 2007-2009 jakobi@acm.org, GPL v3 or later
+my $version="0.1";
+
+
+
+sub help {
+   print <<EOF;
+$0 [-0|-00] [DELIMETEROPTIONS] ...
+
+version: $version
+
+splits input into records and return them with the selected
+"line end" (default \\0). For complex record formats, a less
+memory efficient implementation allows arbitrary REGEX as 
+record delimeters.
+
+This script enables processing of arbitrary record-structured 
+text with standard unix tools like sort, uniq, grep, perl -0ne.
+
+
+Options:
+  -arg           use arguments as input records instead of files/stdin
+  -rk            remove first line from record if starting with a 
+                 #-comment, optionally prefixed with a number  
+
+Setting output options and basic default paragraph handling:
+These also set the IRS defaults to provide a fast paragraph mode. 
+Both override any previous -nl option.
+  -0		 --zero    input \\n\\n to output \\0 (default)
+  -00            --par     input \\0   to output \\n\\n
+
+Modify -0/00 output settings:
+  -nl            change output line end to \\n
+  -nonl[=STRING] strip any lineend-characters from *within* the 
+                 record before printing (default: '$streval_default';
+                 string is quoted unless it begins with a quote or
+                 do{...}.
+  -nore[=STRING] same as above, but restricted to output record end
+
+Generic record input splitting (replaces -0/-00 input settings):
+Instead of the basic paragraph loop above, the input is read
+into memory and split into an array using the provided one or
+two regular expression delimeters. Do not use line flag for
+inputs allowing multiple records per \\n-line.
+  -start START   delimeter regex for record start
+  -end   END     delimeter regex for record end
+  -f / -flags    flags for delimeter processing
+                 record mangling:
+                    s(trip) # remove trailing/leading ws
+                 record selectors (default: *)
+                    inside    # record with START..END
+                    partial, outside      
+                 modifiers can be appened to the selectors:
+                    strip
+                 regex mangling:  
+                    i(gnorecase)
+                    k(ey)      # prepend a sort key comment from the first
+                               # back-reference of START: '# \$1\\n' for 
+                               # inside, partial and outside are '##\\n'
+                    l(ine)     # regex is extended to either ^/\$ 
+                    w(ord)     # regex must be a whole \\bword\\b
+                    s(tartends)# record ends on either START or END
+  # shortcuts:
+  -endws         record ends on whitespace line instead of just \\n\\n
+  -[iklsw]       add the corresponding flag to the current flag settings;
+                 must occur after the final -flags option, if any.
+
+
+
+
+Examples:
+ - ;[netlogon] -- sorted unique selection of smb.conf stanzas:
+   cat /etc/samba/smb.conf | egrep -v '^#' | grep . |\\
+       cat0par -0  -flags 'inside line startends' -k -start '^[#; ]*\\[(.*?)]'  |\\
+       sort -z | grep -v -z guest.ok.*yes | uniq -z -u |\\
+       cat0par -00 -rk
+   lines 2+4: stanza <-> \\0-line format
+         3:   the real mangling / sorting and a mostly useless uniq
+
+ - same, but without sorting and ;-inactive stanzas:
+   cat /etc/samba/smb.conf | egrep -v '^[#;]' | grep . |\\
+       cat0par -0 -start '^\\['  |\\
+       grep -v -z guest.ok.*yes |\\
+       cat0par -00
+
+ - to explicitely prepend/strip complex sort keys consider replacing
+   -k/-rk by perl filters in the pipeline:  
+   -k:  perl -0lpe '\$a="#\\n"; \$a="#\$1\\n" if /\\A.*?\\[(.*?)\\]/; \$_=\$a.\$_' 
+   -rk: perl -0lpe 's/\\A([\\t ]*\\d+[\\t ]+)?#.*\\n//'
+EOF
+}
+
+sub streval{ # option -nore/-nonl: provide default line end replacement, eval and return it
+   local($_)=@_;
+   $_=$streval_default if not defined $_;
+   $_='"' . $_ . '"' if not /^"|^do{/;
+   eval('$_=' . $_); die "# option has invalid string for eval: $@\n" if $@;
+   return $_;
+}
+
+sub prepdelim { # prep record delimeters to honor flags word/ignorecase
+   # ASSERT start and end are non-zero-width unless empty; predelim honors this.
+   if ($_[0]) {
+      if ($o_flags=~/\bword\b/) {
+         $_[0]='(?:\b(?:' . $_[0] . ')\b)'; 
+      } else {
+         $_[0]='(?:' . $_[0] . ')'; 
+      }
+      $_[0]='(?i)'.$_[0] if $o_flags=~/\bignorecase\b/;
+   }
+}
+
+sub collect { # collect records and place them on @ARGV, handles flags strip/key/inside
+   if ($o_flags=~/$_[0]/) {
+      $t=substr($_,$s,$e-$s);
+      $t=~s/\A\s*\n|[\s\0]*\Z//g if $o_flags=~/$_[0]\S*strip|\bstrip\b/;
+      # Q retain empty records: always / if not strip / never?
+      if (0!=length($t)) {
+         if ($o_flags=~/key/) {
+            $t= ($_[0]=~/inside/) ? "# $k\n$t" : "##\n$t";
+         }
+         push @ARGV, $t;
+      }
+   }
+   $k="";
+   ##$t=~s/\n/_/g;
+   ##warn "L $p $s $e $t\n";
+}
+
+
+
+$streval_default=' ';
+$lineends="[\n\r\0]";
+$lineend="\0";
+$/="\n\n";
+$o_flags="outside inside partial startends";
+@argv=@ARGV;
+while(@ARGV){
+   $_=shift;
+   # the default being more lenient
+   if(/^-?-(0|null|zero)$/o)              {$lineend="\0";  $/="\n\n";next} 
+   if(/^-?-(00|par)$/o)                   {$lineend="\n\n";$/="\0";  next}
+   if(/^-?-endws$/o)                      {$delim_e='\n\s*\n' ; next}
+   if(/^-?-start$/o)                      {$delim_s=shift; next}
+   if(/^-?-end$/o)                        {$delim_e=shift; next}
+   if(/^-?-f(lags)?$/o)                   {$o_flags=shift; next}
+   if(/^-?-rk$/o)                         {$o_removekey=1; next}
+   if(/^-?-(nl)$/o)                       {$/="\n";  next}
+   if(/^-?-(?:nonl)(?:=(.*))?$/o)         {$o_noln=streval($1); next}
+   if(/^-?-(?:nore)(?:=(.*))?$/o)         {$o_nore=streval($1); next}
+   # the next 2 options continue processing
+   if(/^-?-args?$/o)                      {$o_inputfromarg=1;next}
+   if(/^-?-h(elp)?$/o) {&help;exit 1}
+   if(/^-i$/o)                            {$o_flags.=" ignorecase "; next}
+   if(/^-l$/o)                            {$o_flags.=" line "; next}
+   if(/^-w$/o)                            {$o_flags.=" word "; next}
+   if(/^-k$/o)                            {$o_flags.=" key "; next}
+
+   if(/^--$/o) {last}
+   unshift @ARGV, $_; last
+};
+$o_flags=~s/\bi\b/ ignorecase /;
+$o_flags=~s/\bl\b/ line /;
+$o_flags=~s/\bw\b/ word /;
+$o_flags=~s/\bs\b/ strip /;
+$o_flags=~s/\*/ inside outside partial /;
+
+
+
+# read all input 
+if (not $o_inputfromarg and ($delim_s or $delim_e)) {
+   
+   undef $/,$tmp; while(<>) { $tmp.=$_ }; 
+   $_=$tmp;
+
+   # from now on, input records will be found in ARGV instead of STDIN
+   @ARGV=();
+   $o_inputfromarg=1; 
+
+   if ($lineend eq "\0") {
+      $lineend="\n$lineend";
+      # $lineend="\n$lineend"; # may we want to have \n\n\0?
+   }
+
+   ##$T=$_; $T=~s/\n/_/g;
+
+   warn "\n#WARN patterns must be non-zero-width and span the full delimeter.\n".
+      "#     For -k / key, START must return \$1.\n\n" 
+      if $delim_e =~ /\(/ or $delim_s =~/\(/;
+
+   # set record delimeters to look for: delim_e / delim_s
+   prepdelim($delim_s); prepdelim($delim_e);
+   $delim_s='(?:\A|(?<=[\n\0])).*?(?:' . $delim_s . ')' if $o_flags=~/\bline\b/; # . ').*?(?:[\n\0]|\Z)'
+   $delim_e='(?:' . $delim_e . ').*?(?:[\n\0]|\Z)'      if $o_flgas=~/\bline\b/; # '(?:\A|(?<=[\n\0])).*?(?:' .
+   # set sensible delimeters if one if missing
+   if (not $delim_s) {
+      $delim_s='(?:)';
+   } elsif (not $delim_e) {
+      $delim_e='(?=(?:' . $delim_s . ')|\Z)';
+   } elsif ($delim_s and $delim_e) {
+      # the input START..START..END is by default 1 block.
+      # with startends we want 2 blocks START.. and START..END
+      # 'END' -> '(?:(?=START)|(?:END))'
+      if ($o_flags=~/startends/) {
+         $delim_e='(?:(?=' . $delim_s . ')|(?:' . $delim_e . '))' 
+      }
+   }
+
+   $k="";
+
+   # what to do with text between records
+   if ($o_flags=~/outside/) {
+      if (/(?=$delim_s)/mg) {
+         # text before first record
+         $s=0; 
+         $e=pos;
+         &collect("outside");
+      } else {
+         # no record at all??
+         $s=0; 
+         $e=length($_);
+         &collect("outside");
+      }
+   }
+
+warn "$delim_s  -- $delim_e\n";
+
+   # real records - search for START
+   ##$oldpos=-2; 
+   while($o_flags=~/()/ , /$delim_s/mg) { # reset $1 with the first dummy match
+      ##if ($oldpos==pos) {pos=$oldpos+1; next if pos; last} # hack required?
+      ##warn "L0i " . substr($T,pos,5) ."\n";; 
+
+      $k=$1; # used in collect when key+inside is given, and the user better
+             # crafts a START containing ONE ()-pair placing something sane in $1
+      $p=pos;
+      $s=-length($&) + pos; $e=undef;
+
+      # search for END (maybe allowing START to also end record by extending $delim_e)
+      if (/$delim_e/mg) {
+         $e=pos;
+         &collect("inside");
+
+         # any outside text before next start?
+         if ($o_flags=~/outside/) {
+            if (/(?=$delim_s)/mg) {
+               $s=$e;
+               $e=-length($&) + pos;
+               &collect("outside");
+            } else {
+               pos=$e;
+            }
+         }
+      } else {
+         # partial record falling from the edge of the disc world, passing the turtle, 
+         # and its predecessors it is standing on, all the way down to Pratchett himself
+         $e=length($_); o_no_lineends_within_record 
+         &collect("partial");
+         last;
+      }
+      $oldpos=pos;
+   }
+}
+
+
+# evil hair splitting --> thus rather use above loop
+#
+# perl -e ' $header="a: x\naa:\nb: y\nc: z\n\n"; 
+#           %hdrs=(DUMMY=>split /^(\S+?):[ \t]*/m, $header);
+#           foreach(sort keys  %hdrs){print "$_ = :$hdrs{$_}:\n"}'
+# splits into elememnts: DUMMY, a, b, c, with the values incl their \n
+# backrefs are added as additional split elements, while non-zero width 
+# non-trivial split /EXPR/ gets deleted as a whole. These also create
+# and EMPTY elem at the start when non-trivial, dummy above. This empty elem
+# is NOT created if /EXPR/ is zero-width
+
+# for a simple test:
+##(echo a; echo aa START xENDx; echo xaa START; echo bENDSTARTcENDwSTARTEND; echo; 
+## echo START; echo c xENDxENDx; echo ENDENDEND; echo a; echo END; echo END;
+## echo a xENDx; echo d STARTSTART; echo; echo e) |
+##cat0par -flags "outside inside partial strip startends line" -start 'START' -end 'END' |
+##nl0 -col | cat0par -par | cat -vet 
+
+
+# process input, for cat0par
+# IFF o_inputfromarg or delim_* was set, @ARGV contains records, NOT filenames
+
+while(($o_inputfromarg and ($_=shift @ARGV, 1) or $_=<>), defined $_) {
+   # KEEP LOOP IN SYNC WITH CAT0
+   s/($lineends)*\z//o;                  # glorified chomp
+   s/($lineends)/$o_nonl/go              if defined $o_noln;
+   s/($lineend)/$o_nore/go               if defined $o_nore;
+   s/\A([\t ]*\d+[\t ]+)?#.*(\n|\Z|\0)// if $o_removekey;
+   next if /\A\s*#/o                     and $o_nocomments;
+   next if /\A\s*\Z/o                    and ( $o_nowhitespace or $o_nocomments );
+   $_=$1 if /\A\s*(.*?\S)\s*\Z/o         and $o_nowhitespace;
+   s/\Z/$lineend/o;                      # restore proper line ending
+   print
+}

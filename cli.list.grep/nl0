@@ -1,0 +1,11 @@
+#!/usr/bin/perl
+
+# nl clone for \0-lines
+
+$/=$\="\x0";
+do{$pre="       ";shift} if $ARGV[0]=~/-?-col$/;
+while(<>) {
+   $n++;
+   s/\n([\t ]*[^\0\Z\s])/\n$pre$1/g if $pre;
+   printf "%6d %s", $n, $_
+}

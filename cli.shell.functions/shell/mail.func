@@ -1,0 +1,9 @@
+alias mutt.lists='mutt -F ~/.mutt/run.lists'
+alias mutt.acm='mutt -F ~/.mutt/run.amc'
+alias mutt.tonline='mutt -F ~/.mutt/run.tonline'
+# mutt.proc is a script
+
+alias procmaillog="cd ~/.procmail; tail -f log"
+
+
+# vim:filetype=sh

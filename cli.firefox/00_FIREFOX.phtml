@@ -11,12 +11,46 @@ bookmarks  from a bookmarkfolder (have firefox or firefoxstdin  invoke
 firefoxgrep...)  .  In  a pinch, the scripts also offer  a  low  level
 method to copy a few changed bookmarks.</p>
 
+<p>Some remarks:</p>
+<ul>
+  <li>sqlite3 FILE.SQLIST vacuum can be used to clean a sqlite file when firefox is not running.
+  <li>a cheap trick on getting at sqlite content (read-only): ask the user to leave the browser 
+     idle for a few seconds, then just cp the sqlite file of interest. The data should have
+     been flushed to disk, and copying will break locks and make the contents accessible again.
+  <li>userChrome.css contains a collection of settings to somewhat reduce the wasted
+     screen real estate. To further reduce wastage, hide navbar and bookmark bar and configure
+     the menubar to show the url field and forward/back/stop/reload (small-icons/no-text).
+     With above Chrome settings, even microfox(sp?) isn't able to reclaim much more space :).
+  <li>My required minimum of addons to start using firefox:
+  <ul>
+     <li>System: Addblock Plus, Add N Edit Cookies (if necessary modify the jar and 
+         edit the version number to allow installation; I've yet to see a worthwile substitute), 
+         Noscript,  Secure Login, User Agent Switcher, ModifyHeaders, JSView.
+     <li>Usability: AOIS Sidebar, Tabkit.
+     <li>Usability 2: AutoPager.
+     <li>Usability &amp; nice to have: SplitBrowser, ResurrectPager, GreaseMonkey
+     <li>Information Overload: NewsFox (though firefoxgrep goes a long way to deal with
+         periodic weekly or monthly site visits: create a folder like watch/news.weekly, and ask
+         the wrapper with 'firefox -weekly' to grep for urls and folders ending in weekly. 
+         Alternatively, just open each '*.weekly' folder from the bookmarks menu, selecting
+         open all)
+     <li>Information Overload &amp; nice to have: Zotero's local data store's actually quite accessible
+         using a little bit of sql/sqlite. So that's another nice tool, and it is possible
+         to extract things from Zotero using the command line.
+     <li>xul/migemo <i>would be very nice as well</i> if it wouldn't crash on me as soon as 
+        I try to search using regular expressiones.
+   </ul>
+</ul>
+
 <H3>Commands</H3>
 
 <ul>
-   <li><b>firefox</b> (rather ugly and with grown warts; actually nowadays, firefox 3.5 finally 
-       implements some of the same; took only the better part of a decade)
-   <li><b>firefoxcookies</b> (dump cookies.sqlite) 
+   <li><b>firefox</b> is a rather ugly script with grown warts; actually nowadays, 
+       firefox 3.5 finally implements some of the features I'm using this wrapper
+       for. Note that to directly load a set of urls from a file firefox.-NAME, 
+       you need to add -NAME to the list of shortcuts in the script (search for shortcut;
+       firefox.-example is an example file for this).
+   <li><b>firefoxcookies</b> dumps cookies.sqlite.
    <li><b>firefoxdelta</b> (differences in bookmarks)
    <li><b>firefoxgrep*</b> (grep both html and sqlite bookmarks)
    <li><b>firefoxstdin</b> (given urls or look up commands on stdin, mangles them and

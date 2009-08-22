@@ -1,0 +1,110 @@
+#!/usr/bin/perl 
+
+# usage e.g. cat POSTSCRIPT | mypsnup -2 -Poj
+# careful, things like acroread might like to eat ENV
+
+$ENV{PATH}.=":/usr/bin:/usr/local/bin:$ENV{HOME}/bin:$ENV{HOME}/bin-shared:/root/bin:/root/bin-shared";
+
+open(main::STDOUT,">/home/jakobi/.mypsnup.debug");
+foreach(sort keys %ENV) {
+   print FH "$_=$ENV{$_}\n";
+}
+close FH;
+
+# notes: 
+# - lj, oj.* are shortcuts and should be mapped to existing printers on-site
+# - requires A4 in /etc/papersize [or psnup will remove parts of input instead of reading input]    
+# - psnup -p (OUTPAPER)SIZE -P INPAPERSIZE to convert
+# - on anuurn: invoke as mypsnup -Plj@kefk # but avoid -o raw, as lprng hates that option, use -l instead as per default
+# - use acroread -toPostScript *pdf . to convert problem cases to postscript for pixelbased printouts
+#   [normally I'd just use this script as the print command from within acroread or firefox]
+
+# avoid triggering the lpr wrapper
+delete $ENV{MOZ_LAUNCHED_CHILD};
+delete $ENV{ADDON_PATH};
+
+$MYPSNUPPRT=$ENV{MYPSNUPPRT};
+$MYPSNUPPRT=$ENV{PRINTER}     if not $MYPSNUPPRT; 
+$MYPSNUPPRT="oj"              if not $MYPSNUPPRT and $0=~/oj/;
+$MYPSNUPPRT="lj\@kefk"        if not $MYPSNUPPRT;
+$MYPSNUPFMT=$ENV{MYPSNUPFMT};
+$MYPSNUPFMT=-1                if not $MYPSNUPFMT and $0!~/up/;
+$MYPSNUPFMT=-4                if not $MYPSNUPFMT;
+$MYPSNUPOPT=$ENV{$MYPSNUPOPT};
+$MYLPROPT  =$ENV{$MYLPROPT};
+
+while(@ARGV) {
+   $_=$ARGV[0];
+   /^-[Pd](.*)$/ and do{$MYPSNUPPRT=$1; shift; $MYPSNUPPRT=shift if not $MYPSNUPPRT; next};
+   /^-([8421])$/ and do{$MYPSNUPFMT=-$1; shift; next};
+   /^-(gs|pix)$/ and do{$pix=1; $gsdev=lj5gray if not $gsdev; $gsres=1200 if not $gsres; shift; next};
+                 # ignores printer-set duplex defaults, but at least it prints. somehow.
+   last;
+}
+$ARGV[0]="/dev/stdin" if  "-" eq $ARGV[0];
+push @ARGV, "/dev/stdin" if not @ARGV;
+
+$psnup      = "cat";     $psnup    = "psnup $MYPSNUPFMT $MYPSNUPOPT -m0.5cm" if $MYPSNUPOPT or $MYPSNUPFMT ne "-1";
+# GS is single-sided and usable for oj/dj and similar printers
+$gsdev      = "lj5gray"; $gsdev    = "cdjcolor" if $MYPSNUPPRT =~ /^oj/;
+                         $gsdev    = "cdjmono"  if $MYPSNUPPRT =~ /^ojmono$|^dj$/;
+$gsres      = 1200;      $gsres    = 300 if $MYPSNUPPRT =~ /^(oj(mono|color|)|dj)$/;
+# just don't ask why 300; 600 just prints the left/top of the page instead
+# i thought it could print 600dpi, but maybe cdjcolor+my hw has restrictions in color??
+$MYPSNUPPRT = "oj"       if $MYPSNUPPRT =~ /^oj(mono|color)$|^dj$/;
+$gs         = "cat";     $gs       = "gs -dSAFER -r$gsres -q -dNOPAUSE -dBATCH -sDEVICE=$gsdev -sOutputFile=- -" if $MYPSNUPPRT eq "oj" or $0=~/pix/i or $pix;
+$MYLPROPT  .=" -l "      if $MYPSNUPPRT eq "oj" or $gs ne "cat";
+$psselect   = "cat";     $psselect = "psselect -r" if $MYPSNUPPRT eq "oj";
+$lpr        = "lpr";
+
+# site specific mapping of oj/lj short cuts (in case we're using gs)
+$MYPSNUPPRT = "oj"   if $MYPSNUPPRT =~ /^oj$/;
+$MYPSNUPPRT = "lj"   if $MYPSNUPPRT =~ /^lj$/;
+
+if ($MYPSNUPPRT=~/@/) {
+   $lpr="lprng";
+}
+
+foreach (@ARGV) {
+   next if not /\S/;
+   print "mypsnup: printing $_\n";
+   s/'/\\'/g;
+   print "mypsnup: ". "cat /dev/null '$_' | $psnup | $psselect | $gs | $lpr -P$MYPSNUPPRT $MYLPROPT $RAW". "\n";
+   system             "cat /dev/null '$_' | $psnup | $psselect | $gs | $lpr -P$MYPSNUPPRT $MYLPROPT $RAW";
+   if ($?) {
+      print "# lpr err -- in case of wrong printer name, use eg: export MYPSNUPPRT=lj\@kefk.compact\n"
+   }
+}
+
+# gs -dNOPAUSE -dBATCH -sDEVICE=lj5mono -sOutputFile=X logging.ps.4ps (see also mypixup)
+#
+# output starts with : %-12345X@PJL ENTER LANGUAGE = PCLXL
+#) HP-PCL XL;1;1;Comment Copyright Aladdin Enterprises 1996^@   <--- NULL
+#
+#
+#lj doesn't seem to like pcl3 ???
+#per ftp lj: put X 1
+#
+# stp: -> gimp print drivers
+# omni: not installed (ibm printer drivers); via server we can even set 
+#       device options...
+# To list all foomatic printer entries for omni
+#        foomatic-configure -X -d omni
+#        OmniDevices
+#   -sDEVICE=omni
+#     This selects the omni driver.
+#   -sDeviceName=XXX (this selects the the printer device) (libXXX.so) 
+#                    (e.g. a current hp laserjet 8000, etc)
+# see also -> dj drivers, incl. photo options, see doc/packages/ghostscript
+#
+# 2up as pdf:
+# psnup -2 -m0.5cm ocaml.ps > ocaml.2ps
+# gs -dNOPAUSE -dBATCH -sDEVICE=pdfwrite  -sOutputFile=ocaml.2pdf ocaml.2ps
+# however, this includes now font info and is about 4* bigger...
+# or
+#  pstops '4:0L@.7(21cm,0)+1L@.7(21cm,14.85cm),2L@.7(21cm,0)+3L@.7(21cm,14.85cm)' IN OUT
+# however, reversing the second page doesnt PRINT IT AT ALL
+# --> there are a few things re tumble option, but this fails when
+#     viewing or pdf-generating, as it's a lowlevel printer duplex option
+#
+# psnup -4 -m0.5cm $i | gs -dSAFER -r1200 -q -dNOPAUSE -dBATCH -sDEVICE=lj5gray -sOutputFile=- - | lpr -l -P$MYPRINTER

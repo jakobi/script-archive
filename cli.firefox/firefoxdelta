@@ -1,0 +1,35 @@
+#!/usr/bin/perl
+
+while($_=shift @ARGV) {
+   /^-i$|^--?stdin$/ and do { $stdin=1; next};
+   /^-toshi$/        and do { $toshi=1; next};
+   /()/              and do { die "usage: $0 [-stdin] [-toshi]" };
+}
+
+$toshi="ssh toshi bin/firefoxgrep -skiprss .; " if $toshi;
+$stdin="cat -; "                       if $stdin;
+$f=$ENV{HOME}."/.firefox";
+
+system "for i in main in ign all new.cur new.all; do test -f $f.\$i || touch $f.\$i ; done";
+system "( $toshi $stdin : ) |  sort -u > $f.in";
+# use the main profile to consolidate against
+system "( firefoxgrep -skiprss . )   |  sort -u > $f.main";
+system "cat $f.main $f.main $f.in $f.ign $f.ign | sort | uniq -u > $f.new.all";
+system "cat $f.main $f.main $f.in $f.all $f.all $f.ign $f.ign | sort | uniq -u > $f.new.cur";
+
+print <<EOF;
+
+to handle or check bookmarks not yet in your main profile:
+   f=$f
+
+   vi $f.new.all
+   vi $f.new.cur
+
+   firefoxstdin < \$f.new.all # open tabs for all new urls
+   firefoxstdin < \$f.new.cur # open tabs for new urls from this run
+
+   cat \$f.main \$f.new.all | sort -u > \$f.all # known urls
+   cat \$f.new.all | sort -u > \$f.ign          # ignore urls
+
+EOF
+system "wc -l $f.new*|grep -v total\$";

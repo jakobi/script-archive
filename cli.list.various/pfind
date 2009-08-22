@@ -1,0 +1,250 @@
+#!/bin/sh
+#!perl
+eval 'exec perl -Sx $0 ${1:+"$@"}'
+   if 0;
+
+# changes jakobi@acm.org (fork 199x?)
+# - noise (comment/help)
+# - error report / avoid clobbering in case of collision
+# - error report of rename return code
+# - globbing of initial arg
+# 20090808 PJ added version string
+$version = "1.5pj";
+
+# From: ilya@math.ohio-state.edu (Ilya Zakharevich)
+# So if you do not want to
+# descend into directories, just do
+# 	rnm '$_ = lc'
+# (with 5.004 or close, with perls which are older than a week you need
+# 	rnm '$_ = lc $_'
+# ).
+# 
+# I wrote a similarly nice tool which does a similar thing to
+# "find". Use it like this:
+# 	pfind . '$_ = lc'
+# 
+# To lowercase only the files which contain 'blah', do
+# 	pfind . /blah/ '$_ = lc'
+
+# 1.5: correctly open files with leading/trailing spaces in names.
+
+sub usage {
+
+  print <<EOF;
+
+usage for version $version:
+$0 [-debug] startpath            rule1 rule2 ...
+$0 [-debug] startpath ... -rules rule1 rule2 ...
+
+version: $version
+
+If startpath does not exist, it is assumed to be a shell pattern to be
+expanded  by  glob().  If -rules is given, all earlier  arguments  are
+assumed  to be startpath arguments, e.g. results of pattern  expansion
+by the shell.
+
+Rules  are  perl statements to execute. Statements starting with  '-',
+'/',  or  '!' are considered filters, a file will be discarded  unless
+the statement returns true. The rest is executed "as is".
+
+If  only  filters are given the default action is 'prt'  (see  below).
+Variables  \$_,  \$name, \$dir contain the file name, full file name  and
+the name of the directory. Statements are executed in the directory of
+the each processed file. Symbolic links are not followed.
+
+If  file is not discarded, and \$_ is changed after the perl statements
+are  executed,  the file is renamed to the new value of \$_ unless  the
+target already exists or -debug is given.
+
+Convenience  functions:  'prt' prints \\n-terminated name of the  file,
+'prt0'  ditto,  \\x00-terminated,  and  'prune'  avoids  descent   into
+directories.  Mappings for find-style options -type and -print/-print0
+exist.
+
+If  a  rule  starts with '=~', it is considered as a filter  to  match
+contents  of the file. The rest is the regular expression to match. If
+regexp  contains modifiers 's' or 'm', it is matched against the  file
+as  a  whole,  otherwise  it is matched  line-by-line.  No  output  is
+generated  by this rule; the file contents cannot be modified by  this
+rule.
+
+If  the regexp-filter fails, file processing stops. Otherwise whatever
+was matched against is available in the variable \$line.
+
+
+Examples:
+  - pfind . prune '/^.\$/' -f          # list plain files ./?
+  - pfind . prune '/^.\$/' -f 's\@x\@a\@' # and rename one
+  - pfind . /EXPR/      =^= find|grep EXPR
+  - pfind . '=~/EXPR/'  =^= find -exec grep -l EXPR /dev/null {} \\;
+    just prints the name of files containing lines matching EXPR
+
+Bugs:
+  - add more find-option mappings
+  - maybe add options like following symlinks, find -xdev or sorting
+
+EOF
+
+  exit; 
+}
+
+# default rule: prt
+sub prt {print "$File::Find::name\n"}
+
+sub prt0 {print "$File::Find::name\x00"}
+
+# rule prune: avoid recursion into dirs
+sub prune {$File::Find::prune=1 if -d $_ and $_ ne "."}
+
+
+# generate code for &wanted
+sub wrapper {
+  my $regexp = shift;
+
+  return <<EOF if $regexp !~ /\w*[sm]\w*\s*$/; # Single line processing
+
+  return unless -f;
+  local \$_ = \$_;
+  s|^(\\s)|./\$1|;
+  s/(\\s+)\$/\$1\\0/;
+  open FILE, \$_ or die "cannot open \$_: \$!";
+ LINE: while (defined (\$line = <FILE>)) {
+    \$found = 1, last if \$line =~ $regexp;
+  }
+  close FILE or die "cannot close \$_: \$!";
+  return unless \$found;
+EOF
+
+  # Multiline processing:
+  return <<'EOF' . <<EOF1;
+
+  {
+    return unless -f;
+    local $/ = undef;
+    local \$_ = \$_;
+    s|^(\\s)|./\$1|;
+    s/(\\s+)\$/\$1\\0/;
+    open FILE, $_ or die "cannot open $_: $!";
+    $line = <FILE>;
+    close FILE or die "cannot close $_: $!";
+EOF
+    return unless \$line =~ $regexp;
+  }
+EOF1
+}
+
+
+my $start = shift;
+my @start;
+
+usage unless @ARGV;
+$debug = 1, $start = shift if $start eq '-debug';
+
+# collect and possibly expand start path array for find
+@start=($start);
+if ($rules=grep /^-rules$/, @ARGV) {
+   while(@ARGV){
+      $_=shift;
+      last if /^-rules$/;
+      push @start, $_;  
+   }
+} else {
+   @start=glob($start) if not -e $start;
+}
+foreach (@start) {
+   die "Start path '$_' not found.\n" if not -e $_;
+}
+die "Start path '$start' not found / cannot be globbed.\n" if not @start;
+
+for($i=0;$i<=$#ARGV;$i++) {
+   $ARGV[$i]='prt'  if $ARGV[$i] eq "-print";
+   $ARGV[$i]='prt0' if $ARGV[$i] eq "-print0";
+   $ARGV[$i]='',$ARGV[$i+1]="-$1" if $ARGV[$i] eq "-type" and $ARGV[$i+1]=~/^([bcdpfl])$/;
+   $ARGV[$i]='',$ARGV[$i+1]="-S"  if $ARGV[$i] eq "-type" and $ARGV[$i+1]=~/^[s]$/;
+}
+@ARGV=grep /./, @ARGV;
+
+# compute number for filters - check if we append prt default rule
+my $NF = 0;  # no of filter arguments and default rules excl. print
+map { $NF++ if m:^([-/!]): or m/^=~/ or m/^(prune)$/ } @ARGV;
+
+#PJ
+# convert filters to conditionally-terminating perl statement rules
+# /    /REGEXP/
+# -    -EXPR        , arbitrary choice to somehow allow use of
+#                     numerics / booleans in boolean context;
+#                     e.g. -f as a file test on $_.
+#                     With ! being added as a shortcut for 
+#                     negated -(not / ... /) or -(! ...) and 
+#                     /.../ as a shortcut for a positive string
+#                     match. The unary - of course doesn't 
+#                     change the semantic of the return anyway
+#                     as would a + or the omission of the
+#                     special filter-begins char...
+# !    !NEGATED BOOLEAN EXPR, usually '! ( E1 and E2 )' etc...
+
+@rows=@ARGV;
+my @rows = map { s:^([-/!]):return unless $1: ; $_ } @rows;
+
+# convert/wrap full-text grep =~-filters to full perl statement rules
+@rows = map { s! ^ =~ (.*) ! wrapper($1) !xes ; $_ } @rows;
+
+# combine the converted rules with the remaining full statements
+# as code for &wanted
+my $text = join ";\n  ", @rows;
+   $text.= ";\n  prt"  if $NF == @ARGV;
+
+my $setup = <<'EOS';
+  my $name = $File::Find::name;
+  my $dir  = $File::Find::dir;
+  my $was = $_;
+  my ($line, $found);
+EOS
+
+# PJ
+# rename($was,$_) unless $was eq $_;
+my $finish = <<'EOS';
+  if (not $was eq $_) {
+     if (not -r $_) {
+        if ($main::debug) {
+           print "rename($was, $_).\n";
+	} else {
+           warn "error:     $was -> $_\n" if not rename ($was,$_);
+	}
+     } else {
+        warn "collision(debug=$debug): $was -> $_\n";
+     }
+  }
+EOS
+
+my $wanted = <<EOW;
+sub {
+$setup
+  $text;
+$finish
+}
+EOW
+
+
+print "$wanted\n" if $debug;
+my $sub = eval $wanted;
+$err=$@;
+
+if (not $rules and $ARGV[0] and -e $ARGV[0]) {
+   warn "WARNING - rule/filter exists also as filename!
+You may wish to restart with the -rules option. Sleeping 20.\n 
+"; $sleep=1;
+}
+if (grep /^-(i?(name|path|regex)|xtype|perm|uid|user|inum|gid|group|size|[ac]?newer|[mac](time|min))$/, @ARGV) {
+   warn "WARNING - you seem to use unmapped find-style options!
+If this is correct, please rewrite using perl semantics 
+(consult e.g. find2perl). Sleeping 20.\n 
+"; $sleep=1;
+}
+die $err if $err;
+sleep 20 if $sleep;
+
+
+use File::Find;
+
+File::Find::find ( $sub, @start );

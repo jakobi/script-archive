@@ -1,0 +1,68 @@
+#!/usr/bin/perl
+
+# randomize lines
+
+# created     PJ 2002XXXX jakobi@acm.org
+# last change PJ 20090609
+# copyright:  GPL v3 or later
+my $version="0.1";
+
+$o_n="\n";
+
+@argv=@ARGV;
+while(@ARGV){
+   $_=shift;
+   if   (/^-?-echo$/){$o_echo=1; next}
+   elsif(/^-?-cat$/) {$o_cat=1; next}    # unused; default behaviour
+   elsif(/^-?-n$/)   {$o_n=""; next}
+   elsif(/^-h$|^-?-help$/)   {&help;exit 1}
+   elsif(/^--?$/)  {last}
+   else            {unshift @ARGV, $_; last}
+};
+
+sub help {
+   print <<EOF;
+$0 FILES
+
+version: $version.
+
+by default read each FILE and print it _separately_ in randomized line
+order  (cat-behaviour).   Uses  /dev/stdin  if no FILES are specified;
+this can also be used to randomize multiple files "together".   Switch
+-echo chooses echo-like behaviour.
+
+Options:
+   -cat      default cat-style behaviour (arguments are files)
+   -echo     echo-style behaviour (arguments are echoed immediately).
+   -echo -n  ditto, suppress linefeed on output
+
+See also: 
+   - randomize (echo-style)
+
+EOF
+}
+
+if ($o_echo) {
+   print join(" ", @{&randomize(\@ARGV)}), $o_n;
+} else {
+   #undef $/;
+   $|=1;
+   @ARGV=qw@/dev/stdin@ if not @ARGV;
+   while(@ARGV){
+      $_=shift;
+      @l=();
+      open(FH, "< $_") and @l=<FH>;
+      print(@{&randomize(\@l)}) if @l;
+   }
+}
+
+exit;
+
+####################################3
+
+sub randomize {
+   # schwartzian transform: randomization unsort
+   return [ map { $_->[1] } 
+            sort{ $a->[0] <=> $b->[0] } 
+	    map { [ rand(), $_] } @{$_[0]} ];
+}

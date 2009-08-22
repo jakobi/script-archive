@@ -1,0 +1,58 @@
+warn "# loading config sfre.sfrerc\n" if $o_verbose >1;
+
+# # in a configuration file, you can set/unset option variables,
+# # define additional files to lock, file-specific action, ...
+# 
+# ## global variables of interest:
+# # $journal   the journal
+# # $backupdir the changetrack repository
+# # the description variables:
+# # - $o_user
+# # - $o_domain
+# # - $o_message
+# 
+# 
+# ## hooks
+# 
+# # hook variables are available for evaluation by sfre.
+# # these can be e.g. checking out a not-yet existing file
+# # in action1 to e.g. an action3 to send an email on change
+# # or invoke a make/ypmake/newaliases on change.
+# 
+# # variables of interest:
+# # - $_ is the argument string or filename
+# 
+# # available hooks in temporal order:
+# 
+# # 1) before locking
+# # against argument array (possibly not filenames, but command args).
+# # check before locking, can be checked a second time in a different
+# # process instance after locking. can create files to be included
+# # in the locking.
+# $action1{"/etc/passwd"}='{warn "A1 triggered /etc/passwd\n"}';
+# 
+# # 2g) global hook
+# #$preaction
+# 
+# # 2) before execution
+# # checked before journal and versioning, existing plain files only
+# $action2{"/etc/passwd"}='{warn "A2 triggered /etc/passwd\n"}';
+# 
+# # 3) after execution, changed files
+# # checked after command execution, just existing plain files
+# # with changed # mtime/ctime timestamps
+# $action3{'/\.bashrc'}=  '{warn "A3 triggered on a bashrc: $_\n"}';
+# 
+# # 4) after execution
+# # checked after command execution, all existing plain files only
+# $action4{"/etc/passwd"}='{warn "A4 triggered /etc/passwd\n"}';
+# $action4{"/etc/group"}= '{warn "A4 triggered /etc/group\n"}';
+# 
+# # 4g) global hook
+# # $postaction
+
+
+
+# don't forget to signal the success of reading your config with true :)
+1;
+ 

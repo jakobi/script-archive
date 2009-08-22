@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# display or cancel a rather visible OSD ALERT 
+
+osdsh=$(which osdsh)
+osdctl=$(which osdctl)
+osdcat=$(which osd_cat)
+tty=$(tty|sed 's@/dev/@@')
+time=$(date +%H:%M)
+
+export tmp=$(echo "$msg" | tr '()' '{}')
+
+msg="$*";
+[ "$msg" != "" ] && msg="$tty{$time}${1:+: $*}";
+
+
+# moved here from ALERT in each case
+
+
+# (1) osdsh / osdctl
+#    clear: kill or osdctl -s "" 
+#    BUG wrt ')', which ends the string
+#$osdctl -S ~/.osdsh0 -s "$tmp" 2>/dev/null || { 
+#         nohup $osdsh 2>/dev/null & 
+#         { sleep 3; $osdctl -S ~/.osdsh0 -s "$tmp" ; } &
+#} 
+
+# (2) libxosd2 / osd_cat
+# or this one, either overprinting each other or currently 
+# tailing a log and scroll - starting a tail pipe if not running 
+# oi: top left pixel offset; 3 lines; outlinepixels 2
+# 40000s after end of input and an annoyance of a font
+export l=/tmp/osd_log
+test -x "$osdcat" && 
+test '!' -L $l -a '!' -d $l && touch $l && test '!' -L $l -a '!' -d $l && 
+{
+   ps -ef | egrep "osd[_]cat -o 30 -i 10 -l 3 -O 2 -d 40001" >/dev/null || { 
+      echo "#btw, from now on, text appended to $l is also displayed" 1>&2
+      tail -f $l | $osdcat -o 30 -i 10 -l 3 -O 2 -d 40001 -f '-*-lucidatypewriter-bold-*-*-*-*-240-*-*-*-*-*-*' &
+      # sleep 3 - no race b/c tail -f
+   }
+   { echo "$msg" >> $l ;} &
+}
+
+# NOTE: tail -f seems to miss anything appended to the file 
+#       from truncation event to next check by tail
+#       so { > $l; sleep 2; echo new data >> $l; } is safer...

@@ -1,0 +1,223 @@
+#!/usr/bin/perl
+
+# basically create a readable version of xml-ish files like firefox sessionstore,
+# optionally grepping some values within sessionstore files
+
+# 20090213 PJ   0.1  jakobi@acm.org initial version
+# 20090729 PJ   0.2  small fixes for ff3.5
+#
+# copyright:  (c) 2009 jakobi@acm.org, placed under GPL v3 or later 
+my $version="0.2";
+
+
+undef $/;
+$anonprefix="";
+$anonstart=1;
+
+while($_=shift @ARGV) {
+   /^-i$/    and do{ $igncase=1; next};
+   /^-t$/    and do{ $titlegrep=1; next};
+   /^-file$/ and do{ $file=shift; next};
+   /^-list$/ and do{ $cmd.=" list "; next};
+   /^-cookies$/ and do{ $cmd.=" cookies "; next};
+   /^-tree$/ and do{ $cmd.=" tree "; next};
+   /^-treeview$/ and do{ $cmd.=" treedump "; next};
+   /^-listview$/ and do{$cmd.=" print "; next};
+   /^-grep$/ and do{ $grep=shift; next};
+   print <<EOF;
+$0 [OPTIONS]
+
+read an xml-ish file and return a readable or tree version.
+
+options:
+  -file FILENAME # defaults to mozilla sessionstore file
+  -grep REGEX    
+  -i / -t        # grep: ignore case, include title
+  
+  # these try to print only tabs
+  -list          # list or grep urls from sessionstore file (default)
+  -cookies       # generate cookies.txt-style output from sessionstore
+  -tree          # list or grep urls from parsed sessionstore (active tabs only)
+
+  # view sessionstore.js style files (might also prettyprint paranthesed data)
+  -treeview
+  -listview
+
+notes:
+  - mozilla may take quite a few seconds to update the sessionstore.js file,
+    so sleeping is advised.
+
+EOF
+   exit;
+}
+
+
+$file="$HOME/.firefox/sessionstore.js" if not $file;
+if (not -f $file) {
+   # allows for migration from firefox to a hopefully more current firefox-<...>
+   my    $firefoxhome=`ls -dr1 ~/.mozilla/firefox{,-*}| head -1`; 
+   $firefoxhome=~s/\n//g;
+   chomp($file=`ls -dt1 $firefoxhome/*default/sessionstore.js 2>/dev/null | head -1`);
+}
+if($file) {
+   warn "# opening $file\n";
+   open(FH,"< $file") and $contents=<FH>; close FH;
+}
+die "no input.\n" if not $contents;
+
+
+$cmd=" list " if not $cmd;
+$grep="(?i)$grep"; # extends beyond '|', but not beyond an enclosing ')'
+$titlegrep=$grep if $titlegrep;
+
+
+# common init for tree/treedump
+$cmd=~/ tree | treedump / and do{ 
+                             $tree=&tree; 
+                             #use Storable qw/freeze thaw/; $Storable::canonical=1; print freeze($tree);
+                             #use FreezeThaw qw/freeze thaw/; print freeze($tree);
+                             
+                             use Data::Dumper; 
+                             $Data::Dumper::Indent=1;
+                             # lex sort in general, but pairs of numbers in numeric order please - may show a few oddities for inputs like 000a and 002 and 43b
+                             $Data::Dumper::Sortkeys=sub{my($hash)=@_;return[sort {($a=~/\A[\d]+\Z/o and $b=~/\A[\d]+\Z/o) ? $a<=>$b : $a cmp $b} keys %$hash]};
+                            };
+
+$cmd=~/ treedump /    and do{ 
+                             print Dumper($tree);
+                            };
+$cmd=~/ tree /        and do{ 
+                             $node=$tree;
+                             $node=$node->{$anonprefix.$anonstart} while defined $node and not $node->{windows}; $node=$node->{windows} or die "no window no tabs.";
+                             foreach $w (map {$node->{$_}} sort keys %$node) {
+                                foreach $t (map {$w->{tabs}->{$_}} sort keys %{$w->{tabs}}) {
+                                   $e=$t->{entries}->{$anonprefix . ( $t->{index}-1+$anonstart )};
+                                   $url=  $e->{url};
+                                   $title=$e->{title};
+                                   if ($grep) {
+                                   #print Dumper($t);
+                                      print "$url\n" if $url=~/$grep/o or $title=~/$titlegrep/o;
+                                   } else {
+                                      print "$url\n";
+                                   }
+                                }
+                             }
+                            };
+
+$cmd=~/ cookies /     and do{ 
+                             $node=&tree;
+                             $node=$node->{$anonprefix.$anonstart} while $node and not $node->{windows}; $node=$node->{windows} or die "no window no tabs.";
+                             foreach $w (map {$node->{$_}} sort keys %$node) {
+                                foreach $c (map {$w->{cookies}->{$_}} sort keys %{$w->{cookies}}) {
+                                   $t="";
+                                   $c->{httponly}              and $c->{ishttponly}= $c->{httponly};
+                                   $c->{secure}                and $c->{issecure}  = $c->{secure};    # force use of prefix _is_ like in cookies.sqlite!
+                                   $c->{ishttponly} eq 'false' and $c->{ishttponly}= 0;               # values in sqlite: int (true values other than 1?)
+                                   $c->{issecure}   eq 'false' and $c->{issecure}  = 0;
+                                   $c->{ishttponly}                                = 0!=$c->{ishttponly} ? "TRUE" : "FALSE";  
+                                   $c->{issecure}                                  = 0!=$c->{issecure}   ? "TRUE" : "FALSE";
+                                   $c->{expiry}                or  $c->{expiry}    = time + 38640000; # more than a year from now 
+                                   foreach (qw/ host ishttponly path issecure expiry name value/) {
+                                      $t.="\t" if $t;
+                                      $t.=$c->{$_};
+                                   }
+                                   print $t,"\n";
+                                }
+                             }
+                            };
+
+$cmd=~/ print /       and do{print &readable};
+$cmd=~/ list /        and do{print &tab2list};
+
+exit;
+
+#--------------------------------------------------------------------
+
+# return readable representations of paranthesed data:
+# arithmetics using substr/pos: 
+# perl -e '$a="123456789"; $a=~/45/g; print pos $a, " $` $& $'"'"' ", substr($a,0,pos $a), " ", substr($a, pos $a), "\n"'
+
+# for now all routines operate on main::$_ directly
+
+# for the sessionstore.js file: 
+# mozilla: typically this is an implicit tree, with strings and levels implying semantics
+#    (        ??? - anyway, we have only one pair, encapsulating the whole mess.
+#    [        denoting list of objects (implying that "{" denotes object cum structure)
+#             (the children: retain the urls for frames / iframes, required if the topurl does not change)
+#    string:  name of object or object attribute
+
+# why are cookies and hosts associated with the window instead of the session!?
+
+sub tree {
+   local($_)=$contents;
+   pos=undef;
+   return tree1();
+}
+sub tree1 {
+   # for now operating on $_ directly with side effects
+   # BUG: the anonymous element naming is a bit risky...
+   my($node,$offset,$level,$anon,$name,$value);
+   my %node=();
+   $anon=$anonstart;
+   while(1) {
+      if (not defined $name) { $name=$anonprefix.$anon++; }
+      /\A\s+/go      and do{$_=substr($_,pos);next};
+      /\A\(/go       and do{$_=substr($_,pos); $node{$name}=&tree1(); $name=undef};
+      /\A\[/go       and do{$_=substr($_,pos); $node{$name}=&tree1(); $name=undef};
+      /\A\{/go       and do{$_=substr($_,pos); $node{$name}=&tree1(); $name=undef};
+      /\A,/go        and do{$_=substr($_,pos); $node{$name}=$value if $value; $name=undef};        
+      /\A:/go        and do{$_=substr($_,pos); $name=$value; $value=undef;};
+      ( /\A"([^\\]*?(\\[\S\s])?)*?"/go or 
+        /\A'([^\\]*?(\\[\S\s])?)*?'/go )
+                     and do{$value=substr($_,1,pos()-2);$_=substr($_,pos);};
+      /\A[^ \t,\{\[\(\}\]\)\x0a\x0d'":]+/go
+                     and do{$value=substr($_,0,pos);$_=substr($_,pos);};
+      /\A[\)\]\}]/go and do{$_=substr($_,pos);last};
+#     /()/go         and do{last};
+      not $_         and do{last};
+   }
+   if (not defined $name) { $name=$anonprefix.$anon; }
+   if ($value) {$node{$name}=$value};
+   return \%node;
+}
+
+sub readable {
+   my(@return,$offset,$level);
+   $offset=2;
+   local($_)=$contents;
+   pos=undef;
+   while(1) {
+      # expr                  outbuf or output outbuf                                              delta out-offset                    clear outbuf
+      #                                                                                                             set new inbuf               loopcontrol
+      #
+      /\A[\t ]+/go      and do{$out.=substr($_,0,pos)                                      if $out;                  $_=substr($_,pos);          next};
+      /\A"([^\\]*?(\\[\S\s])?)*?"/go
+                        and do{$out.=substr($_,0,pos);                                                               $_=substr($_,pos);          next};
+      /\A'([^\\]*?(\\[\S\s])?)*?'/go 
+                        and do{$out.=substr($_,0,pos);                                                               $_=substr($_,pos);          next};
+      /\A[\{\(\[]/go    and do{push @return, " " x $level . $out . substr($_,0,pos) . "\n";         $level+=$offset; $_=substr($_,pos); $out=""; next};
+      /\A[\}\)\]],?/go  and do{push @return, " " x $level . $out                    . "\n" if $out; $level-=$offset;
+                               push @return, " " x $level        . substr($_,0,pos) . "\n";                          $_=substr($_,pos); $out=""; next};
+      /\A,/go           and do{push @return, " " x $level . $out . substr($_,0,pos) . "\n";                          $_=substr($_,pos); $out=""; next};
+      /\A[\x0a\x0d]+/go and do{push @return, " " x $level . $out . substr($_,0,pos) . "\n";                          $_=substr($_,pos); $out=""; next};
+      /\A[^ \t,\{\[\(\}\]\)\x0a\x0d'"]+/go 
+                        and do{$out.=substr($_,0,pos);                                                               $_=substr($_,pos);          next};
+#     /()/go            and do{push @return, " " x $level . $out .                    "\n" if $out;                                     $out=""; last};
+      not $_            and do{push @return, " " x $level . $out .                    "\n" if $out;                                     $out=""; last};
+   }
+
+   return @return;
+}
+
+sub tab2list {
+   my($url,@return);
+   local($_)=$contents;
+   pos=undef;
+   while(/url:"(\S+?)"/g){
+      $url=$1; 
+      next if $grep and $url!~/$grep/o; 
+      next if $url{$url}++;
+      push @return, "$url\n";
+   }
+   return @return;
+}

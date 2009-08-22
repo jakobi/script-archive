@@ -1,0 +1,178 @@
+#!/usr/bin/perl
+
+# 20090710 PJ   0.1  jakobi@acm.org initial version
+#
+# copyright:  (c) 2009 jakobi@acm.org, placed under GPL v3 or later 
+my $version="0.1";
+
+
+# parse filename lists using shell word rules
+
+# NOTE these regexes intentionally neither parse shell multi-line 
+#      strings (., \h) nor HERE statements!  Furthermore, it considers
+#      \0 valid in contrast to the shell...
+#      furthermore, it does NOT allow for $(...) in double quoted strings
+#      which indeed seems to be implemented recursively in contrast to
+#      the on/off nature of the rest of quoting:
+#        echo2cat "$(echo "* ) a:b c:c:a")" # returns 1 ARG:
+#                 "* ) a:b c:c:a"
+#      illogical, but avoids some extra quotes
+# to use: use (?x) modifier; re_line requires stripping IRS and \n
+
+# add semicolon here to have it end a word 
+$re_bwordAlsoEnd=';'; 
+
+$re_bword  ='(?:(?: \\\\\\\\   |   \\\\.   |    [^"\'\s' . $re_bwordAlsoEnd  . '] )+)';
+$re_bwordsq='(?:(?:(?!\').)+)'; # shell single quoting guarantees no embedded \' ...
+
+# NOTE that (?<start>...) also claims a capture buffer number, 
+#      messing up outside use of buffer numbers
+#      to avoid this effect on matching re_qword, 
+#      consider matching it as: (?? { $re_qword })
+#$re_qword ='(?:(?<start>  ["\'] )    
+#                      (?: '.$re_bword.'     |   (?!\k<start>).)*
+#                \k<start>)';
+$re_qword  ='(?: 
+                  "    (?: '.$re_bword.'     |   (?!"). )*    "   |
+                  \'   (?: '.$re_bwordsq.'   |          )     \'
+             )';
+
+# comments and shall re_word match a comment/in comments?
+$re_comment='(?:(?:(?<=\h)|(?<=^))\#.*$)';
+ $re_wordNonWord='(?:'. $re_comment .'(*COMMIT)(*F))'; # dissallow matching
+#$re_wordNonWord='(*F)';                               # allow matching words at/in comments
+
+$re_word   ='(?:      (?: '.$re_wordNonWord.'|   '.$re_qword.' |  '.$re_bword.' )+      )';
+$re_line0  ='(?:^     (?: '.$re_comment.'    |   '.$re_word.'  |  [\h;]+  )*   $)';
+$re_line   ='(?:\A    '.$re_line0.'                                          \z)'; # also fail if \n at EOL
+#
+if (0) { # for testing above regex
+   while(<>) { chomp; s/($re_word)/>$1</gx; print $_,"\n"; } exit;
+}
+
+
+
+#####################################################################
+
+
+
+sub recode { 
+   my $t=$_[0];
+print main::STDERR "i:$t\n" if $o_verbose;
+   if (not $o_enc) {
+      $t=~s/\Q$o_char\E([\da-f][\da-f])/pack(C,hex($1))/geoi;
+   } else {
+      $t=~s/([\0$chars_nok]|[^\0$chars_ok])/$o_char.unpack("H2",$1)/geoi;
+   }
+print main::STDERR "o:$t\n" if $o_verbose;
+   return $t
+}
+
+sub usage {
+   print main::STDERR <<EOF;
+$0       [options]  FILES
+cat | $0 [options] 
+$0       [options] -args NAMES 
+
+quote-encode  or decode bourne-shell words (whole lines with -1). 
+
+Encoding:  Lines are split into bourne-shell words (ignoring comments,
+honoring  quoting,  ending  a word at unquoted ';'),  which  are  then
+encoded into bare words. These can be safely used in the shell without
+further  quoting.  
+
+To  encode  arbitrary  filenames  (e.g.  containing  blanks,   quotes,
+parentheses,  ';',  etc),  either provide them as  valid  shell-quoted
+filenames or raw with option -1 with one filename per line of input.
+
+Quoting  characters  surrounding the string are retained and  encoded,
+thus  turning a concatenation of quoted strings into a single  sh-safe
+bare  word  without quotes. Remember to decode the words before  using
+them as e.g. filenames.
+
+The  resultant  bare words are guaranteed to not  contain  whitespace,
+thus allowing shell word N to become e.g. sort field N. To just encode
+the whitespace within the words, use option -s; this is sufficient for
+sorting and regexes like \S*, but not safe for shell use.
+
+
+Options:
+ -= -%      set escape character (default $o_char);
+ -0         line end for input and output is \\0
+ -1         input is one word / do not split input into words
+ -d         decode
+ -e         encode (default)
+ -s         reduces encoded characters to %, =, and \\s
+ -args      use remaining arguments as input lines
+
+Bugs:
+ - \\0  is left alone by this script, however, remember that \\0 in
+   shell input or e.g. invalid utf encoding in names may be sufficient
+   to confuse the shell.
+ - \\n in filenames is NOT handled.
+ - Note that locales like utf* might add interesting new horizontal 
+   or vertical whitespace for both filenames and shell quoting rules.
+   Besides e.g. invalid characters and illegal mixed encodings. 
+   NOT handled.
+ - multi-line strings, \\-continuation or HERE statements, globs,
+   substitutions and e.g. redirects are NOT understood (or rather 
+   suffer word splitting in funny ways). 
+   If -1 is not specified, a small subset of these conditions might be 
+   detected and the containing line is prefixed by '##'.
+   In case of \\-continuation, only the containing line is changed
+   into a comment. These lines are still likely to confuse a shell.
+ - The encoding is of course NOT idempotent, but hopefully 
+   reversible (excluding the ## warnings). Not checked.
+ - see also: lessecho, shell builtin printf "%q"
+
+
+EOF
+}
+
+
+
+$chars_nok     ='';
+$chars_ok      ='a-zA-Z0-9\+/_\-';
+$o_enc         =1;
+$o_char        ='=';
+$o_words       =1;
+$o_encodeblank =0;
+$o_inputfromarg=0;
+while($_=shift,defined $_) {
+   /^-0$/       and do{$/="\0";next};
+   /^-%$/       and do{$o_char='%';next};
+   /^-=$/       and do{$o_char='=';next};
+   /^-1$/       and do{$o_words=0;next};
+   /^-d$/       and do{$o_enc=0;next};
+   /^-e$/       and do{$o_enc=1;next};
+   /^-v$/       and do{$o_verbose++;next};
+   /^-s$/       and do{$chars_ok='\S';$chars_nok='\s=\%';next};
+   /^-?-args?$/ and do{$o_inputfromarg=1;$o_words=0;next};
+   /^--$/       and last;
+   /^-[h\?]$|^-?-help$/ and do{&usage;exit 1};
+   /()/         and unshift @ARGV,$_ and last;
+}
+
+
+
+while(($o_inputfromarg and ($_=shift @ARGV, 1) or $_=<>), defined $_) {
+   chomp; # strip $/ aka IRS
+   if ($o_verbose) {
+      warn "ERR vertical $_\n"  if /[\r\n]/o;
+      warn "ERR \\0       $_\n" if /[\0]/o;
+      warn "ERR cont     $_\n"  if /[\\]\z/o;
+   }
+   if (not $o_words) {
+      $_=&recode($_);
+   } else {
+      warn "ERR no line  $_\n"  if $o_verbose and not /$re_line/xo ;
+      if (not /\A##/o and (/[\r\n\0]/o or /\\\z/o or not /$re_line/xo)) {
+         $_="##".$_;
+      } else {
+         # recode words (slight BUG: even in comments) unless line comment
+         s/$re_word/&recode(${^MATCH})/pgexo if not /\A\h*#/o;
+      }
+ 
+   }
+   print $_.$/;
+}

@@ -1,0 +1,123 @@
+#!/usr/bin/perl -w
+
+# $0 [some_path/cookies.sqlite] # just dump the cookies from cookies.sqlite
+# $0 > .firefox/cookies.txt ; fakewget ...
+
+# sqlite3 cookies.sqlite
+# .help
+# .schema # --> only one table: moz_cookies
+# echo .dump | sqlite3 ~/.firefox/cookies.sqlite
+# # now just use Data::Dumper to figure out the rest
+
+use strict 'vars';
+use Data::Dumper;
+$|=1;
+
+package cookies;
+
+my($file,%c);
+
+$file="$ENV{HOME}/.firefox/cookies.sqlite";
+if (not -f $file) { 
+   $file=`ls -d $ENV{HOME}/.mozilla/firefox/*default | head -1` if not -f $file; 
+   chomp $file;
+   $file.="/cookies.sqlite";
+}
+$file=shift if $ARGV[0];
+
+system(qq!cp '$file' '${file}0'!); $file.="0"; # enforce creation of a lockfree corrupt db copy
+
+my(%node, %place);
+
+use base 'Class::DBI';
+cookies->connection("dbi:SQLite:$file");
+
+
+# define the tables and classes
+foreach (qw/moz_cookies
+           /) {
+   my($eval);
+   $eval=
+   qq!
+      package cookies::$_; 
+      use base 'cookies';
+      cookies::$_->table('$_');
+      cookies::$_->columns(All=>qw/*/);
+      \$cookies::cookies{$_}=\\\%cookies::$_;
+      my \@tmp = ();
+      \@tmp=cookies::$_->retrieve_all;
+      foreach(\@tmp) { 
+         \$cookies::! . $_  . '{$_->{id}}=$_; 
+      } ';
+    eval $eval;
+}
+
+
+
+# extract the cookies
+package main;
+my ($c,$t,@c);
+
+# i do NOT see session vs persistant flag... --> session is stored in .js instead...
+foreach (sort keys %{cookies::cookies->{moz_cookies}}) {
+   $c=\%{cookies::cookies->{moz_cookies}->{$_}};
+   # ishttponly, issecure # these might map strangely  / might have changed semantics
+   # lastaccessed, id (== $_)
+   # __triggers, _class_trigger_results
+   $t="";
+   $c->{ishttponly} = 0!=$c->{ishttponly} ? "TRUE" : "FALSE"; # hopefully correct
+   $c->{issecure}   = 0!=$c->{issecure}   ? "TRUE" : "FALSE";
+   foreach (qw/ host ishttponly path issecure expiry name value/) {
+      $t.="\t" if $t;
+      $t.=$c->{$_};
+   }
+   push @c,$t;
+}
+
+
+# and dump them
+print <<EOF;
+# HTTP Cookie File
+# http://www.netscape.com/newsref/std/cookie_spec.html
+# This is a generated file!  Do not edit.
+# To delete cookies, use the Cookie Manager.
+
+EOF
+foreach (sort @c) {
+   # host            BOOL    path    BOOL    expiry          name            value
+   # www.linux.com   FALSE   /       FALSE   1984252213      XARAYASID       lh07qacmuht7v85rshr53uqc23
+   print $_,"\n";
+}
+
+
+# as well as the sessionstore.js ones
+print "CURRENT.SESSIONS\tFALSE\t/\tFALSE\t42\tUNNAMED\tUNVALUED\n";
+$file=~s/cookies.sqlite0?$/sessionstore.js/; # allow for our copied session store!
+if (not -f $file) {
+   $file="$ENV{HOME}/.firefox/sessionstore.js";
+}
+if (not -f $file) { 
+   $file=`ls -d $ENV{HOME}/.mozilla/firefox/*default | head -1` if not -f $file; 
+   chomp $file;
+   $file.="/sessionstore.js";
+}
+system "firefoxsessionlist", "-cookies", "-file", $file;
+
+print main::STDERR "\n# you may consider reinvoking this script with\n";
+print main::STDERR   "# $0 > ~/.firefox/cookies.txt\n";
+
+#print Dumper(\%cookies::cookies);
+exit;
+
+####################################################################
+
+# ensure that :: / ::: / == is usable as keyword / name separator for grepping
+sub mangle {
+   local($_)=@_;
+   $_="" if not defined $_;
+   s/ ::/ : :/go; s/:: /: : /go;
+   s/ ==/ = =/go; s/== /= = /go;
+   s/\A\s*//go; s/\s*\Z//go;
+   return($_);
+}
+

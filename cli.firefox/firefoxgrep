@@ -1,0 +1,251 @@
+#!/usr/bin/perl
+
+# summary:     grep for urls in firefox bookmarks (html or sqlite)
+#              please use FIREFOXGREPPATH to avoid guessing the firefox
+#              files actually want this script to use 
+# copyright:   (c) 2007-2009, jakobi@acm.org, GPL v3
+# created:     jakobi@acm.org 20071101
+# last change: jakobi@acm.org 20071220
+
+# dependencies: 
+# - Class::DBI (sqlite helper script)
+# - Html::TreeBuilder (html helper)
+# both of which and their dependencies can be installed on ubuntu
+# via sudo aptitude install libhtml-tree-perl libclass-dbi-sqlite-perl
+# (Data::Dumper is optional, and included with perl itself)
+
+# bugs: 
+# - bookmarklets and js?
+# - invoke with -C for utf? 
+#   - current workaround: place utf chars in parens as required in ARGV
+#   - maybe de-utf in mangle?
+#   - q is there a risk for the bookmarks to be mixed latin and utf?
+# - efficiency: consider pushing the grep into the element traversal
+#   of the helpers as early as possible. 1MB html / 2MB sqlite with
+#   about 1300 urls / 200K output for the sqlite helper and 1100 / 140K
+#   for the html helper (difference is the path-hierarchy duplication
+#   problem -> see :::, and the expansion of rss items).
+#   Given that I want to pause 1 sec per url to remote open in firefox,
+#   the overhead isn't that bad. Even allowing for the 100+ module
+#   files that perl want's to load or stat... when using Class::DBI;
+#   not that we use much of it beyond dumping the tables into memory
+#   and then mangling them using hash-keys [instead of proper
+#   object refs]
+
+use strict;
+use vars;
+
+my ($o_verbose,$o_long,$o_neg,$o_tree,$o_ign,$o_ignurl,$o_wstart,$o_word,$o_field,$o_skiprss);
+my ($file,$cmd,@desc,@file);
+
+# bookmarkfile to grep: e.g. via export FIREFOXGREPPATH="~/exported-bookmarks.html:~/.firefox/places.sqlite:~/.mozilla/firefox/places.sqlite";
+$file="your hardcoded filename here";
+$file=$ENV{FIREFOXGREPPATH} if $ENV{FIREFOXGREPPATH};
+
+# hmm, looks like we need to guess: has the user made .firefox a link to the main profile?
+if (not $file or not $file=~/:/ and not -r $file) {
+   chomp($file=`ls -dt1 ~/.firefox/bookmarks.html  ~/.firefox/places.sqlite 2>/dev/null| head -1`);
+}
+# try find a default in .mozilla
+if (not $file or not $file=~/:/ and not -r $file) {
+   # allows for migration from firefox to a hopefully more current firefox-<...>
+   my $firefoxhome=`ls -dr1 ~/.mozilla/firefox{,-*}| head -1`; $firefoxhome=~s/\n//g;
+   chomp($file=`ls -dt1 $firefoxhome/*default/bookmarks.html  $firefoxhome/*default/places.sqlite 2>/dev/null | head -1`);
+}
+
+warn "# guessing bookmarks file: $file\n" if not $ENV{FIREFOXGREPPATH};
+
+while(@ARGV){
+   $_=shift;
+   $o_tree.=" folders name ",     next if /^-r$/;
+   $o_tree.=" url ",         next if /^-u$/;
+   $o_tree.=" keyword ",     next if /^-k$/;
+   $o_tree.=" description ", next if /^-d$/;
+   $o_tree.=" name ",        next if /^-n$/;
+   $o_tree.=" tag ",         next if /^-t$/;
+   $o_long=1,                next if /^-l$/;
+   $o_neg=1,                 next if /^-v$/;
+   $o_ign=1,                 next if /^-i$/;
+   $o_ignurl=1,              next if /^-U$/;
+   $o_wstart=1,              next if /^-s$/;
+   $o_word=1,                next if /^-w$/;
+   $o_field=1,               next if /^-W$/;
+   $file=shift,              next if /^-f$/;
+   $o_skiprss=1,             next if /^--?skiprss$/;
+   $o_verbose=1,             next if /^--?debug$|^--?verbose$|^-V$/;
+   &help,                    die  if /^-h$|^--?help$/;
+                             last if /^--$/;
+   unshift @ARGV, $_; last
+}
+my $exp=shift;
+my $replacement;
+$replacement=shift if defined $ARGV[0];
+$o_tree=" folders name tag description keyword url " if not $o_tree;
+$o_tree.=" url " if not $o_long and not $o_tree=~/ url /; # add url to return
+die "no expr" if not $exp;
+$o_tree=" $o_tree verbose " if $o_verbose;
+
+
+# use the helper to dump the bookmarks
+@desc=();
+@file=split(/:/,$file);
+foreach $file (@file) {
+
+   $file=~s@^~/@$ENV{HOME}/@;
+   $cmd="${0}html"; $cmd="${0}sqlite" if $file=~/sqlite/i;
+   $cmd="'$cmd' '$o_tree' '$file'"; 
+   print main::STDERR "# using as helper command:\n# $cmd\n\n" if $o_verbose;
+   die "illegal path in command string $cmd" if $0=~/[\x0a\x0d']/ or $file=~/[\x0a\x0d']/;
+
+   push @desc, `$cmd`;
+}
+
+
+
+my $regex;
+if ($exp=~/^do\s*{/) {
+   ;
+} else {
+   $regex=$exp;
+   $regex='\b(?:'.$regex.')\b'      if $o_word;
+   $regex='\b(?:'.$regex.')'        if $o_wstart;
+   if ($o_field) {
+      # disarm . to stay within field
+      $regex=~s@((?<!\\)(?:\\\\)*)\.@$1(?:.(?! ?==| ?::))@g; # negative look behind seems allow for start of string
+      $regex='(?:::|==)('.$regex.')(?=::|==)';
+   }
+   # there must be space for the ":: url" string after the match
+   $regex=  '(?:'.$regex.').*?:: '  if $o_ignurl and $o_tree=~/url/;
+                          
+   $exp='m!$regex!o';                  # !regex optimized!
+   $exp.="i" if $o_ign;
+}
+$exp="not ($exp)" if $o_neg;
+$exp="grep {$exp} \@desc";
+print main::STDERR "\n##query: $exp\n"     if $o_verbose;
+print main::STDERR   "##regex: $regex\n\n" if $o_verbose;
+
+
+my(@match);
+if ($o_long) {
+   @match=eval $exp;
+} else {
+   # should be safe, as the url shouldn't have whitespace
+   @match=grep {s/.* //o} eval $exp;
+}
+
+if ($replacement) {
+   # just use %20 instead of + for now, so gilbert+sullivan is indeed
+   # encoded as a single string, and as string + string
+   $replacement=~s/([ %&=+'"()\|\[\]])/do{sprintf "%%%02X",ord($1)}/gei;
+   # for now, do not try to skip to the url
+   foreach(@match){
+      s/%s/$replacement/g;
+   }
+}
+
+if ($o_skiprss) {
+   @match=grep {not m@/rss/|/from[/=]rss|simplefeed.net/rsrc/|feedproxy.google.com/|blog.makezine.com/archive.*CMP@} @match;
+}
+
+print @match;
+
+exit;
+
+##################################################################################
+
+# ensure that :: is usable as keyword / name separator for grepping
+sub mangle {
+   local($_)=@_;
+   s/ ::/ : :/go; s/:: /: : /go;
+   s/ ==/ = =/go; s/== /= = /go;
+   s/\A\s*//go; s/\s*\Z//go;
+   return($_);   
+}
+
+sub help {
+   print <<EOF
+$0 [OPTIONS] EXPR 
+$0 [OPTIONS] EXPR REPLACEMENTSTRING-FOR-%S
+
+Hierarchic grep in one or more firefox bookmark files, 
+returning one line (default: url) per matching bookmark
+(default: bookmark incl. ancestor folder names, tags 
+and description).
+
+EXPR is a simple perl regex to be expanded in m!..!.
+Start with "do{" to use arbitrary perl. For simple
+regexes, the option -U modifies the regex
+to skip the url field, and -w / -s delimit the regex
+to match words or start of words only. 
+
+Bookmark entries are converted to the form below, depending
+on the selected items to include (default: everything):
+"(NAME :: ( == DESC == :: )? )* (URL)?", with NAME being
+one of ::TAG:: (Firefox v3), ::KEYWORD:: (shortcut URL) 
+or the TITLE of the folder or bookmark. The strings " ::",
+":: ", " ==", "== " are guaranteed NOT to occur inside of
+strings other than the url (where firefox should avoid them).
+
+For Firefox3 places, multiple moz_bookmarks entries pointing
+to the same "place" are returned as a single line, with ":::"
+separating the entries. Duplicate DESC and similar redundancy
+may have been removed from the 2nd and further entries.
+
+
+options:
+  -h|--help
+  -?-debug/-?-verbose/-V/...
+  -skiprss
+  -f FILE | -f LIST - grep against FILE or :-separated bookmarkfile LIST
+                      alternatively, you can set a shell variable:
+                      export \$FIREFOXGREPPATH="FILE:FILE:FILE"
+                      (currently: $file)
+  -l                - return bookmark entries instead of urls
+                      (for a query using any of -n/-d/-k/-r/-t,
+                      use -l -u instead, otherwise the url field
+                      won't be included in matching and printing)
+
+options for regexes:
+  -i                - ignore case
+  -s                  matches only start of word 
+  -U                  skip the URL field in matching
+  -w                  matches only start and end with a whole word
+  -W                  matches only within a field (note that only
+                      . is modified to honor field boundaries, things
+                      like (\\D|\\d)* can still extend a match to cover
+                      multiple fields)
+
+bookmark fields to grep against (default: include everything):
+  -n                - include names
+  -d                - include descriptions
+  -k                - include keywords
+  -r                - recurse for -n, -d, ...
+  -t                - include tags
+  -u                - include urls [implied unless -l]
+
+examples:
+  - return matches for keywords plus tags (firefox3; only urls)
+      firefoxgrep ::test:: 
+  - in case you insist on using multi-word tags like "another test tag", 
+    the regex needs to be a bit more complex as we want to avoid 
+    noise due to matching substrings in the url:
+      firefoxgrep -t 'test(?:.*::)' # or
+      firefoxgrep -t '::(\S.*)?test(.*\S)?::' 
+  - return all bookmarks in folders ending in news.daily, e.g
+      firefoxgrep 'news.daily ::'        # just the url
+        http://www.heise.de/newsticker/ 
+        http://www.newsforge.com/
+      firefoxgrep -l 'news.daily ::'     # full bookmark
+        watch :: news.daily :: heise online - 7-Tage-News \\
+              :: http://www.heise.de/newsticker/
+        watch :: news.daily :: NewsForge: The Online Newspaper \\
+              for Linux and Open Source :: http://www.newsforge.com/
+
+related:
+  - open all daily bookmarks in firefox (including waiting for
+    confirmation every dozen or more urls)
+    echo "GREP 'daily ::' | firefoxstdin
+
+EOF
+}

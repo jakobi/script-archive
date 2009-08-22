@@ -1,0 +1,132 @@
+#!/usr/bin/perl -0777p
+
+# 20090813 PJ   0.1  jakobi@acm.org initial version
+#
+# copyright:  (c)2009 jakobi@acm.org, placed under GPL v3 or later 
+my $version="0.1";
+
+# excluding comments, the near-removed if($n) match section 
+# and the very different #!perl options, the code should be 
+# kept in sync to line.replace
+
+
+# line.print [-c|-C *][-ungrep *] [--grep] LINENO ... FILE ...
+#
+# print lines from files.
+#
+# LINENO:  N     - print Line N
+#         +N,N+,=N are assumed to imply N *
+#         -N     - is ignored *
+# N:      digits - line number
+#         $      - last line
+#         NUMBER/REGEX/ or /REGEX/ 
+#
+# Options and LINENO marked with '*' are provided to allow for
+# using the same LINENO as with line.replace.
+# 
+# Each N must be unique. If multiple REGEX match, a random one 
+# is with its [+=-] flags is chosen.
+
+use strict;
+use vars;
+use warnings;
+our($compact,$ungrep,$grep,$i,$j);
+our(@n,%flags,%n,%l,%once,%match);
+our($n,$l,$e,$m);
+
+BEGIN{
+   $compact=0;
+   while(@ARGV){
+      $ARGV[0]=~/^-?-c(ompact)?$/ and do{$compact=1;shift;next};
+      $ARGV[0]=~/^-C$/            and do{$compact=2;shift;next};
+      $ARGV[0]=~/^-?-ungrep$/     and do{$ungrep=1;shift;next};
+      $ARGV[0]=~/^-?-grep$/       and do{$grep=1;shift;next};
+   last};
+         
+   @n=@ARGV;pop @n;@ARGV=($ARGV[$#ARGV]);
+   while(@n){
+      $i=shift @n;
+
+      # arg combines LINNO and replacement - extract+unshift
+      if ($compact==2) {$i=~s/^.*?:(?=([\+\-=]?\d+[\+]?):)//g or die "invalid compact argument $i\n";}
+      if ($compact) { # compact N:string instead of N string
+         $i=~s/^([\+\-=]?\d+[\+]?)://g or die "invalid compact argument $i\n";
+         unshift @n, $i;
+         $i=$1;
+      }
+
+      # parse insert/etc from number
+      $j=$i; $j=~s/\A[\+\-=]|\+\z//;
+      if ($j=~/\A(\$|\d+)\z/) { # numeric
+         $n{$j}=$i;
+      } elsif ($j=~/^(\$|\d+)?\/(.*?)\/?$/) { # regex location
+         if($1) {
+            $once{$2}=$1; 
+         } else {
+            $match{$2}=1;
+         }
+         $j=$flags{$2}=$i;
+      } else {
+        die "invalid LINENO $i\n";
+      }
+   }
+   if($ungrep){
+      foreach(keys %l){
+          $l{$_}=~s/^.*?:\d+:// or die "not a grep prefix\n";
+      }
+   };
+
+#print main::STDERR "once = ";for(sort keys %once ){print main::STDERR " $_:$once{$_} " };print main::STDERR "\n";
+#print main::STDERR "match= ";for(sort keys %match){print main::STDERR " $_:$match{$_} "};print main::STDERR "\n";
+#print main::STDERR "flags= ";for(sort keys %flags){print main::STDERR " $_:$flags{$_} "};print main::STDERR "\n";
+#print main::STDERR "n    = ";for(sort keys %n    ){print main::STDERR " $_:$n{$_} "    };print main::STDERR "\n";
+
+};
+
+
+my @lines=split /\n/, $_;
+my (@out,%test);
+#warn "$ARGV - len ".length($_)." lines $#lines\n";
+if (%once) {
+   for(sort keys %once){
+      if ($once{$_} eq '$') {
+         $test{$_}=0;
+      }
+   }
+}
+if (%test) {
+   for($.=0;$.<=$#lines;) {
+      $_=$lines[$.++];
+      for $m (keys %test) {
+         /$m/ and $test{$m}++;
+      }
+   }
+}
+%test=(%once, %test);
+for($.=0;$.<=$#lines;) {
+   $_=$lines[$.++];
+
+   $n=0; $l="";
+   matching: while(1) {
+      do{$n=$n{"\$"}; $l=$l{"\$"}} if $n{"\$"} and $. == $#lines+1;
+      do{$n=$n{$.}; $l=$l{$.}} if $n{$.};
+      last if $n;
+      foreach $m (keys %test) {
+         do{delete $test{$m};next} if not $once{$m};
+         do{$n=$flags{$m}; $l=$l{$n}} if /$m/ and 0==--$test{$m}; # no last to update counters!
+      }
+      last if $n;
+      foreach $m (keys %match) {
+         do{$n=$flags{$m};$l=$l{$n};last matching} if /$m/;
+      }
+      last;
+   }
+   
+   
+   if ($n and not $n=~/^-/) {
+      $_="$ARGV:$.:$_" if $grep;
+      push @out, $_;
+   }
+}
+
+$_=join("\n",@out,""); 

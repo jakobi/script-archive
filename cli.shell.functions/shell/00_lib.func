@@ -1,0 +1,127 @@
+
+# bash or ksh: common functions for shell startup: 00_lib.func
+# (for vars and logic, use 00_initialize.func/zz_finalize.func)
+
+# 20080118 PJ   0.1  jakobi@acm.org initial version
+# 20090729 PJ   0.2  uniqpath
+
+
+# have a version of echo for bash that behaves ksh-style and 
+# honors --, but not overriding bash's broken echo. Note that on linux,
+# /bin/echo on linux might be bug compatible to the bash version,
+# and worse, print is taken by a generic mimecap using print command.
+
+function _echo {
+   typeset  nl='\n'
+   typeset fmt='%s'
+   typeset i
+   while [ "$#" -gt "0" ]; do 
+      case "$1" in
+         -n) shift;  nl=""   ;;
+         -E) shift; fmt='%s' ;;
+         -e) shift; fmt='%b' ;;
+         --) shift; break    ;;
+          -) shift; break    ;;
+          *)           break ;;
+      esac
+   done
+   # printf -v var == sprintf to var
+   # printf -q     == !! shell quoted !!
+   for i in ${1:+"$1"}; do
+      printf "$fmt" "$i"; fmt=" $fmt"; shift
+   done
+   printf "$fmt" ${1:+"$@"}
+   printf "$nl" 
+}
+function _warn { _echo ${1:+"$@"} 1>&2; }
+function warn   { _warn ${1:+"$@"};      }
+
+
+
+# functions for :-separated strings like $PATH
+# - check if component (fully matching glob) is in path
+# - strip duplicates, "" and "."
+# - strip duplicates (this version is native w/o using external programs!)
+
+function is_in_path {
+   typeset tmp=":$1:"
+   [ "${tmp#*:$2:}" != "$tmp" ]
+}
+function uniqpath_no_dot {
+   typeset tmp
+   # "$()" seems to properly recurse in contrast to the on-off
+   #       nature of ",',`
+   tmp="$(uniqpath ${1:+"$@"})"
+   tmp="$(uniqpath "$tmp" "")"
+   # echo does NOT honor --
+   _echo "%s\n" "$(uniqpath "$tmp" ".")"
+}
+function uniqpath { # VAR="$(uniqpath \$VAR)"
+   # arg1: :-separated string
+   # arg2: exact string to skip, e.g. '.', '', '/usr/local/bin'
+   typeset path tmp elem out skip
+   skip="cannotmatchever"
+   [ "$#" = "0" ] && return
+   path="$1"; shift
+   if [ "$#" = "1" ]; then 
+      skip="$1"; shift
+   fi
+   
+   typeset oldifs="$IFS"; IFS=:; set -- $path; IFS="$oldifs"
+   while [ "$#" -gt "0" ]; do
+      tmp=":$out:"
+      elem="$1"
+#_warn "$elem" 
+      shift
+      [ "$skip" = "$elem" ]               && continue
+      [ "${tmp#*:$elem:}" != "$tmp" ]    && continue
+      out="$out:$elem"; [ "$tmp" = "::" ] && out=$elem
+   done
+   _echo "$out"
+}
+
+
+function _pipe {
+   # compatility layer: bash doesn't place the final
+   # process of a pipe in the current environment
+   # while ksh process substitution doesn't reclaim
+   # fds and does not allow the resulting file (/dev/fd/N)
+   # to be used in another redirection... . 
+   # Bash: typeset local vars are dynamic scope, i.e. visible within cdpipe.
+   # Ksh:  typeset local vars seem lexical, i.e. NOT VISIBLE in called functions.
+   if [ "${SHELL##*bash}" != "$SHELL" ]; then
+      eval "$2 < <($1)"
+   else
+      eval "$1 | $2"
+   fi
+}
+
+
+# read a file or pipe into an array
+# find . -print | f2a -a ARGS; less "$ARGS[@]"
+function f2a { 
+   # also an option: printf "%q" and loop
+   typeset _a _l _i _f
+   typeset -i _i
+
+   # array name
+   if [ "$1" = "-a" -a "$2" != "" ]; then
+       _a="$2"; shift;shift;
+    else
+       _a="f2a"
+    fi
+    unset -v $_a
+    if [ ! -f "$1" ]; then
+       echo "Usage: f2a FILE [ARRAYNAME] -- load lines into array (default: f2a)" 1>&2;
+       return 1;
+    fi
+    eval ' while read _l;do 
+              '${_a}'[_i]="$_l";
+              _i=_i+1;
+           done < "$1";
+           echo "# \$$_a[]: $_i lines loaded" 1>&2
+         '
+}
+
+
+# vim:filetype=sh

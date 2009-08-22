@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# use vi < /dev/tty > /dev/tty within a pipe as xargs/find -exec command
+
+# to fake xargs to do something with the shell - note the required dummy for 
+# the shell's own name ($0), which is esp. deadly when using -n 1...
+# ( echo "a b"; echo c ) | xargs bash -c 'echo "$@"' dummy
+#                                bash -c '...'       dummy 'a b' 'c'
+
+cat0 | exec xargs -0 ${1:+"$@"}
+
+# e.g. find | xargs0 -n 1 -iZ diff Z /mnt1/AVI-ARCHIVE/Z

@@ -7,7 +7,7 @@
 *]
 
 <p>This  toolbox compartment contains the heavy lifting tools for generic
-pipeline text processing.</p>
+pipeline 'line'-based text processing.</p>
 
 <H3>Major Commands</H3>
 
@@ -38,7 +38,7 @@ pipeline text processing.</p>
        with editing grep output (or Grep.pm -C -LINES <i>marked grep context output</i>),
        the 3-Step <B>Grep.pm|vim.pipe|Grep.xchange</B> is a fairly safe way to 
        mass-edit files. See comments for two example perl one-liners that interactively
-       ask before each substitution. See also the ancient xchange.p. Depenencies: 
+       ask before each substitution. See also the ancient <b>xchange.pl</b>. Depenencies: 
        For flock-locking edited files, you also need to copy Compact_pm::Flock.pm; otherwise you can disable
        it by commenting the use statement. 
    <li><b>expansyn</b> is the command implementing basic English stemming and synonym
@@ -46,6 +46,14 @@ pipeline text processing.</p>
        containing the synonymlists in perl syntax. It's mostly intended
        to allow automatic expansion of some computer science terms I
        always seem to use in parallel.
+</ul>
+
+<p>See also:</p>
+<ul>
+   <li><b>f2a</b> in 00_lib.func: a shell function reading a file into an array:
+       find . -print | f2a -a ARGS; less "$ARGS[@]" 
+   <li><b>pipe.vim (aka vimpipe) , vimless</b> to run vim in the middle of a pipe or
+       as a less replacement. Both are in the vim section.
 </ul>
 
 

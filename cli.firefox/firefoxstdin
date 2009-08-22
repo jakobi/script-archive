@@ -1,0 +1,257 @@
+#!/usr/bin/perl
+
+# run this script in a small xterm and paste urls
+# into it, enter grep commands, then press ^D to
+# clean up and repair urls and load them into
+# firefox.
+
+# summary:     helper for firefox
+# copyright:   (c)2007-2009 jakobi@acm.org GPL v3
+# created:     jakobi@acm.org 20070211
+# last change: jakobi@acm.org 20090620
+
+use strict;
+use vars;
+
+# Bugs:
+# - actually this should be a part of the firefox wrapper,
+#   as we may be called by it and do call it ourselves
+#   rather inefficiently...
+# - maybe cache the extracted bookmarks in reloadable format
+#   --> freeze/thaw/storable... unless updated
+#       [even then, I'd better only update at most once/day
+#        unless requested by deletion]
+#        
+# - firefox grep should be included not executed, and in
+#   turn split into extraction and selection, so multiple
+#   greps are require only ONE read-in of all the bookmarks
+#   alternately: combine the kw/regexes? with or without
+#   retaining their ordering?
+# 
+
+my($runlength,$pat,$o_pat,$o_norun,$o_verbose,$runlength,$urls,@urls);
+$runlength=40; # max no of urls to pass before waiting for RETURN
+
+# for o_pat: recognize URLs in arbitrary text [also skips GREP lines]
+$pat='(\s*((https?|ftp)://)?[a-z0-9\-]+\.[a-z0-9\-]+((\.|\#|\/)\S*)?(?=\s|$))';
+
+# generic pattern to recognice protocols or servernames at start of url
+# used in the split-loop invoking firefox at the end
+my $servermatch='([a-zA-Z0-9\-]+(\.[A-Za-z0-9\-]+)+(?:[:\./#]|$))';
+
+while(@ARGV){
+   $_=shift;
+
+   # use with  cat FOLDER | formail -m4 -c -ds metamail -d | firefoxstdin -x
+   do{$o_pat=1,next}              if /^-(x|extract)$/; # removing also GREPs, etc
+   do{$o_verbose=1,next}          if /^-(v|verbose)$/;
+   do{$o_norun=1,next}            if /^-(n|l|list|norun)$/;
+   do{$runlength=shift, next}     if /^-(p|runlength|pagesize)$/;
+   do{$runlength=999, next}       if /^-np$/;
+   do{&help; die}                 if /^-?-(h|help)$/;
+   last                           if /^--$/;
+
+   # short cuts: url collections,  bookmark grepping,
+   #             bookmark keyword/shortcut url expansion
+   do{$ARGV[0]=~s/'/\\'/g; $ARGV[1]=~s/'/\\'/g;
+      $urls.="GREP -k '::$ARGV[0]::' '$ARGV[1]'\n",shift,shift,next} 
+                                            if /^-(k|kw|key|keyword)$/;
+   do{$ARGV[0]=~s/'/\\'/g;
+      $urls.="GREP -i '$ARGV[0]'\n",shift,next} 
+                                            if /^-grep$/;
+   do{$urls.="GREP 'daily ::'\n",next}      if /^-daily$/;
+   do{$urls.="GREP 'nightly ::'\n",next}    if /^-nightly$/;
+   do{$urls.="GREP 'weekly ::'\n",next}     if /^-weekly$/;
+   do{$urls.="GREP 'monthly ::'\n",next}    if /^-monthly$/;
+# note that news.daily is impl. directly for speed
+   do{$urls.="GREP 'news.daily ::'\n",next} if /^-news(\.daily)$/;
+   do{$urls.="GREP 'jobs.daily ::'\n",next} if /^-jobs(\.daily)$/;
+
+   unshift @ARGV,$_; 
+   last;
+}
+
+# bugs
+# - might be useful to use a more lenient $pat allowing for GREP
+#   short notations like leo.org as a sanity filter on auto-expanded
+#   urls [i.e. lines containing quoting, =3A, etc, pp]
+
+sub help {
+   print <<EOF;
+cat - | $0 [OPTIONS] [URL ...]
+
+\$0 accepts URLs or GREP strings as arguments or from stdin. It expands
+GREP  strings  into matching URLs from firefox bookmarks and tries  to
+correct URLs that have look like being pasted from email or text. This
+included     truncated     http:    prefix,    trailing    dots     or
+quoted-printable-damage.   In  case  of  doubt,  multiple   URLs   are
+generated.  Finally, all URLs are fed to firefox, one per  invocation,
+with an option to pause every n URLs (default: $runlength).
+   
+Options:
+   -  / --                last option  
+   -h / -help / --help
+   -n / -list / -norun    list URLs, but do not feed them to firefox
+   -np                    no pause (actually -p 999)
+   -p / -runlength / -pagesize RUNLENGTH
+                          pause for user input every RUNLENGTH URLs
+   -v / -verbose
+   -x / -extract:         extract URLs from arbitrary text, ignoring
+                          GREPs and incomplete URLs
+
+GREP bookmark options (REGEX/QUERY is single-quoted):
+   -grep REGEX            GREP -i within the firefox bookmarks
+   -k / -kw / -key / -keyword REGEX QUERY
+                          GREP for a shortcut URL with a keyword
+                          fully matching REGEX and substitute %s with
+                          the QUERY string
+                          [may fail for POST]
+
+Predefined GREPs:
+   -daily / -weekly / -monthly / -news.daily / -jobs.daily
+                          GREP for 'OPTIONNAME ::' in the bookmarks
+
+Notes:
+ - the option -kw google "my google query for o'reilly" is translated to
+   GREP -k '::google::' 'my google query for o\\'reilly', which also is 
+   the format to enter this query on stdin. Both the :: and the -k merely
+   restrict the fields the GREP is looking at. The :: denote the keyword
+   field, so any google in the url won't match. To just list the matching
+   URLs, do use the shell command firefoxgrep with the arguments
+    -k ::google:: "my google query for o'reilly".
+ - as seen above, GREP lines from stdin need to obey shell-quoting rules
+   [at the moment, GREPPing is done by the external script firefoxgrep]
+ - non-url-ish lines are ignored, e.g. lines containing only a single word.
+   use -x for more severe testing (requiring sane hostnames and/or protocols)
+   acc. to the contents of the \$pat expression.
+
+EOF
+}
+
+undef $/;
+if (@ARGV or not $urls) { 
+   if (not @ARGV and not $urls) {
+      print main::STDERR "# GREP EXPR / GREP -k ::EXPR:: EXPR; shell-quotes\n\n";
+      $urls.=&argv2url("-");
+      print main::STDERR "\n# processing list\n"
+   } else {
+      $urls.=&argv2url(@ARGV);
+   }
+}
+$_=$urls;
+
+#print main::STDERR "urls:\n$urls\n\n";
+
+sub argv2url {
+   my($urls);
+   foreach(@_){
+      my($tmp);
+      if (open(FH, "<$_")) {
+         while(read FH, $tmp, 10) {
+            $urls.=$tmp;
+         }
+         close FH;
+      } else {
+         # if it doesn't exist in the filesystem, it's not a file containing urls but an url itself
+         $urls.=$_;
+      }
+      $urls.="\n\n\n";
+   }
+   return($urls);
+}
+
+s@[\r\n]+@\n@go; # sanitize crlf
+
+
+my($tmp,$org,$i);
+# try correcting mail-provided multi-line urls 
+s@((^.*=\n)+.*\n)@do{
+   $org=$tmp=$1; $tmp=~s%=\n%%go; 
+   "$tmp\n$org"
+}@mgoe;
+# ditto with \n+ type splits 
+s@(^(.*\n\+)+.*\n)@do{
+   $org=$tmp=$1; $tmp=~s%\n\+%%go;
+   "$tmp\n$org"
+}@mgoe;
+# infamous punctuation at EOL; ordinarily it could be
+# stripped, but some servers return other pages ...
+s@(^.*[\.,:;]\n)@do{
+   $org=$tmp=$1; $tmp=~s%[\.,:;](?=\n)%%go;
+   "$tmp\n$org"
+}@mgoe;
+# <url>
+s@^\s*<(.*)>(\s.*$|$)@$1 $2@mgo;
+
+
+# extra text filtering if input is a just a pasted demimed email
+# e.g. from cat FOLDER | formail -m4 -c -ds metamail -d | $0
+# with suitable mimedecode, metamail, ... options
+# and formail -c to make all headers just one line - i.e. get
+# filtered out with the option below
+if ($o_pat) {
+   # because of country codes, we cannot further require .org, .com, .net...
+   # mailto, etc is ignored, as it doesn't make much sense in browse all urls context
+   # note that mere browsing can also result in actions like confirm
+   # email opt in...
+   s@^(?!$pat).*@@mgoi; # it must match $pat
+   s@($pat).*@$1@mgoi;  # and anything else in the line is removed
+}
+
+
+# expand booksmarks [user input must handle shell quoting]
+# BUG: really invoke the grep independently each time!?
+s@(^GREP(.*))@do{
+   `firefoxgrep $2`
+}@mgoei;
+
+
+# cleaning urls
+s@^\s*[\+\-\*\.]@@mgo;       # list-bullet char followed by url
+s@["'"'"'>\s]+#.*$@@go;      # trailing synsugar with eol comments
+s@["'"'"'>\s]*$@@go;         # just trailing synsuger
+s@^["'"'"'<\s]*@@go;         # leading synsugar
+s@([\x60\x22\x27\x21])@"%".unpack('H2',$1)@geo;
+s@\s*\n\s*@\n@go;            # compress empty lines
+s@[,\.\;\:\s]*$@@go;         # drop trailing interpunction
+
+
+@urls=split /\n/, $_;
+foreach(@urls) {
+   chomp;
+   $i++;
+   do{system "bash -c 'echo press return to continue; (read a)</dev/tty'"; $i=0} if $runlength==$i and not $o_norun;
+   if (/^\s*#/ or not m@^(?:[a-zA-Z]+?:/?/?)?$servermatch@ and not /@/) {
+      print "skipping $_\n" if $o_norun or $o_verbose;
+   } else {
+      sleep 2 if $i and $i % 5;# short sleep every 5 invocations, as this
+                               # might reduce number of x communication errors
+      print "running "         if $o_verbose;
+      print "$_\n"             if $o_norun or $o_verbose;
+      system "firefox", "$_"   if not $o_norun; # which include pinging, remoting and sleeping to avoid probs
+   }
+}
+
+__END__
+
+some test data: 
+
+1 extraction via firefoxstdin -x -n of
+
+a b
+c
+.leo
+thuis dfhyy f6y gfugf.
+www.leo
+gdhjutju
+www.eo.org
+http://www.loe.org
+http://www.org/rdrg/.trhft.hklm kl;rmtdm r
+
+should return
+
+running www.leo
+running www.eo.org
+running http://www.loe.org
+running http://www.org/rdrg/.trhft.hklm
+

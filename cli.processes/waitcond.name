@@ -1,0 +1,1 @@
+generic condition waiter: boolean, pid, file, idle

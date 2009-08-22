@@ -1,0 +1,2 @@
+cat0 -argnl -- "$@"
+# this should correspond to ls -1N, (ls -1 prints some chars as ?)

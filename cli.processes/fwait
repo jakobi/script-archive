@@ -1,0 +1,134 @@
+#!/usr/bin/perl
+
+# script to wait for a condition given as boolean expression
+
+# see also:
+# my initial bool code from the extension of a perl fulltext indexer + cgi (GI; retired, 1997 maybe?)
+
+# created     PJ 2005XXXX jakobi@acm.org
+# last change PJ 20090808 
+# copyright:  (c)2005-2009 jakobi@acm.org GPL v3 or later
+my $version="0.1";
+
+$|=1;
+undef $/;
+$o_delay=1;
+$o_loopmax=-1;
+$BSD = -f '/vmunix' || -f "/boot/vmunix";
+$pscmd  = $BSD ? "ps -auxww 2>/dev/null | grep -v '$LOGNAME  *$$ '" : "ps -ef | grep -v '$LOGNAME  *$$ '";
+$me=$0; $me=~s@.*/@@;
+
+args: while (1) {
+   if ($ARGV[0] eq '-') { shift @ARGV; last args; }
+   elsif ($ARGV[0] eq '-h'){ &usage; exit 1 }
+   elsif ($ARGV[0] eq '-v'){ $o_negate=1; shift }
+   elsif ($ARGV[0] eq '--verbose'){ $verbose++; shift }
+   elsif ($ARGV[0] eq '-V'){ $verbose++; shift }
+   elsif ($ARGV[0] eq '-L'){ shift; $o_delay=shift }
+   elsif ($ARGV[0] eq '-T'){ shift; $o_timeout=shift }
+   else{ last args; }
+}
+@F=@ARGV; @ARGV=();
+@F=( "not", "(", @F, ")" ) if $o_negate;
+$o_loopmax=$o_timeout/$o_delay if $o_timeout;
+
+
+# compile @F into our condition subroutine
+$j=0; for($i=0; $i<=$#F; $i++) {
+   if ($F[$i]!~/^(\(|\)|and|or|not)$/) {
+      $f[$j]=$F[$i];    # remember file arguments and
+      $F[$i]="$j";      # replace them with array elements
+      $j++;
+   }
+}
+$f=join(" ", @F);
+$f=" $f ";
+$f=~s@(\d|\)) (\d|not|\()@$1 and $2@g; # add implicit and
+if ($verbose) {
+   print "compiled expression is:\n$f\n";
+   for($i=0;$i<=$#f;$i++){printf "%3d %s", $i, "$f[$i]\n"};
+   print "\n";
+}
+
+$f='sub condition { ' .
+   ( (grep /ps:|pid:/, @f) ? '$PS=`$pscmd`; ' : "" ) .
+   ' $c = ( '.$f.' ) ; $F=""; $c }';
+
+# translate condition types into perl
+for($j=0; $j<=$#f; $j++) {
+   ($_,$expr)=("file", $f[$j]);
+   $_="pid" if $expr=~/^\d+$/;
+   ($_,$expr)=($1,$2) if $expr=~/(file|dir|ps|pid|grep):(.*)/;
+   $f[$j]=$expr;
+   if (/grep/ and $expr=~/([^s\\]+?):(.*)/) {
+      ($f[$j],$g[$j])=($1,$2);
+   } else {
+      die "cannot parse $_:$expr as grep:FILE:EXPR" if /grep/;
+   }
+   
+   /file/ and $f=~s@ $j @ ( -f \$f[$j] ) @g;
+   /dir/  and $f=~s@ $j @ ( -d \$f[$j] ) @g;
+   # Q: quotemeta expression?
+   /ps/   and $f=~s@ $j @ ( \$PS=~/\$f[$j]/ ) @g;
+   /pid/  and $f=~s@ $j @ ( -d "/proc/\$f[$j]" ) @g;
+   # Q: use grep -p instead / may be awfully wasteful of memory / cache contents F$j?
+   /grep/ and $f=~s@ $j @ ( open(FH, "<\$f[$j]") and do{ \$F=<FH>; close FH; \$F=~/\$g[$j]/} ) @g; 
+}
+
+print "compiled expression is:\n$f\n\n" if $verbose>1;
+
+eval "$f";
+die "cannot compile subroutine:\n$@\n$f\n" if $@;
+
+
+# run the test
+while( $o_loopmax-- ) {
+   print "." if $verbose;
+   exit 0 if &condition;
+   sleep $o_delay;
+}
+exit 1;
+
+
+
+# --------------------------------------------------------
+
+sub usage {
+  die <<USAGE;
+     $me [OPTIONS] EXPR
+
+     $me waits until the boolean expression becomes true
+     The expression is made up from the non-option arguments,
+     each of which must be one of 
+     - test expression (see below)
+     - '(', ')', 
+     - operators 'and', 'or', 'not'. 
+     Missing operators default to 'and'. Return code is 1 in
+     case of timeout. Untyped tests are assumed to be of type
+     pid: for numbers, else file:
+     
+     Test expressions:
+       testing existance of files and directories:
+       - file:FILENAME
+       - dir:DIRECTORYNAME
+       - pid:PROCESSID            [ = dir:/proc/PROCESSID]
+       grepping the output of $pscmd or contents of arbitrary files:
+       - ps:PERLREGEX
+       - grep:FILENAME:PERLREGEX
+
+     Options:
+       -V / --verbose
+       -h           Output of Usage
+       -v           negate condition
+       -L SECONDS   loop delay [$o_delay]
+       -T SECONDS   timeout [never]
+
+     Example conditions:
+       $me             FILE1 not FILE2     
+       $me FILE0 or \\( FILE1 not FILE2 \\) 
+       $me -v pid:17221         -- wait until process 17221 is finished    
+       $me -v ps:make           -- wait until make is finished
+       $me 'grep:OUT:(?i)DONE'  -- wait until file OUT contains DonE, ...
+
+USAGE
+}

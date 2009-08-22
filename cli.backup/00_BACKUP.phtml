@@ -6,20 +6,39 @@
    } else {
 *]
 
-<p>Some backup support commands.</p>
-
 <p>Some   scripts  for  backups  from  single-instance   tarballs   to
 incrementals  to rsync-style hardlinked snapshots with support scripts
 like  xfer_backup.diff  to  diff,  echo or ls a  file  in  the  backup
-relative to $PWD or the specified file. The scripts need a rewrite and
-some  effort  to generalize before release; then again,  they've  been
-working  reliable  for years now and I'm loath to change them  without
-some  additional  'benefit'  or interesting major feature  (like  e.g.
-root-less backup - but that way's more effort than interest...).</p>
+relative to $PWD or the specified file.</p>
 
-<p>Recently  I've  read  about  ccollect, which might  be  a  suitable
+<p>  The  scripts need a rewrite and some effort to generalize  before
+release;  then again, they've been working reliable for years now  and
+I'm  loath  to  change  them  without  some  additional  'benefit'  or
+interesting major feature (like e.g. root-less backup - but that way's
+more effort than interest...).</p>
+
+<hr>
+
+<p>If you also use a filelist based backup, <b>expanfind</b> may be of
+interest,  as  you can pipe find results to expanfind, have  expanfind
+grep  that list for interesting files, and then <i>expand</i> the grep
+results by adding any result-<i>related</i> file to the list. The name
+is a play on expansyn, as expanfind does indeed something like synonym
+expansion  for  filenames  (the script still contains  some  profiling
+comments  comparing  various  code variants -  with  some  interesting
+conclusions wrt performance).
+
+<p>Example:  find  / | expanfind -tag rpmsave will return the list  of
+rpmsave  and all files that 'share' a similar prefix. Also useful  for
+backups  of modified configuration files (just copy FILE the  original
+to FILE.TRACKED, and expanfind -tag TRACKED now 'tracks' FILE*).</p>
+
+<hr>
+
+<p>Recently I've read about <b>ccollect</b>, which might be a suitable
 substitute  for my own filelist-based rsync snapshot script (which  is
-the  major  non-glue portion), as it also seems to be list-based -  at
-the very least it supports exclusion.</p>
+the  major non-glue portion of code within the backup scripts), as  it
+also  seems  to  be  list-based  -  at  the  very  least  it  supports
+exclusion.</p>
 
 [*}*][# MUST BE AT EOF! #]

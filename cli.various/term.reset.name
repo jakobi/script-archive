@@ -1,0 +1,1 @@
+terminal reset, copes with the corruption caused by vim highlighting bug meeting urxvt

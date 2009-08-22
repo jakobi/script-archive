@@ -1,0 +1,307 @@
+#!/usr/bin/perl
+
+# expansyn
+
+# given a list of words or regexes, expand contained
+# words with possibly synonyms and return the 
+# augmented list of words or regexes. words are 
+# alphanumeric ASCII plus .+-_. 
+#
+# application domain is e.g. suggesting synonyms when 
+# looking for filenames matching certain words within
+# some directory tree containing documents, images, ...
+# ("dot- or directory-name-tagged filenames")
+
+# created:     20071227 jakobi@acm.org
+# copyleft:    (c) PJ 2008-2009, GPL v3 or later
+# 200812xx PJ  0.1  jakobi@acm.org -- initial version
+# 20090727 PJ  0.2  tagls/pcre presets
+my $version="0.2";
+
+# output modes
+# - $0 -settagls ...
+#   returns an ored boolean expression suitable for tagls -b
+#   for all inputs plus synonyms.
+# - $0 -setpcre
+#   returns a regular expression matching any of the inputs
+#   and their synonyms
+#
+# input mode: word
+# - $0 word ...
+#   greps for word in the synonyms and add all words
+#   from the matches to the output, one per line
+#   without repetitions, sorted
+#
+# input mode regex (if ANY arg word contains regex chars)
+# - $0 regex ...
+#   foreach input regex: foreach plain word found in the 
+#   regex (e.g. 'word', '...(word|word)...', for the
+#   common paren types starting with (,(?:,(?!,(?= ),
+#   extract words by looking for PLAINWORD in the synonyms.
+#   Substitute PLAINWORD by a disjunction of synonyms
+#   the synonyms to PLAINWORD within the regex. Report
+#   each regex independently.
+#
+#   Note that while this tries not to damage regexes,
+#   it still requires VALID input regexes. We shouldn't
+#   quotemeta problems silently.
+#
+#   extended/commented regex m{}x ARE NOT supported.
+#
+# modes can be forced with -isregex and -isword
+# NOTE: if you use words as inputs, saying -qm
+#       is enough to obtain regex-usable output
+#
+# the is no input mode for .-separated tags or similar
+
+# options and environment:
+# -qm  quote-meta output in word mode
+# -stem [-1|0|1|2] perform stemming as documented in tagls
+# -sep <STRING>: string being printed between 
+#      each result, and possibly after the last one.
+#      the following oneliners work by changing the lineend
+#      printed by this script:
+#      - perl -l174 $0:
+#         return a combined and expanded regex:
+#            '(?:'$(perl -l174 $0 regex regex regex)')' 
+#      - perl -l054 $0:
+#         ls the files containing synonyms of c++ by
+#         generating the glob patterns *.c++.*,
+#         *.cplusplus.*, c++.* and cplusplus.*:
+#            ls $(eval echo '{*.,}{'$(perl -l054 ./expansyn c++)'}.*')
+#         but looping might be slightly more readable: 
+#            for i in $(expansyn c++); do ls {*.,}$i.*; done
+# -pre <STRING> similar
+# -sfx <STRING> similar
+# -syn <SYNPATH>: set a :-separated list of
+#      synonym files (.cfg is perl, adding to @SYN,
+#      everything else is plain text with space-separated
+#      synonyms, whitespace and #comment lines.
+#      Overrides the environment variable $SYNPATH.
+#      If nothing is given, $0.cfg is tried.
+# -h   -help --help
+# --   last argument
+    
+#Z
+
+# internals: 
+# - no recursion until we've maximum synonym cliques,
+#   instead we just grep for the word in the lines of
+#   the synonym array and consider all matching lines
+#   to be the set of synonyms to use for replacing
+#   out input word
+# - word is alphanum+X, just enough to allow for
+#   c++ (regex: being ignored unless user does 
+#   c\+\+), c#, and dot.net. 
+#   now for "c sharp": 1) dotted.tag.prefixes of
+#   files shouldn't use spaces, 2) neither does
+#   the @SYN or the code allow for it.
+#   c-sharp, or better csharp's the sane way to
+#   use in a tag.
+
+# bugs:
+# - no umlauts or utf in synonyms (&regex) or &stemming
+
+
+@ARGV=qw/-h/ if not @ARGV;
+$o_word=-1;
+$stemming=-1;
+while(@ARGV){
+   $_=shift;
+   if(/^-?-isregex$/) {$o_word=0;next}
+   if(/^-?-isword$/)  {$o_word=1;next}
+   if(/^-?-syn$/)     {$SYNPATH=shift;next}
+   if(/^-?-sep$/)     {$\=shift;next}
+   if(/^-?-pre$/)     {$pre=shift;next}
+   if(/^-?-ste?m$/)   {$stemming=shift;next}
+   if(/^-?-sfx$/)     {$sfx=shift;next}
+   if(/^-?-first$/)   {$first=shift;next}
+   if(/^-?-last$/)    {$last=shift;next}
+   if(/^-?-qm$/)      {$quotemeta=1;next}
+   if(/^-?-(set)?tagls$/){$\=' or '; 
+                       $pre='=~'; 
+                       $quotemeta=1;next}
+   if(/^-?-(set)?pcre$|^-?-setperl5?$|^-?-setregex$/) {
+                       $\='|'; 
+                       $pre='(?:'; 
+                       $sfx=')';
+                       $quotemeta=1;next}
+   if(/^-v$/)         {$verbose++;next}
+   if(/^-?-h(elp)?$/) {exec "grep -B 999 '^#Z' '$0'|cut -b3-"}
+   if(/^--$/)   {last}
+   unshift @ARGV, $_;
+   last
+};
+$SYNPATH=$ENV{SYNPATH} if not $SYNPATH;
+$SYNPATH="$0.cfg" if not $SYNPATH;
+$\="\n" if not $\;
+
+
+@SYNPATH=split /:/, $SYNPATH;
+foreach(@SYNPATH) {
+   if (/.cfg$/) {
+      if (-f) {
+         do $_ or die "cfgfile $_: $@\n";
+      } else {
+         warn "cfgfile $_ not found\n";
+     }
+   } else {
+      open(FH, "<$_") or next;
+      push @SYN,<FH>;
+   }
+}
+@SYN=grep {/\S/} grep {not /^\s*#/} @SYN;
+
+
+if ($verbose>1) {
+   foreach(@SYN) {
+      $tmp=sprintf("%3d: %s", $i++, $_);
+      $tmp.="\n" if not /\n\Z/o;
+      vprint($tmp);
+   } 
+   vprint("\n");
+}
+
+
+if ($o_word>0 or $o_word==-1 and not grep {/[^a-z0-9\.\+\#\-\_]/i} @ARGV) {
+    @hit=&words(@ARGV)
+} else {
+    @hit=&regex(@ARGV);
+}
+
+
+{  # allow for tricks like '('$(perl -l174 $0 regex regex)')' 
+   $tmp="";
+   $tmp=$pre . join($sfx . $\ .$pre , @hit) . $sfx if @hit;
+   $tmp=$first.$tmp.$last if $tmp;
+   local($\) if $\!~/[\x0a\x0d\x0]/;
+   print $tmp;
+}
+exit;
+
+##########################################################################
+
+sub words {
+   my(%hit, $i, $hit, @hit, @res);
+   foreach (@_) {
+      $e=quotemeta($_);
+      $hit=join(" ", grep({ /(\s|^)$e(\s|$)/i } @SYN));
+      if ($hit) {
+         %hit=();
+         @hit=split /\s+/, $hit;
+         foreach $hit (@hit) {
+            next if not $hit;
+            if ($stemming>-1) {
+               $hit=stemming($hit); # implies quotemeta
+            } else {
+               $hit=quotemeta($hit) if $quotemeta;
+            }
+            $hit{$hit}=1;
+         }
+         push @res, sort keys %hit;
+      } else {
+            if ($stemming>-1) {
+               $_=stemming($_); # implies quotemeta
+            } else {
+               $_=$e if $quotemeta;
+            }
+         push @res, $_ ;
+      }     
+   }
+   return (@res);
+}
+
+sub regex {
+   my(%hit, $hit, @hit, $k, $i, $j,$qm);
+   foreach $i (@_) {
+      vprint("old \$i is $i\n",1);
+      # possible problems on some inputs wrt + and ., which are allowed in the substitutions
+      # -> the user has to protect them on input [it's a regex]
+      # -> but if they're not protected in the synonyms, we
+      #    better quotemeta each replacement "word" as required
+      #    for ., allow the user to use it quoted and unquoted
+      #    (silently allowing for this kind of user error), but
+      #    on output, quote it, if we've synonyms
+
+      # hopefully, there's no (?{ ... }) or worse inside. thankfully, this
+      # seems to be disallowed when we're interpolating variables.
+      eval 'm{$i}'; warn "# WARN invalid input regex $i: ".$@ if $@;
+
+      $i=~s{  (?=
+                 (?<=\(\?\:)|
+                 (?<=\(\?\!)|
+                 (?<=\(\?=)|
+                 (?<=\(|\|)|
+                 (?<=\A)
+              )
+              ((?:\\Q)?(?:[a-z0-9\._\-\#]|\\[\.\+\-\#])+(?:\\E)?)
+              (?=\||\)|\z)
+           }{do{
+         #   (?  (?:)?           tagchar   |   tagsep       )?
+         $k=$1;
+         $qm = $k=~s/\A\\Q([\s\S]*)\\E\z/$1/;
+         vprint("old \$k is $k\n",2);
+         %hit=();
+         $hit=join(" ", grep({ /(\s|^)$k(\s|$)/i } @SYN));
+         if ($hit) {
+            @hit=split /\s+/, $hit;
+            foreach $hit (@hit) {
+               next if not $hit;
+               # if we find it: always quotemeta; above, we already allow for escaped tagchars
+               #                                         so it is still idempotent
+               $hit=stemming($hit); # implies quotemeta
+               $hit{$hit}=1;
+            }
+         } else {
+            # not found, return original as it was incl. \Q\E
+            if ($stemming>-1) {
+               $k=stemming($k); # implies quotemeta
+            } else {
+               $k='\Q'.$k.'\E' if $qm;
+            }
+            $hit{$k}=1;
+         }     
+         @hit=sort keys %hit;
+         $k=$hit[0];
+         $k="(?:" . join("|", @hit) . ")" if 1<@hit;
+         vprint("new \$k is $k\n",2);
+      $k}}gxeoi;
+      vprint("new \$i is $i\n",1);
+   }
+   return(@_);
+}
+
+sub stemming {
+
+   # !! KEEP IN SYNC WITH &stemming in tagls !!
+  
+   # do stemming and quote-meta if requested
+   my($word)=@_;
+
+   if ($stemming==0) {
+      # final . denotes missing stem
+      $word=quotemeta($word);
+      $word.='[a-zA-Z]{0,5}' if $word=~s/\\?\.$//o;
+   } elsif ($stemming==2) {
+      $word=~s/(er|e|ing)s?$//io;
+      $word=~s/(?![aeiuoy])([a-z])\1$/$1/io;
+      $word=$_[0] if not $word=~/[a-z]$/io;   # not a word to stem!?
+      $word=quotemeta($word);
+      $word.='[a-zA-Z]*' if $word=~/[a-z]$/io;
+   } elsif ($stemming==1) {
+      $word=~s/(er|e|ing)s?$//io;
+      $word=~s/(?![aeiuoy])([a-z])\1$/$1/io;  # shorten double consonants at end
+      $word=$_[0] if not $word=~/[a-z]$/io;   # not a word to stem!?
+      $word=quotemeta($word);
+      $word.='{1,2}(?i:(?:er|e|ing)s?)?' if $word=~/[a-z]$/io;
+   } else {
+      $word=quotemeta($word);
+   }
+   return($word);
+}
+
+
+sub vprint {
+   local($\);
+   print main::STDERR $_[0] if not $_[1] or $verbose >= $_[1];
+}

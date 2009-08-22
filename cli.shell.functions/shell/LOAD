@@ -1,0 +1,62 @@
+export SHELLDIR _VERBOSE ENV _IS_KSH _IS_BASH _SHELL _OLDSHELL SHNEST
+
+
+
+# to use a readonly global SHELLDIR and still source
+# a local similarly structured setup:
+#
+# invoke path-to-LOAD to source the readonly SHELLDIR,
+# then invoke SHELLDIR="local shelldir" path-to-LOAD 
+# (optionally have a symlink to 02_customize.func which
+#  will also source account/host specifics)
+
+
+
+[   -n "$SHELLDIR" ] && SHELLDIR=${BASHARGV%%/LOAD}
+[ ! -d "$SHELLDIR" ] && SHELLDIR=/home/jakobi/bin/shell
+
+
+
+#_VERBOSE=1
+
+
+
+# shell detection
+_OLDSHELL=$_SHELL
+_SHELL=${0##*/}; _SHELL=${_SHELL%%-*}
+_IS_KSH=""
+_IS_BASH=""
+[ "$_SHELL" = "ksh" ]        && _IS_KSH=ksh
+[ "$_SHELL" = "pd-ksh" ]     && _IS_KSH=pd-ksh
+[ "$_SHELL" = "pdksh" ]      && _IS_KSH=pd-ksh
+# [ ! -z "$_AST_FEATURES" ]  && _IS_KSH=ksh # cannot unexport from within profile
+[ "$_SHELL" = "bash" ]       && _IS_BASH=bash
+[ ! -z "$BASH_VERSION" ]     && _IS_BASH=bash
+
+# shell switching and nesting
+[ -n "$_OLDSHELL" -a "$_OLDSHELL" != "$_SHELL" ] && SHNEST=$SHNEST-0
+
+# interactive - ensure we have a prompt [no exporting PS1!]
+[ "${-##*i}" != "$-" ] && PS1=${PS1:-'$'}
+
+
+
+# only for bash and ksh   
+# ksh sourcing requires at least ./ instead of just the filename
+if [ -n "$_IS_KSH" -o -n "$_IS_BASH" ]; then
+   for _SOURCEFILE in $SHELLDIR/*.func; do 
+      [ -n "$_VERBOSE" ] && echo "# SOURCE $_SOURCEFILE" 1>&2
+      if [ -r "$_SOURCEFILE" ]; then
+         . "$_SOURCEFILE"
+      else
+         echo "# ERROR  $_SOURCEFILE cannot load" 1>&2
+      fi
+      [ -n "$_VERBOSE" ] && echo "# DONE   $_SOURCEFILE" 1>&2
+   done
+else
+   : # probably dash - just ignore the poor posixly sick shell
+fi
+true
+
+
+# vim:filetype=sh

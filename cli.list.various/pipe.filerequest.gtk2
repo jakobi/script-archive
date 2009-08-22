@@ -1,0 +1,19 @@
+#!/usr/bin/perl -w
+
+# using a Gtk2::FileSelection to get multiple files is really easy.
+# filesel_multisel example
+
+use Data::Dumper;
+use Gtk2 -init;
+
+my $fs = Gtk2::FileSelection->new ('pick something');
+$fs->set_select_multiple (TRUE);
+
+if ('ok' eq $fs->run) {
+   # print Dumper($fs->get_selections);
+   foreach($fs->get_selections) {
+      print "$_\n";
+   }
+} else {
+   exit 1
+}

@@ -1,0 +1,109 @@
+#!/usr/bin/perl
+
+# 1999XXXX PJ   0.1  jakobi@acm.org initial version
+# 20090729 PJ   0.2  
+#
+# copyright:  (c) 1999-2009 jakobi@acm.org, placed under GPL v3 or later 
+my $version="0.2";
+
+# just a quick hack to select lines acc. to argument settings, 
+# e.g. for extracting a specific configuration from a multi
+# configuration master file.
+
+# example data file X
+# alpha
+# beta ##SELECT!charly:$delta:echo
+# gamma
+# bravo ##SELECT:a ##select b
+# example usage:
+# ./selectlines -e '$delta="foxtrott"' charly      X # deselects and does not print beta
+# ./selectlines -e '$delta="foxtrott"' not_matched X #               does not print beta
+# ./selectlines -e '$delta="foxtrott"' foxtrott    X # selects   and does     print beta
+# ./selectlines 'PATTERN|a|b'                      X # selects bravo (both a and b must be
+#                                                    # a part of selectlines argument)
+#
+# this line is true unless gamma   ##SELECT!gamma:ALWAYS: - always is REQUIRED
+# whitespace is kept if SELECT ends with a :, otherwise trailing or leading whitespace is removed
+
+$VARCHAR='[a-z0-9A-Z_{}]'; # lower AND uppercase, allow {} to access ENV
+
+args: while (1) {
+   if ($ARGV[0] eq '-')    { shift; last args; }
+   elsif ($ARGV[0] eq '-e'){ shift; $_=shift; eval($_); warn $@ if $@; }
+   elsif ($ARGV[0] eq '-c'){ shift; $_=shift; do $_; warn $@ if $@;}
+   elsif ($ARGV[0] eq '-v'){ shift; $verbose++; }
+   elsif ($ARGV[0] eq '-h'){ shift; &help; exit 1; }
+   elsif ($ARGV[0] eq '-o'){ shift; $outputfile=shift; }
+   else                    { last args; }
+}
+$select=shift;
+die "$0: no pattern??" if not $select=~/\S/;
+
+while(<>) {
+   # expand variables outside of the tags themselves.
+   while(s@##SELECTVAR:(\$$VARCHAR+)##@$1@gmee){;}
+   # expand any variables in SELECT TAGS
+   while(s@(##SELECT(?:(?:[!:]$VARCHAR*)*))([!:])\$($VARCHAR+)((?:(?:[!:][$]?$VARCHAR*)*)(?:$|\s))@do{"$1$2${$3}$4"}@gme){;}
+   $output.="# // $_" if $verbose;
+   # and print the line
+   while(s@(##SELECT(?:(?:[!:]$VARCHAR*)*))@@) {
+      $m=$1;
+      (not $m=~m@##SELECT((?:[!:]$VARCHAR*)*?)+($|\s)@m or                     # 1. print line if no selector 
+         ( $m=~m@##SELECT((?:[!:]$VARCHAR*)*?):(?:$select)(:|!|\s|$)@m or      # 2a. line is selected and
+           $m=~m@##SELECT((?:[!:]$VARCHAR*)*?):ALWAYS(:|!|\s|$)@m
+ 	 ) and not  
+	 ( $m=~m@##SELECT((?:[!:]$VARCHAR*)*?)!(?:$select)(:|!|\s|$)@m or      # 2b. selected line from 2a 
+	   $m=~m@##SELECT((?:[!:]$VARCHAR*)*?):NEVER(:|!|\s|$)@m               #     is not deselected
+	 )          # success
+      ) or $_="";   # or failure
+   }
+   $output.=$_;
+}
+
+if ($outputfile) {
+   if ($output!~/\S/) {
+      die "$0: no output??"
+   } else {
+      open(FH, ">$outputfile") || die "$0: cannot open $outputfile";
+      print FH $output;  
+   }
+   exit 0;
+} else {
+   print $output;
+   exit 0;
+}
+
+sub help {
+   print <<'EOF';
+selectlines [OPTIONS] PATTERN FILE ... > FILE
+
+selectlines  copies  input  to  output  while selecting or deselecting
+lines containing a special PATTERN of the form  ##SELECT([:!]STRING)+,
+where  !   deselects  a  line if !PATTERN matches !STRING: for example
+:STRING1!STRING3!STRING4:STRING2 corresponds to (:STRING1 OR :STRING2)
+AND NOT !STRING3 AND NOT !STRING4) - we select  the  line  if  one  of
+strings 1 or 2 occurs but neither strings 3 nor 4.
+
+:ALWAYS  is  always  selected  unless  deselected.   :NEVER  is always
+deselected,  regardless  of  other  values.   A  line  with   multiple
+##SELECTs  is  only  printed  if all select.  WARNING: negation is NOT
+boolean but rather a final grep -v! (see e.g. resolv.conf.master.pj)
+
+STRING   must   be  a  (possibly  empty)  alpha-numeric  string  or  a
+alpha-numeric variable name beginning with $ ($ENV{LOGNAME} et  al  is
+also ok).
+
+Perl  variables  can  also  be  used  outside of the SELECT tags: e.g.
+##SELECTVAR:$ENV{LOGNAME}##.
+
+[does  this  need  to be expanded to be able to invoke shell commands,
+too??]
+
+Options:
+   -c F    load config file F
+   -e E    eval expression E
+   -h      help
+   -o F    output to file F instead of STDOUT
+   -v      verbosity
+EOF
+}

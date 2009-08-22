@@ -1,0 +1,29 @@
+#!/usr/bin/perl
+
+# remcr, addcr
+# noumlaut     [or use | recode x..y]
+# foldlf       [or use fold]
+
+# see also:
+# cat ${1+"$@"} | noumlaut | recode -f latin1..flat
+#                                      utf8..flat
+#                                      utf8..ascii
+#                                      utf8..latin1
+#
+# use |recode -f utf8..ascii / utf8..latin1 for LANG conversion to "Umlaut
+#     e.g. | umlaut | recode -f utf8..flat # flat, retaining Ae-Umlaut
+do "$ENV{HOME}/bin/sub.mime";
+undef $/;
+@ARGV=("-") if not @ARGV;
+foreach $f (@ARGV) {
+   open(FH, "< $f"); $_=<FH>; close FH;
+   while(1){
+      $0=~/fold/        and do{$_=&foldlf3(&addfinallf(&remcr($_)));last};
+      $0=~/remcr/       and do{$_=&addfinallf(&remcr($_));          last};
+      $0=~/addcr/       and do{$_=&addcr(&addfinallf(&remcr($_)));  last};
+      $0=~/noumlaut/    and do{$_=&strip_german_umlaut($_);  last};
+      1                 and die;
+   }
+   rename $f, "$f.bak" if not $f=~/^\/dev\// and not $f eq "-";
+   open(FH, ">$f"); print FH $_; close FH;
+}

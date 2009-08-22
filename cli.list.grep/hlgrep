@@ -1,0 +1,101 @@
+#!/usr/bin/perl
+eval 'exec /usr/bin/perl -S $0 ${1+"$@"}'
+	if 0;
+
+# PJ added -A for pass through and just highlight
+
+#------------------------------------------------------------------------------
+# hlgrep - highlight grep
+#
+# See the manpage for more information.
+#------------------------------------------------------------------------------
+
+require "getopts.pl";
+
+($progname = $0) =~ s#.*/##;
+
+#------------------------------------------------------------------------------
+# Define the begin/end standout codes for the terminal.  The hardcoded
+# values are for the vt100 and its kind.  For other terminals, look up
+# the so/se capabilities in /etc/termcap or the smso/rmso capabilities
+# in the terminfo database.  A more robust way would be to get the codes
+# at runtime with something like
+#
+#	$so = `tput smso`;
+#	$se = `tput rmso`;
+#
+# if your system has tput.  The disadvantage of this is the cost of
+# running the two tput processes.  An even better way would be to read
+# the values directly from /etc/termcap or the terminfo database.
+#
+# Feel free to any terminal capability for highlighting.  Here are a few
+# capabilities for the vt100 (some may not work on your terminal):
+#
+#	Name		Termcap/Terminfo	String
+#	---------	----------------	------
+#	Standout	     so/smso		\e[7m
+#	Underline	     us/smul		\e[4m
+#	Bold		     md/bold		\e[1m
+#	Blinking	     mb/blink		\e[5m
+#------------------------------------------------------------------------------
+
+$so = "\e[7m";
+$se = "\e[m";
+
+#------------------------------------------------------------------------------
+# Get options and pattern from command line.  Check syntax.
+#------------------------------------------------------------------------------
+
+&Getopts("AaDhinw") || exit 2;
+$opt_a = $opt_A = $opt_a + $opt_A;
+
+$pattern = shift @ARGV;
+
+do { $! = 2; die "Usage: $progname [ -A|-a] [-Dhinw ] perlregex [ filename ... ] | less -R\n       printAll,Debug,Help,caseInsig,lineNumber,Word\n" }
+	unless ($pattern);
+
+#------------------------------------------------------------------------------
+# Escape any slashes in the pattern, because we use the slash as the
+# pattern-matching delimiter.
+#------------------------------------------------------------------------------
+
+$pattern =~ s#/#\\/#;
+
+#------------------------------------------------------------------------------
+# Set some variables to be used when building the command to be eval'd.
+#------------------------------------------------------------------------------
+
+$opt_a || do { $maybe_skip = "next"; };
+$opt_h || do { $name = "\$ARGV:" if (@ARGV > 1); };
+$opt_i && do { $sflags = "i"; };
+$opt_n && do { $linenum = "\$.:"; };
+$opt_w && do { $pattern = "\\b($pattern)\\b"; };
+
+#------------------------------------------------------------------------------
+# Generate the code.  Explicitly closing each file will reset the line
+# number ($.) (see eof in the perl manpage).
+#------------------------------------------------------------------------------
+
+$cmd = <<"AMEN";
+\$exit_status = 1;
+while (<>) {
+	if (s/$pattern/$so\$&$se/g$sflags) {
+		\$exit_status = 0;
+	}
+	else {
+		$maybe_skip;
+	}
+	print "$name$linenum\$_";
+} continue {
+	close ARGV if eof;
+}
+exit \$exit_status;
+AMEN
+
+#------------------------------------------------------------------------------
+# Execute the code.  But print it first if the user wanted.
+#------------------------------------------------------------------------------
+
+print STDERR $cmd if $opt_D;
+$| = 1;
+eval $cmd;

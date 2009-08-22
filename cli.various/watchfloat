@@ -1,0 +1,247 @@
+#!/usr/bin/perl
+
+# $0 [-t|-b] [-w width] [-h height] [-s n seconds or 0] [cmd] ...&
+
+# display a repeated float output on top/right of the current 
+# terminal in parallel to the invoking shell session.
+
+# 20080122 PJ        jakobi@acm.org - perl version, multi line float
+# copyright: (c)2008-2009 PJ, GPL V.3 or later, or under the original conditions of Mr. Duran
+my $version="0.1";
+
+# original idea was: c
+#      lock.sh http://www.linux.com/feature/124918,
+#      http://www.linuxtotal.com.mx, S. G. Duran
+
+# bugs:
+# - positioning errors possible for embedded control chars or
+#   multibyte/wide chars, so restrict command output if necessary
+# - -b option: ghost problem
+#   bottom right placement should clear/restore previous
+#   content -> ghosts. If we'd know what it was. And where on the screen
+#   it is currently located. 
+#   This basically should go into the
+#   shell line edit loop a la zshell - but this also stops float
+#   display during command execution. Alternate possibility:
+#   capture/compare screen contents and search for previous output/ghost
+#   [allowing/checking for change during search/...].
+#   [doesn't seem like there's a std capability to get the screen
+#   content, other than that 'mc0' hardcopy, which is a noop on ttys!?]
+#   Also optionally the output shouldn't
+#   occur if tty is used for typing to avoid having the user
+#   type in the dark... which is easier. All in all, this is really 
+#   a job for splitvt, screen or similar which add virtual ttys
+#   and act as filter and don't run in parallel to the invoking shell.
+#   if implemented in the terminal: cwin/create_window or 
+#   scrolling regions might also be helpful. If the main app doesn't
+#   currently also use that command...
+# - -t basically the same 'ghost' problem as with -b, but less
+#   noticeable as scrollup is used less often and/or apps doing it
+#   tend to support ^l for redrawing.
+# - race condition wrt cursor placement
+#   the save positioning/jump sequence probably allows a race if the 
+#   application also saves a position or just changes cursor position
+#   during this short time (libc, etc might change the write to 
+#   multiple writes...)
+
+
+# arraytoshellstring: quote of ARGV to a single string suitable for `shell`. 
+#
+# You can remove the next line and the sub.mime dependency
+# if you just say $command=$ARGV[0]; instead of the
+# 2nd HINT1 line. But this requires the user to quote his
+# command string and supply it as a single argument to $0.
+#
+# [definitions as of 200801 appended at end of file]
+$base=$0; $base=~s@/[^/]*$@@; require "$base/sub.mime"; # HINT1
+
+
+$|=1;
+
+$sleep=10;
+$count=99999;
+$command='date +%H:%M:%S';
+$bottomoffset=0;  # for -b option / bottom right display:
+                  # 0/1 are bottom of screen, otherwise n-1 lines up
+                  # this is quite unusable, as we'd need to be in the 
+                  # prompt command itself, upto and including knowing 
+                  # about input line size to "undraw" the previous
+                  # ghost images. zshell e.g. does the very same in 
+                  # it's input code and its "right prompt" feature.
+
+$R=0;
+$W=0;
+$H=0;
+chomp($NORMAL  = `tput sgr0`);     # see man 5 terminfo
+chomp($LEFT    = `tput cub1`);
+chomp($DOWN    = `tput cud1`);     # strangely, DOWN fails to work in urxvt(xterm)!?
+chomp($HOME    = `tput cup 0 0`);
+chomp($CLREOL  = `tput el`);
+$SAVEPOS       = "\033[s";         # Bug: actually, these should be 
+$RESTOREPOS    = "\033[u";         # abstracted with tput, too
+
+
+
+while(@ARGV){
+   $_=shift;
+   /^-t$/ and do{$R=0; next};
+   /^-b$/ and do{$R=-1; next};
+   /^-C(\d*)$/ and do{$COLOR =       "$1" ne "" ? $1 : 3; next}; # 1 red / 2 green / 3 yellow
+   /^-B(\d*)$/ and do{$borderwidth = "$1" ne "" ? $1 : 2; next}; # 2 rows/cols border
+   /^-s$/ and do{$sleep=shift; next};
+   /^-W$/ and do{$W=shift; next};
+   /^-H$/ and do{$H=shift; next};
+   /^-h$|^-?-help$/ and do{&help; die};
+   /^-T$/ and do{$T=shift; next};
+   unshift @ARGV, $_; last;
+}
+
+
+
+# comment this to toggle default behaviour
+$COLOR=3 if not defined $borderwidth and not defined $COLOR;
+
+if (defined $COLOR) {
+   chomp($COLOR   = `tput setaf $COLOR`);  # setaf 2 = green
+   chomp($COLOR  .= `tput smso`);     # smso = inverted; 
+}
+$borderwidth=2 if not defined $borderwidth and not defined $COLOR;
+
+$command=arraytoshellstring(@ARGV) if @ARGV; # HINT1
+@ARGV=();
+$count=1 if not $sleep;
+
+
+
+while($count--) {
+   chomp(@commandoutput=`{ $command ; } 2>&1`);
+   
+   # head and tail for -H / -T
+   $#commandoutput=$H-1 if $H and $H-1<$#commandoutput; 
+   @commandoutput=@commandoutput[-$T..-1] if $T and $T-1<$#commandoutput;
+   
+   # get rows; allowing for resizing
+   # ? cache or redo tput lines/cols and/or check SIGWINCH for changes 
+   # ? to window size?
+   if($R) {
+      chomp($R=`tput lines`);
+      $R=$R-bottomoffset;
+   }
+   
+   # get columns
+   $commandwidth=0; $w=$W;
+   chomp($C=`tput cols`); 
+   $C=$C-$borderwidth;
+   $w=$C if $w>$C;
+   foreach(@commandoutput) {
+      $l=length($_);
+      $commandwidth=$l if $l>$commandwidth;
+   }
+   $commandwidth=$w if $w;
+   $C=$C-$commandwidth;
+
+   # expand each line in the block to full width
+   foreach(@commandoutput) {
+      $_=substr($_.(" "x$commandwidth),0,$commandwidth);
+   }
+   
+   # create terminal command string (note: we do NOT protect
+   # against additional control codes in the output)
+   $out =$SAVEPOS.$COLOR;
+   $r=$R; foreach (@commandoutput) {
+      # BUG: tput should be removed from the loop, even
+      # if this breaks some ancient terminals with more
+      # arcane code sequence.
+      chomp($tmp=`tput cup $r $C`);
+      $out.=$tmp;
+      if ($borderwidth) {
+         $tmp =" "x$borderwidth; substr($tmp,length($tmp)-1,1)="|";
+      }
+      $out.=$tmp;
+      $out.=$_;
+      $r++;
+   }
+   if ($borderwidth and @commandoutput) {
+      chomp($tmp=`tput cup $r $C`);
+      $out.=$tmp;
+      $tmp =" "x$borderwidth; substr($tmp,length($tmp)-1,1)="+";
+      $out.=$tmp;
+      $out.="-"x$commandwidth;
+      foreach(2 .. $borderwidth) {
+         $r++;
+         chomp($tmp=`tput cup $r $C`);
+         $out.=$tmp;
+         $tmp =" " x ( $borderwidth + $commandwidth );  
+         $out.=$tmp;
+      }
+   }
+   $out.=$NORMAL.$RESTOREPOS;
+
+   die "loss of tty - cannot print" if not print $out;
+   
+   sleep $sleep if $sleep;
+}
+
+exit;
+
+#######################################################################
+
+sub help {
+   print <<EOF;
+watchfloat [options] command [command argument] ... &
+
+watchfloat periodically runs the non-interactive command and shows the
+output in a floating multi-line text display in the upper right within
+the terminal window of the invoking shell.
+
+The  text display in the shell can usually be redrawn with ^l, so  the
+float can be hidden for an iteration. This also takes care of the
+occassional scrolling ghost image from earlier iterations. 
+
+The command's quite useful to keep an eye on logfiles / compile jobs /
+diskspace,  while e.g. editing some sourcefiles with a  terminal-based
+editor like vim in the very same terminal session.
+
+options:
+  -B   / -Bd   use ascii mode and set borderwidth to d (2 if omitted)
+  -C   / -Cd   use color mode and set color to d (3/yellow if omitted)
+
+  -H N / -T N  head / tail the output to N lines
+  -W N         width N characters
+
+  -b   / -t    display float top (default; or -b for  bottom right; 
+               however this is depreceated)
+               
+  -s N         sleep N seconds after each iteration; use -s 0 to
+               quit after running command once (default: $sleep)
+
+examples:
+  - # watch diskspace and the end of the log in the terminal of the
+    # current shell, while continuing to work in the foreground (gnu
+    # tail is actually seeking to EOF, so it's not that inefficient).
+    watchfloat -T 8 bash -c "df -k .; echo; tail -3 /var/log/messages" &
+EOF
+}   
+
+#sub sq{ # escape hack for single-quoting
+#   my($tmp)=@_;
+#   $tmp=~s/\n/\?/g;   # or just remove it?
+#   $tmp=~s/'/'"'"'/g; # \\ doesn't work!?
+#   return($tmp);
+#}
+#sub arraytoshellstring {
+#   # given @ARGV, return a safely quoted string
+#   # untested; check with version in watchcmd
+#   my($cmd,$tmp);
+#   if (@_) {
+#      foreach $_ (@_){
+#         $tmp=$_;
+#         $cmd.=" " if $cmd;
+#         # sq only if necessary
+#         $tmp="'".sq($tmp)."'" if /[^A-Z0-9\.\-_\/~]/i;
+#         $cmd.=$tmp;
+#      }
+#   }
+#   return($cmd);
+#}
+

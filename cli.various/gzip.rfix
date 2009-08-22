@@ -1,0 +1,92 @@
+#!/usr/bin/perl
+
+# bugs:
+# - doesn't know about other compressors like bzip2
+#   and resulting conflicts and dupes, such as a 
+#   conflict consisting of file.gz existing along
+#   with file.bz2
+# - doesn't know or care about cross-compressor
+#   nonsense like bz2.gz or worse.
+
+$maxsize=20000;        # usually it would be BAD to gz-concat larger files
+$maxsizecmp=20000000;  # do not compare real monsters...
+$noconcat=0;           # set to 1 to skip appending to gzip file
+
+$suffix='.gz';
+$magic='\A\037\213';
+$gzip="gzip";
+$gunzip="gzip -c -d";
+
+@files=`find . -type f`;
+chomp(@files);
+@files=grep /\.gz$/, @files;
+$rm="echo would remove obsolete"; 
+
+if ($ARGV[0] eq "-rm") {
+   $rm="rm";
+} else {
+   warn "# simple postprocessor to clean up after gzip -r.\n";
+   warn "# try detecting gzip / non-gzip file dupes and conflicts in \$PWD.\n";
+   warn "# use with option -rm to actually try fixing SOME of the problems\n";
+   warn "# by deleting duplicates and moving text into existing gzip files.\n\n";
+}
+
+file: foreach (@files) {
+   $file=$_;
+   $dfile=$file;    $sqdfile=sq($dfile);
+   $file=~s/\Q$suffix\E//; $sqfile=sq($file);
+   next if not -f $file;
+   $tmp=""; open(FH,"<$dfile")    and sysread(FH,$tmp,1000,0); close FH; $format.=" dstcompressed "   if $tmp=~/$magic/; $format.=" nodst "   if 0==length($tmp);
+   $tmp=""; open(FH,"<$file")     and sysread(FH,$tmp,1000,0); close FH; $format.=" srccompressed "   if $tmp=~/$magic/; $format.=" nosrc "   if 0==length($tmp);
+   $rc=0;
+   if (      $format=~/nosrc|nodst/ ) {
+      warn "#skp empty file or arcfile for $file\n\n";
+   } elsif ( $format=~/dstcompressed/ and not $format=~/srccompressed/ ) {
+      while(1) {
+         last if -s $file > $maxsizecmp;
+
+         # just an identical copy of the gzip?
+         system "$gunzip '$sqdfile' | cmp - '$sqfile' >/dev/null 2>&1";
+         if (not $?) {
+             warn "#IDX $file\n";
+             system "$rm '$sqfile'"; $rc=-1 if $rm=~/echo/;
+             last;
+         }
+
+         last if $noconcat;
+
+         last if -s $file > $maxsize;
+
+         # bug: cross-compressor packing is skipped for now
+         last if $file=~/(\.(gz|zip|tgz|bz2|bzip|bzip2|tbz|exe|bmp|gif|iso|jpg|ps|avi|mpe?g|ogg|ogm|mp3|wm.|mkv|chm|pdf|lit|html?|xml|p|pl|c|h|cpp|c\+\+|py))$/i;
+         last if $tmp=~/\0/;
+         last if $tmp=~/\A#!.*(bash|ksh|\/bin\/sh|perl|python|ruby)/;
+         $tmp=`file '$sqfile'`;
+         last if $tmp!~/text/ or $tmp=~/exec|script|source/;
+
+         # hopefully, this is indeed appendable text
+         if ($rm!~/echo/) {
+            system "/bin/cat '$sqfile' | $gzip >> '$sqdfile'"; 
+         }
+         if ($rm=~/echo/ or not $?) {
+            warn "#APP $file\n";
+            system "$rm '$sqfile'"; $rc=-1 if $rm=~/echo/;
+            last;
+         }
+         last;
+      }
+      $rc++ if -f $file;
+   } else {
+      $rc++;
+   } 
+   if ($rc>0) {
+      warn "#!!! manual intervention required for\n$file\n\n";
+   }
+}
+
+sub sq{
+   my($tmp)=@_;
+   $tmp=~s/'/'"'"'/g; # \\ doesn't work!?
+   return($tmp);
+}
+

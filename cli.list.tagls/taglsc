@@ -1,0 +1,87 @@
+#!/bin/bash
+
+# taglsc: example for using tagls against predefined collections,
+#         filelists, or document clusters. Invoke without
+#         arguments for a list of defined collections.
+
+# created     PJ 200812XX jakobi@acm.org
+# last change PJ 20090725
+# copyright:  (c) 2008-2009 jakobi@acm.org, GPL v3 or later
+version="0.1";
+
+
+# host/user-specific configuration is possible by having
+# simplified copies of this script as taglsc.$HOSTNAME.$LOGNAME
+# or taglsc.$LOGNAME (consider exporting $HOSTNAME/$LOGNAME
+# in your shell profile)
+
+# [these are actually the document cluster defs I'm using every day]
+
+# this wrapper provides filelists and find output to tagls depending
+# on the document collection specified as the first argument. 
+#
+# Use e.g. "taglsc notes perl" to give all your files of class "notes" 
+# and then do a "tagls perl" on these files. 
+#
+# For efficiency, consider using a nightly cron job to pre-create all
+# filelists...
+
+# tagls-NOTES:
+# - duplicate filenames in specific subtrees: tagls defaults to a
+#   sort -u on matches, so we leave can allow duplicate lines in the
+#   input list
+
+# definitions for filter documents here and in user/host specific cfg
+export filterexp='s@(/CAPTURE|/DOWNLOAD|_files)/..*@@;$_="" if m@\.(css|js|png|jpe?g|gif|xml)(\.bz2|\.gz)?$@i'
+
+# allow testing: which of the more specific cfg files implements the collection?
+QDEFINED=0; [ "$1" = "-defined" ] && QDEFINED=1 && shift 
+
+type=$1; shift
+case $type in
+   # collection definitions
+   svc)
+       [ "$QDEFINED" = "1" ] && exit 0;
+       tagls -d /etc/services "${1:+$@}"  ;;
+   # generic house-keeping
+   ?*)                         
+       # check more specific cfg files for the requested collection
+       # **REMOVE in the more specific cfg files
+       for i in "$0.cfg" "$0.$LOGNAME.cfg" "$0.$HOSTNAME.$LOGNAME.cfg" "$0.$LOGNAME.$HOSTNAME.cfg"; do 
+           test -f "$i" && "$i" "-defined" "$type" && exec "$i" "$type" "${1:+$@}"
+       done
+       exec $0 # print usage / predefined collections
+       ;;
+   *)
+       cat 1>&2 <<EOF
+
+taglsc COLLECTION ...
+
+wrapper for tagls on document collections (use list for definitions).
+
+version: $version
+
+Depending  on  your on disk organization and naming  conventions,  you
+cluster  documents  into a named group like cap, and add some code  to
+provide  the corresponding list of files to tagls. tip: have a nightly
+cron  job  to pre-generate most of the lists. tip: use tagls's  option
+-NUMBER  to cope with recursively downloaded webtrees within  clusters
+or exclude /DOWNLOAD/ dirs.
+
+You can copy this file to taglsc.\$LOGNAME or taglsc.\$HOSTNAME.\$LOGNAME
+to  provider  host  or user-specific configurations,  which  are  also
+searched when just invoking taglsc.
+
+Defined document collections for tagls are:
+$0:
+svc                 grep example using /etc/services, e.g. taglsc svc ssh
+                    will return lines like "ssh 22/tcp", saying that
+                    ssh is bound to port 22 and uses tcp
+                    (.-prefix strings to force interpretation as regex)
+
+EOF
+       test -f $0.$HOSTNAME.$LOGNAME && echo $0.$HOSTNAME.$LOGNAME: && $0.$HOSTNAME.$LOGNAME
+       test -f $0.$LOGNAME           && echo $0.$LOGNAME:           && $0.$LOGNAME
+       exit 1
+;;
+esac

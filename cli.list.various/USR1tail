@@ -1,0 +1,92 @@
+#!/bin/sh
+#!perl
+eval 'exec perl -Sx $0 ${1:+"$@"}'
+        if 0;
+
+# $0 runs a command on the hosts given on stdin
+# last change PJ 981009 
+
+# Bugs: max 1 Zombie zwischen Ausgabe-Restarts...
+
+use POSIX ":sys_wait_h";
+undef $/; $|=1;
+@cmd=("tail","-f");
+$bell=$clear="";
+$USR1=1; $SIG{USR1}=sub { $USR1=1; kill 15,$main::PID if $main::PID; undef $main::PID;};
+$SIG{INT}=$SIG{QUIT}=$SIG{TERM}=sub { kill $main::PID if $main::PID; exit; };
+
+arg: while (@ARGV) {
+   if    ($ARGV[0] eq '-') { shift; last; }
+   elsif ($ARGV[0] eq '-h'){ &help; exit 1; }
+   elsif ($ARGV[0] eq '-v'){ shift; $verbose=1; }
+   elsif ($ARGV[0] eq '-B'){ shift; $bell="\x07"; }
+   elsif ($ARGV[0] eq '-C'){ shift; $clear=1; }
+   elsif ($ARGV[0] eq '-D'){ shift; $date=1; }
+   elsif ($ARGV[0] eq '-T'){ shift; $ENV{TERM}=shift }
+   elsif ($ARGV[0] eq '-M'){ shift; $timestampfile=shift }
+   elsif ($ARGV[0] eq '-c'){ shift; @cmd=("cat"); }
+   elsif ($ARGV[0] eq '-g'){ shift; @cmd=("gtail", "-f"); }
+   else { last; }
+}
+die "Trying to use STDIN?" if not @ARGV;
+
+
+while(1) {
+   $prevtimestamp=$USR1=$timestamp if $timestampfile and -r $timestampfile and $timestamp=(stat($timestampfile))[9] and $prevtimestamp!=$timestamp;
+
+   while($USR1) {
+      $USR1=$_="";
+      
+      do { print "\n"x28; system("clear") } if $clear>1; $clear++ if 1==$clear;
+      
+      $tmp="";
+      $tmp.=$bell;
+      $tmp.="##\n## ".scalar(localtime(time))."\n##\n" if $date;
+      print $tmp;
+
+      if ($PID=fork) {
+         print "ChildPID: $PID\n" if $verbose;
+      } else {
+         exec @cmd, @ARGV;
+	 exit; # can't happen
+      }
+      sleep 1;
+      while(waitpid(-1,WNOHANG|WEXITED)>0) { ; } # WEXITED
+   }
+   
+   if ($timestampfile) {
+      sleep 30
+   } else {
+      sleep
+   }
+}
+
+exit;
+
+sub help {
+print STDERR <<EOF;
+$0 [OPTIONS] file
+
+prints  file  contents  (by  default,  tail -f is used), restarting on
+signal USR1.
+
+Options:
+   -B 		bell on restart
+   -C		clear on restart
+   -D		date output
+   -M file      restart if mtime of file has changed
+   -T term      TERM-variable
+   
+   -c		use cat
+   -g		use gtail
+
+Notes:
+
+  - use gtail to tail multiple files
+  - input must be a file
+  - USR1tail implements tail -f and hangs waiting
+    for further input unless signaled!
+
+EOF
+}
+

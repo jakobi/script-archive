@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# emvP [-p] op - edited mv helper, applying (possibly predefined) perl expr to the 
+#                region on stdin using myrename with suitable options
+
+# copyleft, etc: see emv proper.
+
+#myrename -F -c -PRE '/^ *(\d+)\t(.*)/ and ($prefix,$_)=($1,$2) and $prefix=sprintf("%6d\t",$prefix)' -stdin "$@"
+myrename -F -c -PRE '&tabbedlinenumber' -stdin "$@"
