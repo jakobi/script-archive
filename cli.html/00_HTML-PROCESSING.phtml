@@ -1,0 +1,27 @@
+i[*
+   $ENV{__EMB_EXTRATITLE}="HTML";
+   $ENV{__EMB_COUNT}++; 
+   if (1==$ENV{__EMB_COUNT}) {
+      Execute('base.epl');
+   } else {
+*]
+
+<p>Commands  dealing with HTML. Most are pretty ancient, but sometimes
+still surprisingly useful.</p>
+
+<H3>Major Commands (early 90's style)</H3>
+
+<ul>
+   <li><B>COLLECT</B> (turns a set of html files into a single html document)
+   <li><B>DIFF, DIFFTREE</B> (from single html documents to directories) 
+       as well as an old copy of Mr. Weiler HtmlDiff
+   <li>htmlcheck and files (a truly ancient html validator)
+   <li><B>LINKS</B> (extracts the links from an HTML document)
+   <li><B>XLINKS</B> (link extraction and helper for spidering)
+   <li><b>db_cgi.p</b> is the retired DBFW's grab-bag of utility functions. Some 
+      scripts may still depend on them.
+</ul>
+
+
+
+[*}*][# MUST BE AT EOF! #]

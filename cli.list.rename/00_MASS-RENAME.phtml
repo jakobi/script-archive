@@ -1,0 +1,56 @@
+[*
+   $ENV{__EMB_EXTRATITLE}="TEMPLATE";
+   $ENV{__EMB_COUNT}++; 
+   if (1==$ENV{__EMB_COUNT}) {
+      Execute('base.epl');
+   } else {
+*]
+
+<p>This  toolbox compartment offers two tools for mass renaming files,
+including  logging and creating UNDO scripts.</p>
+
+<p>One  allows for way too much configurability and perl evals with an
+optional  interactive mode that acts on each file independently, while
+the other shows all files at once in your favorite editor. If the task
+is  repetitive,  use  myrename;  if you need to do it  all  the  time,
+pre-define  a  small  perl scrap for myrename and  just  say  myrename
+&lt;NAME&gt;  FILES. If you want to see all the files at once and want
+to  think about their names while editing and changing whole groups of
+files,  use  emv  instead (when using vim, do read up on  g//p,  sort,
+regex and visual blocks; note that emv is rather useless when combined
+with a weak editor).</P>
+
+<p>See also GREP.xchange, which is somewhat similar:</p>
+<ul>
+   <LI>file list -&gt; grep output
+   <LI>mass-rename    -&gt; mass edit
+   <LI>ls -1d FILES | emv - -&gt; grep FILES | pipe.vim | Grep.xchange
+</ul>
+
+<H3>Major Commands</H3>
+
+<ul>
+   <li><B>emv</B> (perl) - edited mv: two pass renaming, link creation, 
+      file list splitting, link target editing (use e.g. 
+      GNU find -type l -xtype l | emv -); quite capable when used with 
+      the vim editor's visual block changes. Can also be used non-interactively by
+      providing a perl expression for renaming files.
+   <li><B>myrename</b> (perl): mass renaming using a perl expression like 
+      e.g. s/old/new/, also allowing for predefined actions and extensive 
+      user customization of actions, e.g. things like myrename lc to lowercase 
+      all files that match the shell pattern *. With myrename '$l=~s/foo/bar' FILES
+      all link matching link targets are modified. Way too many evaluation hooks for
+      customization. Features a basic interactive mode. A configuration example
+      is also provided.
+</ul>
+<BR><BR>
+<UL>
+   <li><B>emvs</B>, a helper to sort filelists but keeping directories and
+      contents always together, temporarily remapping / to \0.
+   <li><b>myrename.mangle</B>: parse filelists using shell quoting rules and encode/decode
+      names for e.g. sorting; from whitespace elimination to url-style-encoding.
+   <li><b>myrename.quote</B>: allow the use of the quoting routines from emv/myrename 
+        for quoting filenames safely for use in shell commands.
+</ul>
+
+[*}*][# MUST BE AT EOF! #]

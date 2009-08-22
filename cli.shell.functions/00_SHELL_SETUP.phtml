@@ -1,0 +1,28 @@
+[*
+   $ENV{__EMB_EXTRATITLE}="Shell Functions and Setup";
+   $ENV{__EMB_COUNT}++; 
+   if (1==$ENV{__EMB_COUNT}) {
+      Execute('base.epl');
+   } else {
+*]
+
+<p>Shell support functions and setup.</p>
+
+<H3>Some of the more interesting functions</H3>
+
+<ul>
+   <li>cd: portable version of <b>nico_cd</b> for bash and ksh - a proper directory
+       stack with the ability to grep and edit the stack (cd.nico_cd_for_bash_and_ksh.func)
+   <li>cd: an extension of Halchenko's <B>dyndirstack</b> - a dynamic dirstack building upon the bash builtins 
+       with completion support (cd.dyndirstack_bash.func)
+   <li>cd: see also <b>mt_dir</b> elsewhere in this archive (key-word based cd aliases)
+   <li><b>_echo, _warn</b> (bash actually manages to have no echo/print honoring -- as end-of-options-option;
+       the only reasonably safe function happens to be printf; 00_lib.func)
+   <li><b>f2a</b> is a shell function reading a file into an array, allowing
+       e.g. safe argument passing: find . -print | f2a -a ARGS; less "$ARGS[@]" (00_lib.func)
+   <li><b>uniqpath</b> deals with :-separated strings and removes duplicates and 
+       optionally '.' and '' (both of which are a security risk e.g. in $PATH; 00_lib.func)
+</ul>
+
+
+[*}*][# MUST BE AT EOF! #]

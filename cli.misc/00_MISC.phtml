@@ -1,0 +1,33 @@
+[*
+   $ENV{__EMB_EXTRATITLE}="Miscellaneous Scripts";
+   $ENV{__EMB_COUNT}++; 
+   if (1==$ENV{__EMB_COUNT}) {
+      Execute('base.epl');
+   } else {
+*]
+
+<p>Some scripts, helpers and experiments that don't quite fit the other categories.</p>
+
+<H3>Commands</H3>
+
+<ul>
+   <li><B>ALARM</B> (acoustic environmental damage, for use with waitcond)
+   <li><B>df.minfree</b> (checks free space and warns if lower than requested)
+   <li><b>linkname</b> (symlink to canonical name; when things like cd -P are unavailble)
+   <li><b>mt_dir</b> (configures directory short names and invokes one of echo/cd/mc; see
+        also the nico_cd stack in the shell function section)
+   <li><b>paradj</b> (modified; can now skip \ to format e.g. double quoted text in perl)
+   <li><b>repeat</b> (when I'm too lazy to write a while ... do; command; done loop)
+   <li><b>sanitize_filenames</b> (rename files containing certain characters, umlauts,
+       etc; see also myrename; superseeded by myrename)
+   <li><b>sleep.p</b> (select-based sub-second sleep)
+   <li><b>sleepuntil</b> TIMEEXPR [COMMAND [TIMEEXPR [COMMAND] ...]] (TIMEEPR is a 
+       either a command to run and wait for, or a string giving the delay time)
+   <li><b>unespace.pl</b> (modified version of Guide de Rosa's unespace; strip 
+       some of the noise from script's typescript sessions logs; tries to strip
+       e.g. vi sessions from the logs to increase their usability)
+   <li><b>watchfloat</b> (write background command output to a floating region of a tty)
+</ul>
+
+
+[*}*][# MUST BE AT EOF! #]

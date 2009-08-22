@@ -1,0 +1,25 @@
+[*
+   $ENV{__EMB_EXTRATITLE}="Backup";
+   $ENV{__EMB_COUNT}++; 
+   if (1==$ENV{__EMB_COUNT}) {
+      Execute('base.epl');
+   } else {
+*]
+
+<p>Some backup support commands.</p>
+
+<p>Some   scripts  for  backups  from  single-instance   tarballs   to
+incrementals  to rsync-style hardlinked snapshots with support scripts
+like  xfer_backup.diff  to  diff,  echo or ls a  file  in  the  backup
+relative to $PWD or the specified file. The scripts need a rewrite and
+some  effort  to generalize before release; then again,  they've  been
+working  reliable  for years now and I'm loath to change them  without
+some  additional  'benefit'  or interesting major feature  (like  e.g.
+root-less backup - but that way's more effort than interest...).</p>
+
+<p>Recently  I've  read  about  ccollect, which might  be  a  suitable
+substitute  for my own filelist-based rsync snapshot script (which  is
+the  major  non-glue portion), as it also seems to be list-based -  at
+the very least it supports exclusion.</p>
+
+[*}*][# MUST BE AT EOF! #]

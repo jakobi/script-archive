@@ -1,0 +1,33 @@
+[*
+   $ENV{__EMB_EXTRATITLE}="VIM (Placeholder)";
+   $ENV{__EMB_COUNT}++; 
+   if (1==$ENV{__EMB_COUNT}) {
+      Execute('base.epl');
+   } else {
+*]
+
+<p>I  still  want to finish some macros and finally split my grab  bag
+vim script file into presentable sections. Don't hold your breath.</p>
+
+<H3>Files of Interest</H3>
+
+<ul>
+   <li>shell scripts
+      <ul> 
+         <li><b>vimscript</b> uses vim as interpreter for file containing
+            non-interactive vim script. Can be used with pipes. Note that the
+            script still requires a TTY due to short-comings of vim's head-less mode.
+            For the time being, do <i>not</i> try to run multiple scripts in parallel; 
+            the tempfile handling needs fixing. (bash; full rewrite of the vimscripts example) 
+         <li>See also <b>pipe.vim</b> and <b>vimless</b> elsewhere in the archive.
+      </ul>
+   <li>vim scripts
+      <ul>
+         <li>configuration files
+         <li>vim scripts
+      </ul>
+</ul>
+
+
+
+[*}*][# MUST BE AT EOF! #]

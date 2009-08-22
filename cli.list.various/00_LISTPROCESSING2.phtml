@@ -1,0 +1,44 @@
+[*
+   $ENV{__EMB_EXTRATITLE}="Minor List Processing Tools";
+   $ENV{__EMB_COUNT}++; 
+   if (1==$ENV{__EMB_COUNT}) {
+      Execute('base.epl');
+   } else {
+*]
+
+<p>Some additional small tools for lists and pipes.</p>
+
+<H3>Commands</H3>
+
+<ul>
+   <li><B>ddnonblock, ddsponge</b> (not actually dd, just mnemonically named commands; 
+       GNU dd: use both BS=HUGENUMBER <i>and</i> OBS to force acting like a sponge)
+   <li><b>echo2cat</b> (abusing cat0 to turn command arguments into input lines)
+   <li><b>line.print, line.replace</b>: combined with grep/grep -v
+       the scripts allow basic line-editing using single line commands,
+       with the strings being a mostly verbatim part of the command arguments,
+       a history of the commands is already part-way to creating an UNDO log
+       for basic editing actions.
+   <li>a modified version of <b>pfind</b> (find with regex)
+   <li><b>pipe.select.curses, pipe.select.gtk2</b> (examples to select lines within pipes)
+   <li><b>pipe.vim</b> aka <b>vimpipe</b>, <b>vimless</b> (wrappers to use interactively
+       use vim within a pipe, e.g. for grep | pipe.vim | Grep.xchange)
+   <li><b>range</b> (yet another command to print numeric ranges, with/without leading 0)
+   <li><b>randomecho</b>, <b>randomcat</b>
+   <li><b>revdatesort</b>
+   <li><b>selectlines</b>, a version of the classic to select/deselect lines according
+       to embedded directives, while copying the sourcefile. Useful for trivial cases,
+       provided you switch to more suitable tools for heavier lifting.
+   <li><b>sort.ip4</b>
+   <li><b>teefork</b> (slightly modified version of the old process-capable perl tee script)
+   <li>tailing files: <b>USR1tail</b>, <b>busythreadtail</b>
+   
+</ul>
+   
+<p>See also:</p>
+<ul>
+   <li><b>f2a</b> in 00_lib.func: a shell function reading a file into an array:
+       find . -print | f2a -a ARGS; less "$ARGS[@]" 
+</ul>
+
+[*}*][# MUST BE AT EOF! #]

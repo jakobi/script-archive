@@ -1,0 +1,18 @@
+[*
+   $ENV{__EMB_EXTRATITLE}="TEMPLATE";
+   $ENV{__EMB_COUNT}++; 
+   if (1==$ENV{__EMB_COUNT}) {
+      Execute('base.epl');
+   } else {
+*]
+
+<p>This  toolbox compartment contains the foo for doing bar.</p>
+
+<H3>Major Commands</H3>
+
+<ul>
+      <li><B>foo</B> is a bar
+</ul>
+
+
+[*}*][# MUST BE AT EOF! #]

@@ -1,0 +1,29 @@
+[*
+   $ENV{__EMB_EXTRATITLE}="Some Scripts for Firefox";
+   $ENV{__EMB_COUNT}++; 
+   if (1==$ENV{__EMB_COUNT}) {
+      Execute('base.epl');
+   } else {
+*]
+
+<p>Some  firefox command line support scripts. Usable to e.g. load all
+bookmarks  from a bookmarkfolder (have firefox or firefoxstdin  invoke
+firefoxgrep...)  .  In  a pinch, the scripts also offer  a  low  level
+method to copy a few changed bookmarks.</p>
+
+<H3>Commands</H3>
+
+<ul>
+   <li><b>firefox</b> (rather ugly and with grown warts; actually nowadays, firefox 3.5 finally 
+       implements some of the same; took only the better part of a decade)
+   <li><b>firefoxcookies</b> (dump cookies.sqlite) 
+   <li><b>firefoxdelta</b> (differences in bookmarks)
+   <li><b>firefoxgrep*</b> (grep both html and sqlite bookmarks)
+   <li><b>firefoxstdin</b> (given urls or look up commands on stdin, mangles them and
+       uses firefox to forward them to the running firefox instance
+   <li><b>firefoxsessionlist</b> (dump info from xml-ish files like the firefox sessionstore,
+       with some grepping added)
+</ul>
+
+
+[*}*][# MUST BE AT EOF! #]

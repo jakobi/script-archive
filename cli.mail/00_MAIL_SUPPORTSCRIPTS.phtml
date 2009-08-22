@@ -1,0 +1,25 @@
+[*
+   $ENV{__EMB_EXTRATITLE}="Mail scripts";
+   $ENV{__EMB_COUNT}++; 
+   if (1==$ENV{__EMB_COUNT}) {
+      Execute('base.epl');
+   } else {
+*]
+
+<p>Some  support  scripts for dealing with mail. Mlnn, the mutt  setup
+and  the procmail setup is probably way too specific, so I'll  exclude
+it for now (is procmail still being actively maintained at all??)</p>
+
+<H3>Commands</H3>
+
+<ul>
+   <li><b>mygrepmail</b>. The original code's strictly functional and a pleasure
+       to read. Partly because of this I'm still unwilling to fork this one for real.
+       Then again, it's a pity that the classic grepmail doesn't know about MIME at all.
+       So here's a modified interim version that (temporarily) de-mimes anything greppable
+       just before the grep. Though it still has some 'modern times' problems with 
+       e.g. encoding mixtures. 
+</ul>
+
+
+[*}*][# MUST BE AT EOF! #]

@@ -1,0 +1,37 @@
+[*
+   $ENV{__EMB_EXTRATITLE}="Process Handling";
+   $ENV{__EMB_COUNT}++; 
+   if (1==$ENV{__EMB_COUNT}) {
+      Execute('base.epl');
+   } else {
+*]
+
+<p>Some  scripts  for  dealing  with  processes  and   process-related
+events.</p>
+
+<p>In  theory extending waitcond to allow D-BUS events might look like
+a  good idea. But without a proper usage scenario I'm a bit  hesistant
+to  hack  waitcond and in addition make it depend on external  modules
+(even if only optional).</p>
+
+<H3>Major Commands</H3>
+
+<ul>
+   <li><b>waitcond</b>> (perl) - similar to tagls/Grep.pm, this one also implements
+       boolean expressions on top of regexes. It can grep in files, wait for 
+       (dis)appearance of files or processes, cpu/net/disk usage values, or 
+       just an idle tty. You will probably want to combine
+       waitcond with some notification tool like the trumpets of Jericho (or 
+       just ALARM) to be indeed sucessfully notified of the fact that your 20 hour 
+       compile just failed with a syntax error after just 58 minutes...<BR>
+       Simplified variants with different history and codebase are
+       <b>fwait/pwait</b>.
+   <li>waitcond.timeout run a command and kill it after a period. Note that
+       the timelimit specification allows using a command such as waitcond.
+   <il>zap has come a long way from the its old incarnation in the perl books. 
+       Nowadays it lists, nices or kills processes or process trees 
+       matching a regex with or without user interactions 
+</ul>
+
+
+[*}*][# MUST BE AT EOF! #]
