@@ -3,6 +3,8 @@
 # emv - edited mv, perl version
 
 # fork/rewrite from the shell version of emv v1.95 20060928
+# [v1.95 2006-02-17 torsten.scheck@gmx.de, www.i0i0.de/toolchest/emv]
+
 # last changes:
 # 2007XXXX PJ       jakobi@acm.org changed to include line numbers in the editor,
 #                   allowing arbitrary editor commands and reordering (perl scraps)
