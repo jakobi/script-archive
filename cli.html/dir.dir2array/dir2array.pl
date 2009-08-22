@@ -26,6 +26,7 @@ $start=time;
 file: while(<>) {
    $file={};
    chomp;
+   $namefile="$_.name";
    s!^\.\/!!g; s!/+\.?(?=/)!!g; s!/+($)!!; 
 
    if (-d $_) {                       # skip dirs
@@ -33,6 +34,7 @@ file: while(<>) {
       $leafdir{$_}=1          if -e "$_/.leaf" or -e "$_.leaf";
       do{$skipdir{$_}=1;next} if -e "$_/.skip" or -e "$_.skip";
       next                    if not -e "$_/.name" and not -e "$_.name";
+      $namefile="$_/.name" if not -e "$_.name";
       $_.='/' if not m@/$@;
    }
    #                                  # skip if in a skipped dir
@@ -61,8 +63,9 @@ file: while(<>) {
    };
    $file->{sizek}=~s/\.\d*//;
 
-   $ENV{file}=$_;
-   $file->{desc}=`cat \$file.name 2>/dev/null`; 
+   $file->{desc}="";
+   $ENV{namefile}=$namefile;
+   $file->{desc}=`cat \$namefile 2>/dev/null` if -r $namefile;
    $file->{desc}="" if $file->{desc}!~/\S/; 
    $file->{desc}=~s/\n+\z//; 
    
