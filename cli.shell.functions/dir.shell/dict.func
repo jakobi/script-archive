@@ -1,0 +1,81 @@
+# translation functions
+function xlate { # dict.leo.org E-D
+    lynx -width=$COLUMNS -dump -nolist "HTTP://dict.leo.org/?lang=de&search="`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"` | \
+   perl -e 'undef $/; $_=<>; s/\A[\s\S]*?Englisch\s*Deutsch//mgoi; s/^ {10,}//mgo; s/ +$//mgo; s/^ *(_____[\s\S]*|Werbung|LEO wird unterst.tzt durch|[ \t]+Hinweise[\s\-]+FAQ)[\s\S]*//mgoi; print'
+}
+function xlates { # espaniol
+   lynx -width=$COLUMNS -dump -nolist "HTTP://dict.leo.org/?lang=de&lp=esde&search="`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"` | \
+   perl -e 'undef $/; $_=<>; s/\A[\s\S]*?Spanisch\s*Deutsch//mgoi; s/^ {10,}//mgo; s/ +$//mgo; s/^ *(_____[\s\S]*|Werbung|LEO wird unterst.tzt durch|[ \t]+Hinweise[\s\-]+FAQ)[\s\S]*//mgoi; print'
+}
+function xlatef { # francais
+   lynx -width=$COLUMNS -dump -nolist "HTTP://dict.leo.org/?lang=de&lp=frde&search="`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"` | \
+   perl -e 'undef $/; $_=<>; s/\A[\s\S]*?Franz.*?sisch\s*Deutsch//mgoi; s/^ {10,}//mgo; s/ +$//mgo; s/^ *(_____[\s\S]*|Werbung|LEO wird unterst.tzt durch|[ \t]+Hinweise[\s\-]+FAQ)[\s\S]*//mgoi; print'
+}
+# translations D/J (req. netscape): http://bunmei7.hus.osaka-u.ac.jp:591/WadokuJT/search.htm
+function xlatej { # japanese/english
+   lynx -width=$COLUMNS -dump -nolist "HTTP://dict.regex.info/cgi-bin/j-e/tty/dosearch?sDict=on&H=PS&L=J&WC=none&T="`perl -e 'print join "%20", @ARGV;' "$@"` |\
+   perl -e 'undef $/; $_=<>; $_="" if /Roman?ji Conversion Error|No Matches Found/i; s/\A[\s\S]*?Found//mgoi; s/ *_____[\s\S]*//mgoi; print' | grep .
+   lynx -width=$COLUMNS -dump -nolist "HTTP://dict.regex.info/cgi-bin/j-e/tty/dosearch?sDict=on&H=PS&L=E&WC=none&T="`perl -e 'print join "%20", @ARGV;' "$@"` |\
+   perl -e 'undef $/; $_=<>; $_="" if /Roman?ji Conversion Error|No Matches Found/i; s/\A[\s\S]*?Found//mgoi; s/ *_____[\s\S]*//mgoi; print' | grep .
+   true
+}
+
+
+
+function xlate_dict { # dictionary.com
+   url="http://www.dictionary.com/cgi-bin/dict.pl?term="`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"`
+   lynx -width=$COLUMNS -dump -nolist $url | \
+   perl -e 'undef $/; $_=<>; s/\A[\s\S]*?(?=\d+ results for:)//mgoi; s/^ *View results from:[\s\S]*\Z//mgoi; print' | less
+   echo '#lynx "'$url'"'
+}
+
+function xlate_thes { # thesaurus.reference.com
+      url="http://thesaurus.reference.com/browse/"`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"`
+   lynx -width=$COLUMNS -dump -nolist $url | \
+   perl -e 'undef $/; $_=<>; s/\A[\s\S]*?(?=\d+ results for:)//mgoi; s/^ *View results from:[\s\S]*\Z//mgoi; print' | less
+   echo '#lynx "'$url'"'
+}
+
+function xlate_ref { # www.reference.com
+      url="http://www.reference.com/search?q="`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"`
+   lynx -width=$COLUMNS -dump -nolist $url | \
+   perl -e 'undef $/; $_=<>; s/\A[\s\S]*?(?=\d+ results for:)//mgoi; s/^ *View results from:[\s\S]*\Z//mgoi; print' | less
+   echo '#lynx "'$url'"'
+}
+
+
+
+# requires ispell, ingerman, iogerman, iamerican
+function ispellwort {
+   DICTIONARY=ogerman ispellword "$@"
+}
+function ispellword {
+   # or simply call ispell and enter words interactively
+   # * exact match, +/- stemming/concat, & near miss, ? nothing found at all
+   typeset answer
+   while [ "$#" -gt 0 ]; do
+      printf "%-15s" "$1"; 
+      answer="$(echo "$1" | ispell -a | grep -v Ispell.Version | grep .)"
+      shift
+      answer="$(_echo "$answer" | sed -r -e 's/^&[^:]*: */\& /; s/, */ /g')"
+      _echo "$answer"
+   done
+}
+
+# -------------------------------------------------------------
+
+alias feiertage='gcal -q de_BA -n'
+function answers {
+   w3m -no-proxy -M "http://www.answers.com/$1"
+}
+
+function wikid {
+   w3m -no-proxy -M "http://de.wikipedia.org/wiki/$1"
+}
+function wikie {
+   w3m -no-proxy -M "http://en.wikipedia.org/wiki/$1"
+}
+alias wiki=wikie
+
+
+# vim:filetype=sh

@@ -1,0 +1,60 @@
+[# #]
+[! 
+   $nopaddir=$ENV{__EMB_FL_NOPADDIR}; $nopaddir='Compact_pm' if not $nopaddir;
+   $u=$ENV{__EMB_FL_URL};
+   $raw=$ENV{__EMB_FL_RAW};
+   $tmp=`cd \$__EMB_FL_DIR && find | sort | dir2array.pl`;
+   eval $tmp; die "$@" if $@;
+!]
+
+
+The  linked  pages in this filelist contain additional information  on
+specific  tool  groups within the archive. You can download a  group's
+files by following the tool group's GIT link below. Look around in the
+GIT  directory  of  the  group  and use  the  <B>download</B>  or  the
+<B>raw</B> link for the files you're interested in. Of course, you can
+also use native git to access the repository :).<p>
+
+
+<TABLE>
+   [- $escmode=0; -]
+   [+ 0==$row ? "<TR><TH>Date</TH><TH></TH><TH>Size</TH><TH>GIT-DIR</TH><TH>Filename</TH><TH>Description / Section Introduction</TH></TR>\n" : "" +]
+   [- # above does go into row accounting
+      # however below we still need the maxrow limit, as
+      # the magic stops only on WS-only rows... sigh-squared
+      $escmode=1; 
+   -]
+   [-  
+       $maxrow=scalar @$VAR1; $f=$VAR1->[$row]; 
+       $d=$n=$f->{name}; $d=~s!(^|/)[^/]+$!!; $d.="/" if $d ne "";
+       $pad=""; 
+       if ($oldd ne $d) {
+          # vertical padding on change of dirs unless difference is matched by blacklist nopaddir
+          ($haystack,$needle)=($oldd,$d); ($haystack,$needle)=($d,$oldd) if length($d)>length($oldd);
+          $haystack=~s!\Q$needle\E!!;
+          $pad="style='padding-top:.6em'" if not $haystack=~m!^/?($nopaddir)/?$!; 
+       }
+       $oldd=$d;
+   -]
+   <TR>
+      <TD [+$pad+]>[+            $f->{date8} +]</TD>
+      <TD [+$pad+]>[+            $f->{flags} +]</TD>
+      <TD [+$pad+] class=num>[+  $f->{sizek} +]</TD>
+      <TD [+$pad+] class=repo><A HREF="[+ "$u/$d" +]">GIT</A></TD>
+      <TD [+$pad+] class=file><A HREF="[+
+         do{if ($n=~m!/00[^/]*html?$!) {
+           $n=~s!\.p(html?)$!\.$1!;
+           $b=1;
+           $n;       # we're in the html tree anyway, so just $n is fine 
+                     # (u is the git tree path, raw the block item path)
+         } else {
+           $b=0;
+           "$raw/$n";
+         }} +]">[+ $n +]</A></TD>
+      [$ if ($b) $]
+      <TD [+$pad+] class=desc><A HREF="[+ $n +]"><B>--&gt; [+ $f->{desc} +] &lt;--</B></A></TD>
+      [$ else $]
+      <TD [+$pad+] class=desc>[+ $f->{desc} +]</TD>
+      [$ endif $]
+   </TR>
+</TABLE>

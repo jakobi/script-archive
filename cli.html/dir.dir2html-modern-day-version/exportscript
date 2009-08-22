@@ -1,0 +1,165 @@
+#!/bin/bash
+
+# script to export the 
+#   current directory's SRC HTML/. and REPO*/.
+#   to the parent's     DST HTML/. and REPO*/.
+
+
+
+# On exporting a hierarchic selection of files
+# to github, without using the intermediate local git 
+# nor github as native version control system for
+# the files in question (using github websites more
+# in a dated archive style of use).
+
+# The idea for this script is to have SRC/REPO*/. 
+# being a tree # of some files and symlinks to the 
+# currently used files. The source is thus a linklayer,
+# containing directories which contain the 
+# symlinks of files to be exported. To allow for moving
+# and changing the linklayer layout, the links should
+# be absolute.
+
+# structure for this script:
+# SRC: ~/git/github/LINKLAYER/{HTML,REPO*}, dirs containing symlinktrees
+# DST: ~/git/github/HTML   -> jakobi.github.com # symlink alias for the git repo
+# DST: ~/git/github/REPO*  -> script-archive    # "
+#
+# actual local git repostories kept in sync with github:
+# ~/git/github/jakobi.github.com
+# ~/git/github/script-archive 
+
+# This script copies all referenced
+# files to the DST trees, and generated documentation
+# from the SRC/HTML* trees to DST/HTML*.
+#
+# For documentation files in SRC/REPO.(*), the
+# documentation gets placed in the main doc tree
+# DST/HTML/$1-doc in a REPO specific subdirectory.
+
+
+
+SRC="$PWD"
+DST="$PWD/.."
+
+
+
+[ ! -f "@LINKTREE" ] && exit 20
+
+
+
+echo
+echo '# Step 1 - Checking for broken links'
+echo '# (do fix or delete from LINKTREE and REPOs)'
+find . -type l -xtype l || exit 1
+
+
+
+echo
+echo '# Step 2 - Check SRC for stop words (4LW/German)'
+{
+Grep.pm -H -i -r -e '\bfehler|fehler\b|\bnicht|\b(der|das|ein|(eine|diese|jene)(|r|s))\b' */.; #ENGLISHOK
+} | egrep -v '#ENGLISH-?OK' | grep . && exit 2
+
+
+
+# assumption - we generate the html anyway, thus
+# there shouldn't be locally modified files in 
+# GIT UNLESS from this very step
+echo
+echo '# Step 3a - Generate Html for HTML* to DST/HTML'
+for i in HTML*; do
+   cd "$i"
+   echo "# cp -Lpr $i -> $DST/$i/."
+   # cp -Lpr . "$DST/$i/."
+   # find . | egrep -v -e '\.epl$|\.phtm|\.phtml' |\
+   find . | cpio -pmdu -L "$DST/HTML/$m/."
+   for j in *.phtml */*.phtml */*/*.phtml; do
+      k="$(echo "$j" | sed -r -e 's/\.p(html?)$/.\1/')"
+      l="$(dirname "$j")";
+      [ ! -f "$j" ] && continue
+      echo "# embperl $j -> $DST/$i/$k"
+      export EMBPERL_PATH="$SRC/$i/$l:$SRC/$i";
+      EMBPERL_OBJECT_BASE="$SRC/$i/base.epl" embpexec "$j" > "$DST/$i/$k"
+   done
+   cd "$SRC"
+done
+
+
+
+echo
+echo '# Step 3b - Generate Html for REPO* to DST/HTML/*'
+for i in REPO*; do
+   cd "$i"
+   m="$(echo "$i" | sed -r -e 's/^REPO\.//')"
+   echo "# cpio $i -> $DST/HTML/$m-doc/."
+   find    {*,*/*,*/*/*}{.html,.htm,.phtml,.phtm,.epl,.png,.txt,.css,README} \
+           2>/dev/null | \
+           cpio -pmdu -L "$DST/HTML/$m-doc/."
+   for j in *.phtml */*.phtml */*/*.phtml; do
+      k="$(echo "$j" | sed -r -e 's/\.p(html?)$/.\1/')"
+      l="$(dirname "$j")";
+      [ ! -f "$j" ] && continue
+      echo "# embperl $j -> $DST/HTML/$m-doc/$k"
+      export EMBPERL_PATH="$SRC/$i/$l:$SRC/$i:$SRC/HTML/$m-doc/$l:$SRC/HTML/$m-doc:$SRC/HTML";
+      embpexec "$j" > "$DST/HTML/$m-doc/$k"
+   done
+   cd "$SRC"
+done
+
+
+
+# but also for the repos, there shouldn't be
+# local mods. Anyway, check them in if we find
+# some...
+echo
+echo '# Step 4 -- Prepare GIT DST/REPO'
+for i in REPO*; do
+   cd "$DST/$i"
+   echo "#   $PWD"
+   git add -A .
+   git commit -m "export phase 0 on $(date)"
+   cd "$SRC"
+done
+
+
+
+echo
+echo '# Step 5 -- Copy REPOs to DST/REPO'
+for i in REPO*; do
+   cd "$i"
+   echo "# cp -Lpr $i -> $DST/$i/."
+   cp -Lpr . "$DST/$i/."
+   cd "$SRC"
+done
+
+
+
+echo
+echo '# Step 6 -- Update GIT'
+for i in HTML* REPO*; do
+   cd "$DST/$i"
+   echo "#   $PWD"
+   git add -A .
+   git commit -m "export phase 1 on $(date)"
+   cd "$SRC"
+done
+
+
+
+echo
+echo  '7. for DST/REPO* git-push'
+if [ "$1" = "-commit" -o "$1" = "--commit" ]; then
+   ssh-add -l | grep . || ssh-add
+   ssh-add -l
+   for i in HTML* REPO*; do
+      cd "$DST/$i" && git push origin master; cd "$SRC"
+   done
+else 
+cat <<EOF
+   # run this scrap now or reinvoke with -commit
+   for i in HTML* REPO*; do
+      cd "$DST/$i" && git push origin master; cd "$SRC"
+   done
+EOF
+fi

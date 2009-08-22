@@ -1,0 +1,35 @@
+#!/usr/bin/perl -00
+
+# parse fdupes output and link it
+# (exclude stuff first with e.g. grep -v)
+
+# bugs:
+# - \n
+# - name length and temp suffix
+# as well as
+# - security issues due to always ignoring mode/uid/gid
+#   thus truly suitable only in trust settings or 
+#   on backups that only root can access
+
+while(<>) {
+   s/^\d* bytes? each:\n//m;
+   if (s/^(\S.+)\n//m and $l=$1 and @s=split(/\n+/,$_)){
+      print "\n";
+      if (-l $l or not -f $l)    {print "#error not plain file for $l\n"; next};
+      if (not -r _)              {print "#error not readable $l\n"; next};
+      if (5>-s _)                {print "#error too small $l\n"; next};
+      print "relinking (?) to:\n$l\n";
+      foreach $s (@s) {
+         if (-l $s or not -f $s) {print "#error not plain file for $s\n"; next};
+         if (not -r _)           {print "#error not readable $s\n"; next};
+         $r=0;
+         not $r and do{system "cmp", $l, $s; $r=1 if $?};
+         not $r and do{rename($s, "$s.$$.deduplicating") or $r=2};
+         not $r and do{link($l, $s) or $r=3 and rename("$s.$$.deduplicating", $s) };
+         not $r and do{unlink("$s.$$.deduplicating") or $r=4};
+         print "#error $r: $s\n" if $r;
+         print "$s\n" if not $r;
+      }
+   }
+}
+
