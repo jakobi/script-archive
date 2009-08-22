@@ -16,7 +16,7 @@ use warnings;
 use Data::Dumper;
 
 my($new,$start);
-my($file,@time);
+my($file,$namefile,@time);
 my (@array,%skipdir,%leafdir);
 
 # config
