@@ -30,6 +30,7 @@ my $version="2.00pj";
 
 # bugs:
 # - does NOT report non-conforming lines as IGNORED.
+# - do I already log the RC of the executed command??? - ADD IT
 # - while basic dir tracking is implemented, it still lacks true canonical 
 #   de-linked dev/inode# name+path smashing. 
 # - filename restrictions on really-pathologically-stupid names due to use 
