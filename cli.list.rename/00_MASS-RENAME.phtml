@@ -35,6 +35,8 @@ emv thrives and wilts with the capability of the editor invoked).</P>
       GNU find -type l -xtype l | emv -); quite capable when used with 
       the vim editor's visual block changes. Can also be used non-interactively by
       providing a perl expression for renaming files.
+      (You may wish to set EMVSHELL to a Bourne-style shell that supports 
+      set -o pipefail.)
    <li><B>myrename</b> (perl): mass renaming using a perl expression like 
       e.g. s/old/new/, also allowing for predefined actions and extensive 
       user customization of actions, e.g. things like <tt>myrename lc</tt> to lowercase 
