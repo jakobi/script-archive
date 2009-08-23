@@ -2,6 +2,7 @@
 #!perl # -Sx: line count is one off; -w: tested.
 eval 'exec perl -Sx $0 ${1:+"$@"}'
    if 0;
+
  
 # --.--.94 <user> <latest change>
 # 05.09.94 domke  (From "Programming Perl", L.Wall, R.Schwartz)
@@ -12,6 +13,7 @@ eval 'exec perl -Sx $0 ${1:+"$@"}'
 # 09.06.09 pj   0.5   small cleanup
 # (c) perl artistic licence
 my $version="0.5";
+
 
 ($me = $0) =~ s#.*/##; # in $0 alles bis zum letzten '/' loeschen
 #---------------------------------------------------------------
