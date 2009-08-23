@@ -247,7 +247,7 @@ while [ "$1" != "" ]; do
       -|stdin|STDIN|-stdin|-STDIN) shift;  exec firefoxstdin ${1:+"$@"} ;;
       
       # add your shortcut args below -- case patterns do not expand vars :(
-      -example|daily|-weekly|-nightly|-monthly|-news.daily|-jobs.daily|-job.daily)  
+      -example|-daily|-weekly|-nightly|-monthly|-news.daily|-jobs.daily|-job.daily)  
                                    tmp="$0.$1";
                                    if [ -f "$tmp" ]; then
                                       cat "$tmp" | firefoxstdin

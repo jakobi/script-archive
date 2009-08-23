@@ -34,7 +34,7 @@ _IS_BASH=""
 [ ! -z "$BASH_VERSION" ]     && _IS_BASH=bash
 
 # shell switching and nesting
-[ -n "$_OLDSHELL" -a "$_OLDSHELL" != "$_SHELL" ] && SHNEST=$SHNEST-0
+[ -n "$_OLDSHELL" -a "$_OLDSHELL" != "Xsession" -a "$_OLDSHELL" != "$_SHELL" ] && SHNEST=$SHNEST-0
 
 # interactive - ensure we have a prompt [no exporting PS1!]
 [ "${-##*i}" != "$-" ] && PS1=${PS1:-'$'}

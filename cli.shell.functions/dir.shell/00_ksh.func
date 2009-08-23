@@ -22,6 +22,17 @@ if [ -z "$_IS_KSH" ]; then
    return
 fi
 
+if [ "${KSH_VERSION##*PD KSH}" != "$KSH_VERSION" ]; then
+   # MKS ksh is rumoured to be bogus as well
+   # and mirbsd's mksh is just as questionable due to its pdksh heritage
+   # dtksh/tksh (CDE/TK-based )would probably be ok as real ksh derivatives,
+   # but they seem to have vanished.
+   echo  WARNING PD KSH IN USE - DO DEPEND ON SANE HANDLING OF ARRAYS, HASHES OR PIPES 1>&2
+   echo  WARNING PD KSH IN USE - DO DEPEND ON SANE HANDLING OF ARRAYS, HASHES OR PIPES 1>&2
+   echo "                         please leave this shell immediately                 " 1>&2
+   echo  WARNING PD KSH IN USE - DO DEPEND ON SANE HANDLING OF ARRAYS, HASHES OR PIPES 1>&2
+   echo  WARNING PD KSH IN USE - DO DEPEND ON SANE HANDLING OF ARRAYS, HASHES OR PIPES 1>&2
+fi
 
 SHELL=$_SHELL
 test -f /etc/ksh.kshrc && . /etc/ksh.kshrc
