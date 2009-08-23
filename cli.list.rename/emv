@@ -519,16 +519,16 @@ EOF
       $shell=$ENV{SHELL} if not defined $shell or not -x $shell;
       $shell="/bin/sh"   if not defined $shell or not -x $shell;
       system($shell, "-c", "set -o pipefail");
-      if ($shell=~/csh|dash/ or $?) { # unsuitable one incl. dash, csh, tcsh
+      if ($shell=~/zsh|csh|dash/ or $?) { # unsuitable one incl. zsh, dash, csh, tcsh
          # NOTES
-         # 1. zsh is also 'unsuitable by default' inspite of its pipestatus array:
+         # 1. zsh is also 'unsuitable by default' inspite of providing a pipestatus array:
          # Work around for zsh is to set EMVSHELL, set EMVPREPROC to say ' ' 
          # and have EMVSHELLPOSTPROC contain something like
          # '; _rc=0; for i in "$pipestatus[@]"; do echo $i; [ "$i" = "0" ] || _rc=$i; done; exit $_rc'
          # (untested; may need a bit of tweeking)
-         # 2. to use unsuitable shells in general, consider remove pipefail and logging 
-         # (export EMVSHELLTEELOG=' '; export EMVSHELLPREPROC=' ') and set EMVSHELL 
-         # to your shell. Note that kills some of safety features...
+         # 2. to use unsuitable shells in general, consider removing pipefail and 
+         #    logging altogether, which looses a bit of the safety features:
+         #    export EMVSHELLTEELOG=' ';export EMVSHELLPREPROC=' ';export EMVSHELL=BADSHELL
          warn "# !! BAD SHELL  -  attempting other shells,  consider setting \$EMVSHELL\n";
          warn "# !! to the  path of  ksh  or  bash.  It must be a  Bourne-derived shell\n";
          warn "# !! that supports set -o pipefail.\n";
@@ -542,8 +542,8 @@ EOF
                $shell="$i/$j" if not $shell or not -x $shell;
             }
          }
-         system($shell, "-c", "set -o pipefail");
-         die "cannot find any sensible shell to continue\n" if $?
+         system($shell, "-c", "set -o pipefail") if $shell;
+         die "cannot find any sensible shell to continue\n" if $? or not $shell;
       }
    }
 }

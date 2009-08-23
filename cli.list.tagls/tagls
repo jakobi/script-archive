@@ -7,6 +7,12 @@
 # copyright:  (c)2007-2009 PJ GPL v3 or later
 my $version="0.2";
 
+
+# Dependencies: 
+# - expects bash in path, change \$shell as necessary 
+# - expansyn (also from jakobi.github.com)
+
+
 # Bugs:
 # - None. tagls is a beast, and beasts only have fleas. How many? 
 #   Ask your neighbourhood mutt.
@@ -27,6 +33,7 @@ use strict;
 use vars;
 
 # defaults for various options
+my $shell="bash";                       
 my $grep_max_size=100000;               # max size for grep/key functions
 my $TAGLSPATH=$ENV{TAGLSPATH}; $TAGLSPATH="$ENV{HOME}/doc:." if not $TAGLSPATH;
 my $EDITOR=$ENV{EDITORTAGLS};
@@ -328,7 +335,7 @@ if ($commandrc and @files) {
       my @command=($commandrc);
       # NOTE that "ARGV0=STRING command args" has the same effect of 
       #            changing the command name...
-      @command=("bash", "-c", $command[0].' "$@"', $command[0]) if $command[0]=~/[\s'"\$\\;\|\>\<\(\)\{\}\[\]]/;
+      @command=($shell, "-c", $command[0].' "$@"', $command[0]) if $command[0]=~/[\s'"\$\\;\|\>\<\(\)\{\}\[\]]/;
       vprint("# calling command: @command $_\n");
       $ENV{file}=$_;
       system @command, $_;
@@ -347,7 +354,7 @@ if ($commandperl and @files) {
 # -e: calling an editor and/or a command on all results or a command on a single results
 if ($editor and @files) { # above in constrast is safe due to just using a tmpfile
    my @command=($EDITOR);  
-   @command=("bash", "-c", $command[0].' "$@" </dev/tty >/dev/tty', $command[0]);
+   @command=($shell, "-c", $command[0].' "$@" </dev/tty >/dev/tty', $command[0]);
    vprint("# calling editor: @command ".join("'","",@files,"")."\n");
    system @command, @files;
    if($?) {
@@ -359,7 +366,7 @@ if ($editor and @files) { # above in constrast is safe due to just using a tmpfi
 # -cmdN
 if ($commandall and @files) {
    my @command=($commandall);
-   @command=("bash", "-c", $command[0].' "$@"', $command[0]) if $command[0]=~/[\s'"\$\\;\|\>\<\(\)\{\}\[\]]/;
+   @command=($shell, "-c", $command[0].' "$@"', $command[0]) if $command[0]=~/[\s'"\$\\;\|\>\<\(\)\{\}\[\]]/;
    vprint("# calling command: @command $_\n");
    system @command, @files;
    if($?) {
@@ -372,7 +379,7 @@ if ($commandall and @files) {
 if ($command and @files) {
    foreach(@files) {
       my @command=($command);
-      @command=("bash", "-c", $command[0].' "$@"', $command[0]) if $command[0]=~/[\s'"\$\\;\|\>\<\(\)\{\}\[\]]/;
+      @command=($shell, "-c", $command[0].' "$@"', $command[0]) if $command[0]=~/[\s'"\$\\;\|\>\<\(\)\{\}\[\]]/;
       vprint("# calling command: @command $_\n");
       $ENV{file}=$_;
       system @command, $_;
