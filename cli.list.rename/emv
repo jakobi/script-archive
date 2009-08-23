@@ -28,11 +28,13 @@ my $version="2.00pj";
 #                        severely stripped down variant. Use perl -npe
 #                        if you don't need path mangling or builtins.)
 
-# bugs:
-# - does NOT report non-conforming lines as IGNORED.
-# - do I already log the RC of the executed command??? - ADD IT
+# major bugs:
+# - none known.
+# 
+# bugs and issues:
+# - does NOT report non-conforming lines as IGNORED [won't fix for now]
 # - while basic dir tracking is implemented, it still lacks true canonical 
-#   de-linked dev/inode# name+path smashing. 
+#   de-linked dev/inode# name+path smashing. [won't fix for now]
 # - filename restrictions on really-pathologically-stupid names due to use 
 #   of ls for generating the list of files. Consider e.g. the worst case
 #   of \n within filenames misleading the script to treat the name as
@@ -40,13 +42,31 @@ my $version="2.00pj";
 #   perl -e 'use File::Find; $f=sub{print "$_\n\n" if /\n/}; find($f, @ARGV);' .
 #   (then maybe reuse above with unlink or rename instead of print).
 #   better yet: explicitely verify the sanity of ALL filenames.
-# ? filenames containing [", ']: seem to work (also with generic utf-8 chars??)
-# ? filenames and locale conflicts, incl. e.g. invalid utf codes
-#   while perl will be fine, can the shell parse the file in question?
-# - probably some bugs in the undo/redo log quoting of filenames; 
-#   !double check before using the logs for undoing changes!
+#   [will fix any known case except '\n']
 #
-# - convenience commands like rm / touch / sh 
+# ? errfile doesn't include things like command or command number,
+#   we could provide print the command string in case of non-zero rc; 
+#   but that adds noise to the errfile and won't happen for non-error
+#   output; the proper way would be a temporary per command errfile
+#   being checked and appended to the real errfile 
+#   [undecided, lacks usage scenario where this would really be helpful]
+#   [won't modify for now]
+# ? filenames containing [", ']: works. However I'm less certain
+#   about say utf8 w/wo locale conflicts and invalid chars like e.g.
+#   a latin1 umlaut in filenames - wil the shell accept the command, 
+#   or return an error (either would be caught correctly)? 
+#   Or worse: will the a questionable shell or mv implementation
+#   irresponsibly silently strip the character in question 
+#   (which would allow mv to collide without perl being able to 
+#   detect this ahead of time).
+#   [too insane, won't consider before bug report incl. in depth 
+#    details on mv and shell being used]
+# ? possibly some in the undo/redo log quoting of filenames, also
+#   the log might contain UNDO unneeded commands in case we did detect
+#   an error a bit later than we should: Thus
+#   !DO DOUBLE CHECK the logs before using the logs for undoing changes!
+#
+# - Note than convenience commands like rm / touch / sh / ... [won't fix for now]
 # -                               aren't fully logged 
 # -                               aren't logged in sequence
 # -                               neither check errors nor report on stdout/stderr
@@ -58,7 +78,8 @@ use warnings;
 use strict;
 use vars;
 
-my($shell, $time, $edit, $mv, $mv2, $mvtty, $dir, $owner, $head, $foot, $commentchar);
+my($shell, $shellteelog, $shellpreproc, $shellpostproc);
+my($time, $edit, $mv, $mv2, $mvtty, $dir, $owner, $head, $foot, $commentchar);
 my($changes,$errors,$errors_severe,$convenience);
 my(@pathtrack,@pathtracked);
 my($tmp);
@@ -486,19 +507,41 @@ EOF
    appendfile($undfile,"# reverse the lines before executing/copying the mv commands in this file (-> tac)");
 
    $shell=$ENV{EMVSHELL};
+   $shellpreproc =$ENV{EMVSHELLPREPROC};  $shellpreproc ="set -o pipefail"          if not $shellpreproc;
+   $shellpostproc=$ENV{EMVSHELLPOSTPROC}; $shellpostproc=""                         if not $shellpostproc;
+   $shellteelog  =$ENV{EMVSHELLTEELOG};   $shellteelog  ='2>&1 | tee -a "$errfile"' if not $shellteelog;
+   $shellpreproc.=";"                if $shellpreproc  and $shellpreproc !~/;\s*\z/;
+   $shellpostproc=";".$shellpostproc if $shellpostproc and $shellpostproc!~/\A\s*;/;
+   # no ';' for shellteelog; errfile has been also placed into %ENV
+
    if (not $shell){
       warn "# emv: consider setting \$EMVSHELL to a suitable shell\n";
       $shell=$ENV{SHELL} if not defined $shell or not -x $shell;
       $shell="/bin/sh"   if not defined $shell or not -x $shell;
       system($shell, "-c", "set -o pipefail");
       if ($shell=~/csh|dash/ or $?) { # unsuitable one incl. dash, csh, tcsh
-         warn "# !! BAD SHELL - attempting other shells, consider\n";
-         warn "# !! setting \$EMVSHELL to the path of ksh or bash\n";
-         warn "# !! (bourne-derived and supporting set -o pipefail)\n";
-         $shell="/bin/bash"     if not -x $shell;
-         $shell="/usr/bin/bash" if not -x $shell;
-         $shell="/bin/ksh"      if not -x $shell;
-         $shell="/usr/bin/ksh"  if not -x $shell;
+         # NOTES
+         # 1. zsh is also 'unsuitable by default' inspite of its pipestatus array:
+         # Work around for zsh is to set EMVSHELL, set EMVPREPROC to say ' ' 
+         # and have EMVSHELLPOSTPROC contain something like
+         # '; _rc=0; for i in "$pipestatus[@]"; do echo $i; [ "$i" = "0" ] || _rc=$i; done; exit $_rc'
+         # (untested; may need a bit of tweeking)
+         # 2. to use unsuitable shells in general, consider remove pipefail and logging 
+         # (export EMVSHELLTEELOG=' '; export EMVSHELLPREPROC=' ') and set EMVSHELL 
+         # to your shell. Note that kills some of safety features...
+         warn "# !! BAD SHELL  -  attempting other shells,  consider setting \$EMVSHELL\n";
+         warn "# !! to the  path of  ksh  or  bash.  It must be a  Bourne-derived shell\n";
+         warn "# !! that supports set -o pipefail.\n";
+         warn "# !!\n";
+         warn "# !!    (if you really _do_ insist on using a  different shell,  you may\n";
+         warn "# !!     wish to try tweaking EMVSHELL/EMVPREPROC/EMVPOSTPROC/EMVTEELOG;\n";
+         warn "# !!     search the source for pipefail for more information)\n";
+         $shell="";
+         for my $i (qw!/bin /usr/bin /opt/pkg/bin!) {
+            for my $j (qw!bash ksh93 ksh!) { # even a mere pd-ksh should be suitable
+               $shell="$i/$j" if not $shell or not -x $shell;
+            }
+         }
          system($shell, "-c", "set -o pipefail");
          die "cannot find any sensible shell to continue\n" if $?
       }
@@ -940,6 +983,8 @@ sub renaming2 {
 
    my($tmpsfx,$orgline,$orgline0,$newline0,$tmpline,$newline,$escorgline,$escnewline,$esctmpline,$tmpline1,@pass2,$undo,$cnt);
    $tmpsfx=".tmp$$~";
+   $ENV{errfile}=$errfile;
+
    # pass one - rename to intermediary
    foreach $cnt (1..$#$orgref+1) {
       ($newline,$orgline)=($$newref[$cnt-1], $$orgref[$cnt-1]); 
@@ -968,7 +1013,7 @@ sub renaming2 {
          }
          if ($mv ne "noexec") {
 # DISK1 pass1: user-specified mv, possibly interactive
-            system($shell, "-c", qq!set -o pipefail; $mv '$escorgline' '$esctmpline' $mvtty 2>&1 | tee -a "$errfile"!);
+            system($shell, "-c", qq!$shellpreproc $mv '$escorgline' '$esctmpline' $mvtty $shellteelog $shellpostproc!);
          } else {
             noexec($escorgline,$esctmpline); $?=0;
          }
@@ -1008,7 +1053,7 @@ sub renaming2 {
          printf "  %-25s -> %-25s %s", "'$orgline0'", "'$newline'" , ( $tmp!~/\S/ ? "\n" : " (Trk $tmp:$orgline)\n");
 # DISK2 pass2:
          if ($mv ne "noexec") {
-            system($shell, "-c", qq!set -o pipefail; $mv2 '$esctmpline' '$escnewline' $mvtty 2>&1 | tee -a "$errfile"!); 
+            system($shell, "-c", qq!$shellpreproc $mv2 '$esctmpline' '$escnewline' $mvtty $shellteelog $shellpostproc!); 
             
          } else {
             noexec($esctmpline,$escnewline); $?=0;
@@ -1033,7 +1078,7 @@ sub renaming2 {
                ($errors_severe, $tmp)=($errors_severe+1, "#ERROR EXISTS ");
             } else {
 # DISK3 pass3: definitely non-interactive invocation of the real mv [-i as safety net, but no tty]
-               system($shell, "-c", qq!echo 3; set -o pipefail; mv -i -- '$esctmpline' '$escorgline' </dev/null 2>&1 | tee -a "$errfile"!);
+               system($shell, "-c", qq!$shellpreproc mv -i -- '$esctmpline' '$escorgline' </dev/null $shellteelog $shellpostproc!);
                if ($?) {
                   ($errors_severe, $tmp)=($errors_severe+1, "#ERROR MV ") if $?;
                }else{
