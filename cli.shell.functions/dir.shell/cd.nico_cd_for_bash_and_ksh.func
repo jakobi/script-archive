@@ -4,7 +4,8 @@ typeset|grep -e '^typeset -a cdx_copy$'    -e '^integer cdx_copy$'    > /dev/nul
 typeset|grep -e '^typeset -a cdsx$'        -e '^integer cdsx$'        > /dev/null || typeset -i cdsx=${cdsx:-0}
 
 # (c) nico
-# 20090810 PJ   0.1pj  jakobi@acm.org -- modifications to run with both bash and ksh
+# 20090823 PJ  0.1pj  jakobi@acm.org -- modifications to run with both 
+#                                        bash and att ksh (NOT PD-KSH!)
 #                                        cdto sed extension
 
 # bash-isms
@@ -16,6 +17,7 @@ typeset|grep -e '^typeset -a cdsx$'        -e '^integer cdsx$'        > /dev/nul
 #   thus < <(), possibly with exec is required -> rewritten using
 #   cdpipe which switches according to shell, or restructured to use $().
 #   NOTE: local variable semantics differ - !!AVOID!!
+#   NOTE that pdksh supports NEITHER SYNTAX
 # - print replaced by echo or printf if unsafe.
 # - unset array / typeset -a array / array=() is ok for bash,
 #   but ksh seems treats this like a parent-function-local-array.
@@ -31,6 +33,7 @@ typeset|grep -e '^typeset -a cdsx$'        -e '^integer cdsx$'        > /dev/nul
 # - cdvi added to edit list
 # - *_copy is now a global (*)
 # - original ksh cdsv $PWD-only bug fixed
+#
 
 cdlibsedopt=-r;           # use extended regex for sed
 cdlibpushd="load";        # also load the pushd and friends

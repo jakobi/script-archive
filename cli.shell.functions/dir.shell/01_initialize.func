@@ -7,9 +7,9 @@ export HOSTNAME LOGNAME UID USER SHNEST debian_chroot # moved to init!
 
 
 
-# nesting detection
+# nesting detection (together with shell change detection in LOAD)
+# (Note that shell replacements with exec are also counted)
 # 0.. - console shells, ssh 
-# [note that _OLDSHELL in LOAD may contain Xsession of all things...]
 # 1.. - desktop spawned shell
 # m-n - n-th shell of another kind in shell#m
 if [ "${SHNEST##*-}" != "$SHNEST" ]; then
