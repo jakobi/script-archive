@@ -83,17 +83,19 @@ perl -i.bak -pe 'BEGIN{system "stty cbreak";$|=1;undef $/;warn "press y to run s
 
 my $backposmax=200;                            # -bpmax default for var length zero width look behind
 my $bufferlines=2;                             # number of lines to provide in buffer
-my $diffcmd="diff";                            # --diff command
 my $o_follow=1;                                # resolve symlinks?
 my $o_preserve_hardlink=0;                     # preserve hardlinks?
+my $o_nosync=0;                                # don't insist on substring match of grep output at location
 my $verbose;                                   # --verbose
-my ($o_diff,$o_context,$o_flock);
 my $fileh="";                                  # filehandle for locking
+my ($o_diff,$o_context,$o_flock);
+my ($expr);
 
 
 # undo log setup
 my $o_log=1;                                   # create diffs?
-my $logcmd="diff -u";
+my $diffcmd="diff -u";                         # --diff command
+my $logcmd="diff -u";                          # diff command and format used in the diffset*virt logs
 my @time=localtime(time);
 my $logtime=sprintf "%4d%02d%02d%02d%02d%02d", 1900+$time[5],1+$time[4],$time[3],@time[2,1,0];
 my $logdir="/var/tmp/Grep-xchange-$ENV{LOGNAME}";  # logdir
@@ -105,7 +107,8 @@ my (%files, %match);                           # hashes for the output of grep
 my ($file,$filebak,$absfile,$origfile);
 my ($logdata,$changedfiles,$errors,$rc);
 my ($backpos,$skip,$pos,$pos0,$line,$content,$match);
-my ($ERR,$LINE,$OLD,$POS,$NEW,$LINEOFFSET,$LINENO,$OLDPOS,$BUFFER); # variables explicitely provided to matchsubst
+# variables explicitely provided to matchsubst
+my ($ERR,$LINE,$ORIGLINE,$OLD,$POS,$NEW,$LINEOFFSET,$LINENO,$OLDPOS,$BUFFER,$MATCH); 
 
 
 while(@ARGV) {
@@ -117,6 +120,8 @@ while(@ARGV) {
    /^-?-b(ack)?p(os)?max$/     and do { $backposmax=shift; next};
    /^-?-b(uffer(lines)?)?max$/ and do { $bufferlines=shift; next};
    /^-?-diff$|^-d$/            and do { $o_diff=1; next};
+   /^-?-modified$/             and do { $o_nosync=1; $expr='$LINE=~s/.*\n/$MATCH/'; next};
+   /^-?-perl$/                 and do { eval shift; die $@ if $@; next};
    /^-?-p((reserve)?h(ard)?l(inks?)?)?$/ and do { $o_preserve_hardlink=1; next };
 
    /^-?-help$|^-h$/            and do { &usage; die("\n") };
@@ -128,7 +133,7 @@ while(@ARGV) {
 
 
 # compile matchsubst using the user's perlscrap
-my $expr=shift;
+$expr=shift if not $expr;
 die "no expression provided" if not $expr;
 $expr='
 sub matchsubst{
@@ -203,16 +208,15 @@ file: for $file (sort keys %files) {
 
       pos=-1; pos()+=1; # ; -1 == last char; NOT 0 NOR undef
       /\A/gm; # fails and resets pattern, thus succeeding (\A and \G may not occur in the same regex)
-      $pos=$pos0=pos;
+      $pos=$pos0= pos() ? pos() : 0;
       
       # keep a few earlier lines in a buffer?
       if ($bufferlines) {
-         $pos=$pos0=pos;
          if ($skip>$bufferlines) {
             $skip-=$bufferlines;
             # works reliably, as $& isn't limited to the 15 or 16bit limit of parens
             if (m/(.*\n){$skip}/gm) {
-               $pos=$pos0=pos;
+               $pos=$pos0=pos();
                $skip=$bufferlines;
             } else {
                warn "# !!  lost sync even before match, refusing to continue ($line/$pos):\n#     -> $file:$line:$match";
@@ -221,13 +225,18 @@ file: for $file (sort keys %files) {
             }
          }
       }
-      
+$o_nosync=1;      
+
       # go to the exact position for this match
-      if (($skip ? m/(.*\n){$skip}/gm : 1) and ($match eq substr($_,pos, length($match)))) {
-         $pos0=0 if not defined $pos0;
-         $OLDPOS=$POS=$pos=pos;
+      if (($skip ? m/(.*\n){$skip}/gm : 1) and ($o_nosync or $match eq substr($_,(pos() ? pos() : 0), length($match)))) {
+         $OLDPOS=$POS=$pos= pos() ? pos() : 0;
          $BUFFER=substr($_,$pos0,$pos-$pos0);
-         $LINE=$match;
+         $MATCH=$match;
+         $LINE=substr($_, $pos, index($_, "\n", $pos)+1-$pos); # == $match UNLESS $o_nosync
+warn "==$MATCH==\n";
+warn "==$LINE==\n";
+         $ORIGLINE=$LINE;
+         
          $LINENO=$line;
          $OLD=$NEW=undef;
 
@@ -237,13 +246,13 @@ file: for $file (sort keys %files) {
          # change in the number of \n
          if (not $ERR and $LINE ne $match) {
              pos() = $OLDPOS;
-             if (not s/\G\Q$match\E/$LINE/) {
+             if (not s/\G\Q$ORIGLINE\E/$LINE/) {
                 $errors++;
                 $ERR=2; warn "# !!  couldn't change content to new \$LINE, thus rejecting file ($line, $pos).\n"; 
              }
          }
          if (not defined $OLD and not defined $NEW) {
-            $LINEOFFSET -= ( $match=~s/\n//g ) - ( $LINE=~s/\n//g );
+            $LINEOFFSET -= ( $ORIGLINE=~s/\n//g ) - ( $LINE=~s/\n//g );
          }
          if (defined $OLD and defined $NEW) { # update LINEOFFSET if requested
             $LINEOFFSET -= ( $OLD=~s/\n//g ) - ( $NEW=~s/\n//g );
@@ -260,7 +269,7 @@ file: for $file (sort keys %files) {
          }
 
       } else {
-         $pos=pos;
+         $pos=pos() ? pos() : 0;
          warn "# !!  lost sync, refusing to continue ($line/$pos):\n#     -> $file:$line:$match";
          $errors++;
          next file;
@@ -366,9 +375,10 @@ sub usage {
    warn <<EOF
 
 grep -n ... | pipe.vim | Grep.xchange [OPTIONS] EXPR
+grep -n ... | pipe.vim | Grep.xchange [OPTIONS] --modified
 
-grep -n >         GREPOUTPUT
-vi                GREPOUTPUT
+grep -n ... >     GREPOUTPUT           # add /dev/null if necessary to
+vi                GREPOUTPUT           # have a filename in GREPOUTPUT
 Grep.xchange EXPR GREPOUTPUT
 
 version: $version.
@@ -379,12 +389,18 @@ interactively   *mass-rename*   file-names,   but   to   interactively
 *mass-change* file-contents in emv-style, read on:
 
 Grep.xchange  is only suitable for the 3rd stage of this task, IFF you
-wish  to  preview and modify (stage 2) the list of matches  from  grep
-(stage 1). As undo-log, it also produces a patch file of all changes.
+wish  to  preview and select (stage 2) the list of matches  from  grep
+(stage  1). The script reads grep output and for each file, it  slurps
+the  file,  then positions to the start of line for each match in  the
+file  and executes PERLSCRAP. It also maintains a patch  file/UNDO-LOG
+of all changes, usually as /var/tmp/Grep-xchange*/diffset*virt.
 
-The  script  reads grep output and for each file, it slurps the  file,
-then  positions  to the start of line for each match in the  file  and
-executes  PERLSCRAP.  
+With  --modified, Grep.xchange does not apply EXPR to the matches, but
+instead  replaces  lines  with  the user editied  grep  output  (after
+'filename:linenumber:').  This  allows  only  replacement  within  the
+matched  line itself and is also somewhat less secure, as Grep.xchange
+can no longer verify that the grep output is still consistent with the
+file content.
 
 You  can modify either the current \$LINE or the contents of the  whole
 file  \$_, in which case m/\\G/g can be used to anchor to the  beginning
@@ -422,6 +438,9 @@ Options:
   --examples       help
   --flock          use perl flock() to exclusively lock a file, skip
                    otherwise; implies -p.
+  --modified       assume that the grep match text has been edited and
+                   replace each matched line with the grep match text
+  [--perl  S       perl scrap to be evaluated immediately]
 
 EOF
 }
@@ -436,6 +455,45 @@ Grep.pm's  modified context format 'FILE:NUMBER: > CONTENT-OF-LINE\\n',
 all other lines are silently discarded.
 
 
+On usage restrictions:
+  - if the filename itself already matches .*?:\\d+:, we have a problem.
+    This issue is inherent in the reporting format used by grep, and I
+    don't intend to fix it. Workaround: symlink to a non-matching name
+    and grep that instead.
+  - Dealing with non-\\n-line records: Grep.xchange cannot cope with 
+    report formats where the 'line number field' no longer has the
+    *exact* count of \\n-lines. 
+    Workarounds:
+    - You can use the buffering feature of Grep.pm to grep 'outside'
+      of the current line if necessary. 
+    - To still use a paragraph mode splitting, we need to use a 
+      zero-width pattern that doesn't eat newlines (which -p does), 
+      then request counting \\n instead of record numbers and finally 
+      ask just for the beginning of the matching record. Now we can use
+      Grep.xchange with an expression operating not on \$LINE but on 
+      the whole file, being positioned at the line that also contains
+      the first character of the record. 
+      Grep.pm -p -n --lineoffset -show1
+    - Alternatively we can report each line of matching records as
+      a grep match in its own right for e.g. Grep.xchange --modified:
+      Grep.pm -p -n --lineoffset -shown
+      ATTENTION: depending on the split / record separator character
+      or string, the record may start/end with incomplete lines.
+      By default, the whole file will be rejected when trying to
+      match such a line. --modified however will happily kill the
+      rest of line instead. 
+      WORKAROUND: To avoid this issue invoke Grep.pm with 
+      --lineoffset and ZERO-WIDTH --split '(?=...)', as  Grep.pm
+      will then report the record extended to full lines. 
+  - Grep.xchange will only operate on the last of multiple reported 
+    matches in the same line of the same file, which Grep.pm --split 
+    is able to report.  
+  - --modified is restricted to replace lines exactly 1:1. The normal
+    mode is free to add/delete lines, provided it supports the script
+    in accounting for the difference in \\n-characters 
+    (see \$LINEOFFSET below).
+
+
 On available variables and ending early:
 
 The  whole file content is availabe in \$_ (original copy in  \$content)
@@ -444,14 +502,17 @@ and the current line in \$LINE, with offset and line number in \$POS and
 lines  are in \$BUFFER. To end changing a file, set \$ERR to 1. To abort
 changing it, any true value or string. It is advisable to use my() and
 to  stick  to  single-letter  variables  inside  the  perl  scrap  for
-&matchsubst.
+&matchsubst.  \$MATCH is the match text of the corresponding grep line.
+\$ORIGLINE is initially the same as \$LINE (do not change \$ORIGLINE!).
 
 
 On paranoia and keeping the line count in sync with grep:
 
 If  you  delete  or  insert lines, you're responsible  to  update  the
 variable  \$LINEOFFSET suitably. If you set \$OLD and \$NEW, or \$LINE  is
-changed, the script itself will calculate the offset.
+changed,  the script itself will calculate the offset. The  --modified
+mode  turns off some of these tests and uses the contents of \$MATCH as
+the new contents for \$LINE.
 
 
 On anchoring matches:
@@ -466,7 +527,7 @@ the modifier /c to retain pos() in case of a miss.
 
 On links:
 
-We break hardlinks and (\$o_follow) resolve symlinks.
+We break hardlinks (unless -p) and (\$o_follow) resolve symlinks.
 
 
 Examples:
@@ -476,7 +537,7 @@ it  changes  all occurances of 'local' in the line; the  diff  finally
 shows the effects of globalization.
 
    grep -n local /etc/hosts /dev/null | Grep.xchange -V -diff \\
-      '/\\G(?=(.*\\n?))/g and warn "SRC: \$1GREP: $LINE"; 
+      '/\\G(?=(.*\\n?))/g and warn "SRC: \$1GREP: \$LINE"; 
       \$LINE=~s/local/global/g'
 
 Skipping  the  SRC/GREP demo, this examples makes the same  change  by
@@ -486,6 +547,15 @@ match position beyond the end of the previous match.
 
    grep -n local /etc/hosts /dev/null | \\
    Grep.xchange -V -diff 's/\\G(.*?)local/\$1global/g'
+
+
+Alternatives: 
+   - xchange.p old style perl s/// substitution for multiple files
+   - line.replace: if the full change change is contained within the 
+     matched line from grep and we deal with just ordinary lines and a 
+     single file using line.replace is also an option. It can also be
+     uses like a single-file --modified mode.
+
 
 EOF
 }

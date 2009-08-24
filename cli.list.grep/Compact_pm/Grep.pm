@@ -63,8 +63,10 @@ our($eval_finishedfile, $eval_newfile,                         # keep these glob
    $eval_finished, $eval_output)=("","","","","","","");
 our($matches, $total)=(0,0);                                   # file-specific counters
 our($active, $file, $name, $ext)=("","", "", "");              # active file, file, alternate file name, extension
-our($tmp,$len, $offset)=("", 0, 0);
-our($dash_printed, $pass)=(0,0);                               # context-end flag (global!), pass state
+our($tmp,$len)=("",0);
+our($offset,$lineoffset,$lineoffset0)=(0,0,0);
+our($remnantprev,$remnantnext,$recordlines)=("","","");              
+our($dash_printed, $pass)=(undef,0);                           # context-end flag (global!), pass state
 our(%F, %FF, %F1)=();                                          # optional user pass state hashes
 our($data)=("");                                               # the data buffered, cache for pass 2
 our($buf, $bufl, $buflen, $contextstart)=("", "","");          # optional input ring buffer  / optional context buffer
@@ -190,6 +192,9 @@ sub init {
            buflines_n=>0,
            filemax=>0,            # from -M
            offset=>0,             # --byte-offsets
+           lineoffset=>0,
+           show1=>0,
+           shown=>0,
           );
 
     %Compress = (                 # file extensions and program names for uncompressing
@@ -297,20 +302,28 @@ Options:
 
   # input record handling
   -0       0-terminated input/output
-  -p       paragraph mode (default: line mode)
+  -p       paragraph mode (actually a -2 zerowidth --split)
+           Use -C 0 -p to separate paragraphs with dashes.
+           Use -2 --split '\\n\\s*\\n\\K' instead of -p to split
+           on stretches of whitespace lines.
   -P S     ditto, but specify separator string S in perl;
            both options print a line of dashes between records
            see --examples for more information
   -M N     grep only in the first N records (bytes if Nc or Nb; i
            negative numbers grep in the last N records, implying -2)
-  --split REGEX -- split() input with REGEX, implies -2.
-           ^    \\n     - lines (similar to default)
-           ^\$   \\n\\n+  - paragraphs (similar to -p)
-           \\n\\s*\\n     - paragraph ends with whitespace lines
-           SEP         - split *AND* strip SEP
-           END\\K       - split after  END of record generic, zerowidth
-           (?<=END)    - similar, but must be fixed-length, zerowidth
+  --split REGEX -- split() input with REGEX, implies -2 pass mode.
+           Note that the non-zerowidth examples actually delete
+           characters from input and will throw off --offset and
+           possibly also --linecount! 
+           ^    \\n     - lines (2nd example eats \\n)
+           ^\$   \\n\\n+  - paragraphs (2nd example eats 2+ \\n)
+           SEP         - eat/split at SEP
+           \\n\\s*\\n     - eat/split at end of 1+ whitespace lines
+           \\n\\s*\\n\\K   - zerowidth version, retains whitespace
+           END\\K       - split after  END, zerowidth
+           (?<=END)    - the same, but END must be fixed-length
            (?=START)   - split before START of record, zerowidth
+           
 
   # reporting / output record handling (\\n is appended if req.)
   # Note: -H/-o/--count use the disjunction of all regexes from 
@@ -325,7 +338,7 @@ Options:
   -H       highlight matches 
   -h       hide filenames 
   -l       just list matching filenames
-  -n       include line numbers
+  -n       include record numbers (records are lines by default)
   -N N[:M] have \$buf contain the previous N (or e.g. somewhat more than
            250 Bytes in case of -N 250b) plus current records. If N is 
            negative, retain all previous records. If M is specified,
@@ -339,11 +352,21 @@ Options:
   -o       only matches: report stretch from first to end of last match.
            In case of no match: print whole record
   -u       underline matches
-  --offset include byte offsets
   --count  implies -c allowing for multiple matches per record
   --count-sum -- implies -c, but only report sum of counts
+  --offset use byte offset for -n (do use zero-width record splitting
+           for valid offsets; be careful with -P settings, perl might e.g.
+           suppress excess newlines automatically).
   --show-files / --hide-files (-h) 
-           (also: --perl '$opt{mult}=1' / adding /dev/null to files)
+           (also: --perl '\$opt{mult}=1' / adding /dev/null to files)
+  
+  # For records other than lines:
+  --lineoffset -- use the start line number of the record for -n;
+           the same restrictions as with --offset apply. When used
+           with zerowidth --split, any record with incomplete start or
+           end line will be extended on printout to full input lines.
+  --show1  print only the first line of the record
+  --shown  print the file and or number prefix for each line of the record
 
   # matching 
   -2       two pass mode for side-effects with -b and do{} perl scraps
@@ -582,6 +605,9 @@ sub parse_args {
        /^-?-split(?:=(.+))?$/   and do { $_= (defined $1 and $1 ne "") ? $1 : shift @ARGV; $_="" if not defined $_;
                                          $opt{split}=$_; unshift @ARGV, "-2"; $/=undef ;next};
        /^-?-offsets?$/          and do { $opt{offset}=1; next};
+       /^-?-lineoffsets?$/      and do { $opt{lineoffset}=1; next};
+       /^-?-show1$/             and do { $opt{show1}=1; next};
+       /^-?-shown$/             and do { $opt{shown}=1; next};
        /^-?-perl(?:=(.+))?$/    and do { $_= (defined $1 and $1 ne "") ? $1 : shift @ARGV; $_="" if not defined $_;
                                          -f $_ and do{do $_;1} or eval($_); mydie("# $Me --perl: ".$@) if $@; next}; 
        /^-?-include(?:=(.+))?$/ and do { $_= (defined $1 and $1 ne "") ? $1 : shift @ARGV; $_="" if not defined $_;
@@ -691,7 +717,16 @@ sub parse_args {
     }
 
     # -p/-P did set the global $*=1 in the original tcgrep 
-    $opt{p} && ($/ = ''); 
+    if ($opt{p}) {
+       # $/ = '';          # this eats excess newlines from \n\n+ stretches, thus use
+       $/=undef;           # a zerowidth -2 --split '(?<=\n\n)(?=[^\n])' instead
+       $opt{p}=0;          # 22 lines, 2*1 empty lines, 1*2 empty lines:
+       $opt{2}=1;          # with perl -ne 'BEGIN{$/ = ""}; print;' /etc/hosts
+                           # $/='':      21 # detects records correctly, eats excess nl
+                           # $/="\n\n":  22 # but also detects 'empty records and may 
+                           #                  start a record with a newline
+       $opt{split}='(?<=\n\n)(?=[^\n])';
+    } 
     if (defined $opt{P}) {
        $opt{P}='"'.$opt{P}.'"' if $opt{P}=~/^\\[a-z][\\a-z]*$|^$/oi;
        eval('$/ = '.$opt{P}); mydie("# $Me -P: ".$@) if $@;
@@ -867,7 +902,9 @@ FILE: while (@_)  {
         }
 
         $files_read++;
-        $len=$total=$matches=0;
+        $offset=$lineoffset=1;
+        $dash_printed=undef;
+        $lineoffset0=$len=$total=$matches=0;
 
         $pass=0; $pass=1 if $opt{2};
         @data=%F1=%F=%FF=();
@@ -941,15 +978,20 @@ LINE:  while (1) {
                         $.=0 if $.<0;
                      }
                      # $. is found, now restore sematics of $len
-                     $len=0; for(my $i=0;$i<$.;$i++) {
+                     $lineoffset=1;
+                     $len=0; 
+                     for(my $i=0;$i<$.;$i++) {
                         $len+=length($data[$i]);
+                        $lineoffset+=$data[$i]=~tr/\n/\n/;
                      } 
                   } else {
                      # no -M, start at SOF
                      $len=0;
+                     $lineoffset=1;
                   }
                   # reset total and remember a copy of value for pass1
                   $total=0;
+                  $lineoffset0=0;
                   %F1=%F;
                }
                do{$pass=1; last} if $.>$#data;
@@ -958,8 +1000,38 @@ LINE:  while (1) {
             
 
             $matches = 0;
-            $offset=$offset = $len;
+            $offset=$offset=$len+1;
             $len+=length($_); # actual file length seen
+
+
+            # note that the lineoffset does not account for lines 
+            # removed by non-zerowidth split patterns
+            $lineoffset+=$lineoffset0; $lineoffset0=tr/\n/\n/;
+            # warn "Lineoffset $offset:$.:$lineoffset -- $lineoffset0\n";
+
+
+            # recordlines: extend the record to full lines (for -2 --split /regex/)
+            $remnantprev=$remnantnext="";
+            if ($pass==2 and $opt{split} and @data) {
+                my($i,$j);
+                for($i=$.-2;;$i--) {
+                   last if $i<0;
+                   $remnantprev=$data[$i].$remnantprev; 
+                   $j=rindex($remnantprev,"\n");
+                   next if $j==-1;
+                   $remnantprev=substr($remnantprev,$j+1);
+                   last;
+                }
+                for($i=$.;;$i++) {
+                   last if $i>$#data;
+                   $remnantnext.=$data[$i]; 
+                   $j=index($remnantnext,"\n");
+                   next if $j==-1;
+                   $remnantnext=substr($remnantnext,0,$j+1);
+                   last;
+                }
+            }
+            $recordlines=$remnantprev.$_.$remnantnext;
 
 
             # remember last N lines for matching in $buf, $bufl (string with/without \n)
@@ -1018,8 +1090,10 @@ LINE:  while (1) {
             eval($eval_input2) if $eval_input2 and $pass==2; mydie("# $Me input2: ".$@) if $@;
             eval($eval_input)  if $eval_input;               mydie("# $Me input: ". $@) if $@;
 
-            if ($pass==1 and $opt{split}) { # for -2 --split with $/=undef
-               @data=split(/$opt{split}/m,$_);
+
+            # splitting into records: for -2 --split with $/=undef
+            if ($pass==1 and $opt{split}) { 
+               eval "\@data=split(m($opt{split})m,\$_)"; mydie("# $Me: fatal error for --split: ".$@) if $@;
             }
                
             
@@ -1133,12 +1207,28 @@ sub printmatch {
 
       &$substhlexprg if $opt{H}; # opt{i} is embedded into the regex
 
-      $hdr=sprintheader($.,$offset) if not $opt{noheader};
+      # split AND lineoffset: ensure we've the full line even if it
+      # means going back before the record start (--split MUST BE ZEROWIDTH
+      # FOR PROPER OFFSET/LINEOFFSET REPORTING; -p e.g. IS NOT)
+      my($offset)=$offset;
+      if ($opt{lineoffset} and $opt{split}) {
+         $offset-=length($remnantprev);    # in case I'll change from lineoffset 
+                                           # to an explicit switch to report 
+         $_=$recordlines;                  # the record extended to lineends
+      }
+
+      $_=$& if $opt{show1} and /.*\n?/;
+      if (not $opt{noheader}) {
+         $hdr=sprintheader($.,$offset,$lineoffset);
+         # --shown: report header for all lines of the record
+         my $lineoffset=$lineoffset+1;
+         s/\n(?!\z)/"\n".sprintheader($.,$offset+pos(),$lineoffset++)/ge;
+      }
       if (defined $opt{C} and $opt{C} eq "00") {
          # in this case print only one record header until the
-         # next dash separator has been printed.
+         # next dash separator has been printed. Incompatible with --shown
          $hdr.=$opt{nl} if $hdr;
-         $hdr="" if not ($dash_printed or 1==$.);
+         $hdr="" if defined $dash_printed and not $dash_printed;
       }
       $dash_printed=0;
 
@@ -1148,14 +1238,17 @@ sub printmatch {
 
 sub sprintheader {
    # return the output record header if any
-   my($lineoffset,$byteoffset)=@_;
-   $lineoffset=$.      if not defined $lineoffset;
-   $byteoffset=$offset if not defined $byteoffset;
+   my($srecordoffset,$sbyteoffset,$slineoffset)=@_;
+   $srecordoffset=$.        if not defined $srecordoffset;
+   $sbyteoffset=$offset     if not defined $sbyteoffset;
+   $slineoffset=$lineoffset if not defined $slineoffset;
    my $hdr="";
-   if ($opt{offset}) {
-      $hdr=($opt{n_pad0} ? sprintf("%08d:", $byteoffset) : $byteoffset .":");
+   if      ($opt{offset}) {
+      $hdr=($opt{n_pad0} ? sprintf("%08d:", $sbyteoffset)   : $sbyteoffset .":");
+   } elsif ($opt{lineoffset}) {
+      $hdr=($opt{n_pad0} ? sprintf("%04d:", $slineoffset)   : $slineoffset .":");
    } elsif ($opt{n}) {
-      $hdr=($opt{n_pad0} ? sprintf("%04d:", $lineoffset) : $lineoffset .":");
+      $hdr=($opt{n_pad0} ? sprintf("%04d:", $srecordoffset) : $srecordoffset .":");
    }
    $hdr="$name:$hdr" if $opt{mult};
    $hdr.=" " if $hdr and $opt{C_mark};
