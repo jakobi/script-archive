@@ -17,25 +17,30 @@ to  hack  waitcond and in addition make it depend on external  modules
 <H3>Major Commands</H3>
 
 <ul>
-   <li><b>waitcond</b> (perl) - like tagls/Grep.pm, this one also offers
-       boolean expressions, this time on top of events incl. regexes. 
-       It can grep in files, wait for the (dis)appearance of files or processes,
-       cpu/net/disk idle values, or just an idle tty. Grep includes the usual
-       perl convention of opening 'command|'-pseudo files, in which case it
-       runs the commands, checks its return code and on success, greps its
-       output. You will probably want to combine
-       waitcond with some notification tool like the trumpets of Jericho (or 
-       just ALARM, maybe also something boring like eMail or SMS) to be indeed 
-       sucessfully notified of the fact that your 20 hour 
+   <li><b>waitcond</b> (perl) - test or wait for an event. Like tagls/Grep.pm, 
+       this one also offers boolean expressions, this time on top of a 
+       language of tests including
+   <ul>
+      <LI>grep in files or command output
+      <LI>successful execution of shell commands
+      <LI>host pinging
+      <LI>(dis)appearance of files
+      <LI>(dis)appearance of processes in ps output
+      <LI>threshhold-based file modification time
+      <LI>threshhold-based cpu/net/disk idleness
+   </ul>
+       You will probably want to combine waitcond with some notification tool 
+       like the trumpets of Jericho (or just ALARM, maybe also something boring 
+       like eMail or SMS) to be indeed sucessfully notified of the fact that your 20 hour 
        compile just failed with a syntax error after just 58 minutes...<BR>
-       Simplified variants with different history and codebase are
-       <b>fwait/pwait</b>. It's probably most authentic and still used version
-       of my original boolean regex patch that I created for a small perl fulltext indexer (96-97 maybe?).
-       Note that neither fwait nor waitcond allow arbitrary perl (e.g. 'do{}') 
-       into the final boolean expression.
+   <li>A simplified variant with different history and codebase is
+       <b>fwait/pwait</b>, which is probably the most authentic and still used version
+       of my original boolean regex patch that I created for a small perl fulltext
+       indexer (96-97 maybe?). Note that neither fwait nor waitcond allow 
+       arbitrary perl (e.g. 'do{}') in the boolean expression.
    <li><b>waitcond.timeout</b> is an extended version of Piotr Roszatycki's script.
-       It runs a command and kills it after a period. Note that
-       the timelimit specification allows using a command such as waitcond.
+       It runs a command and kills it after a period. The
+       timelimit specification allows using a command such as waitcond.
    <li><b>zap</b> (perl) has come a long way from the its old incarnation in the camel book. 
        Nowadays it lists, nices or kills processes or process trees 
        matching a regex with or without user interactions 
