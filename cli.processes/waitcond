@@ -5,13 +5,21 @@
 # 20071107 PJ jakobi@acm.org created - wait for processes, tty idle, files, grep in file
 # 20071228 PJ added netidle, diskidle, cpuidle 
 # 20090722 PJ 
+# 20090824 PJ changed iostat, modified grep for 'command|', switched to strict
 # copyright:  (c)2007-2009, GPL v3 or later
-my $version="0.2";
+my $version="0.2.1";
 
+use warnings;
+use vars;
+use strict;
 
 # defaults for various options
-$negate=0;
-$test=0;
+my $Me=$0; $Me=~s!.*/!!;
+my ($rc,$iter,$oldpackagecount,$packagecount,$count)=(0,0,0,0,0);
+my ($sleep,$recent,$cpuidle,$diskidle,$netidle,$bytesnonempty);
+my ($iostat,$ifconfig)=("","");
+my ($countinit,$loopmax);
+my ($grepmaxsize,$grepopt,$pscmd,$tty);
 $sleep=5;     # shorten to waitcond -V -C 1 -s 1 in case of debugging
 $recent=300; 
 $cpuidle=95;
@@ -21,21 +29,22 @@ $netidle=100; # still some slight spikes for $sleep < 3s on a dual cpu host
 $diskidle=10; # buffer cache heuristics -- expect SHORT EXTREME spikes 
               # both extremely idle and extremely busy
 $bytesnonempty=0; 
-$grep_max_size=100000000;
-$grep_opt="m";
+$grepmaxsize=100000000;
+$grepopt="m"; # eval "m//".$grepopt;
 $pscmd="ps -edalf";
-$base=$0; $base=~s!.*/!!;
 $tty=`tty`; $tty=~s!(/dev/|\n)!!g; # the part of the pty name that top/ps/... display
 $loopmax=99999; # less than 6 days (assuming 5sec sleep + 0sec cpu usage per iteration)
 
 $countinit=2;  # how many times do we require a true expr value in sequence to finish?
 
 
+my ($negate,$test,$verbose,$ioargs,$initialsleep)=(0,0,0,0,"",0);
 
-$rc=0;
-$iter=0;
-$oldpackagecount=$packagecount=0;
 
+# matcher
+my (@file); 
+my ($and,$expr)=("","");
+$and=""; # changed to "and " if an implicit and is possible
 
 
 while($_=$ARGV[0]){ # OK
@@ -49,7 +58,7 @@ while($_=$ARGV[0]){ # OK
    /^-p$/o               and do{shift; $pscmd=shift; next};
    /^-T$/o               and do{shift; $loopmax=shift; next};
    /^-1$/o               and do{shift; $countinit=1; next};
-   /^-i$/o               and do{shift; $grep_opt.="i"; next};
+   /^-i$/o               and do{shift; $grepopt.="i"; next};
    /^-b$/o               and do{shift; $bytesnonempty=shift; next};
    /^-s$/o               and do{shift; $sleep=shift; next};
    /^(-t|--test)$/o      and do{shift; $test=1; next};
@@ -73,65 +82,16 @@ grep({/^netidle$/}  @ARGV) and do{$initialsleep=$sleep=($sleep>3)?$sleep:3}; # s
                                                                              # at least 3secs 
 
 
-# compile into perl
-@tmp=(); foreach(@ARGV){
-   @arg=($_);
-   /^idle$/  and do{@arg=qw/not recent/};
-   /^empty$/ and do{@arg=qw/not nonempty/};
-   push @tmp,@arg;
-}
-@ARGV=@tmp;
-
-@file=(); 
-$expr="";
-$and=""; # changed to "and " if an implicit and is possible
-
-sub newfile { # compile time: side effects: $_, $and, @file
-   ($_,$flags)=@_;
-   # allow user to omit the /dev/ prefix when just pasting
-   # a tty name from say top or ps -edalf
-   $_="/dev/$_" if /^pts\/\d+$/ and $flags=~/\bdev\b/ and not -e $_;
-   push @file,$_;
-   $and="and ";
-   $#file;
-};
-while(@ARGV){
-   $_=shift;
-   /^$/o         and do {die "illegal operator/argument"};
-   # syntactic sugar
-   /^not$/o      and do {$expr.=$and  ."not "; $and=""; next};
-   /^and$/o      and do {$expr.="and ";        $and=""; next};
-   /^or$/o       and do {$expr.="or ";         $and=""; next};
-   /^\($/o       and do {$expr.=$and."( ";     $and=""; next};
-   /^\)$/o       and do {$expr.=") ";                                               $and="and "; next};
-   # functions
-   /^exists$/o   and do {$expr.=$and  .'-e &fn('.       &newfile(shift).') ';       $and="and "; next };
-   /^cpuidle$/o  and do {$expr.=$and  .'&cpuidle() ';                               $and="and "; next };
-   /^diskidle$/o and do {$expr.=$and  .'&diskidle('."'".        (shift) ."'".') ';  $and="and "; next };
-   /^netidle$/o  and do {$expr.=$and  .'&netidle('."'".         (shift) ."'".') ';  $and="and "; next };
-   /^recent$/o   and do {$expr.=$and  .'&recent(&fn('.  &newfile(shift,"dev").')) ';$and="and "; next };
-   /^ps$/o       and do {$expr.=$and  .'&grep_ps(\''.   shift().'\') ';             $and="and "; next };
-   /^grep$/o     and do {$expr.=$and  .'&grep_file(\''. shift().'\', &fn('.&newfile(shift).')) '; 
-                                                                                    $and="and "; next };
-   /^nonempty$/o and do {$expr.=$and  .'&nonempty(&fn('.&newfile(shift).')) ';      $and="and "; next };
-   # default
-   1             and do {$expr.=$and.'-e &fn('.&newfile($_).') ';                   $and="and "; next };
-   # not reached
-   next; # never reached
-}
-$expr="not ( $expr )" if $negate; # -v global negation of expr
-$expr="&prep, $expr";
-
-
-
-$i=0; 
+# compile and report boolean expression to wait for
+$expr=compile(@ARGV); @ARGV=();
+my $i=0; 
 &vprint("\n# expression:\n$expr\n\n# files:\n", 
    join("\n",
       map {
          sprintf "%-3s %s", $i++.":", $_
       } 
    @file), 
-"\n\n");
+   "\n\n");
 
 
 
@@ -160,12 +120,61 @@ while(($loopmax>0) and ($count>0)){
    sleep $sleep if $count;
 }
 
-print main::STDERR "TIMEOUT OCCURED - returning result from last test\n" if not $loopmax>0;
 
+
+print main::STDERR "TIMEOUT OCCURED - returning result from last test\n" if not $loopmax>0;
 exit( $rc ? 0 : 1 ); # switch to shell return code semantics
+
+
 
 #-----------------------------------------------------------------------------------------------------------
 
+sub newfile { # compile time: side effects: $_, $and, @file
+   my ($_,$flags)=@_;
+   # allow user to omit the /dev/ prefix when just pasting
+   # a tty name from say top or ps -edalf
+   $_="/dev/$_" if /^pts\/\d+$/ and $flags=~/\bdev\b/ and not -e $_;
+   push @file,$_;
+   $and="and ";
+   $#file;
+};
+
+sub compile {
+   local($_);
+   my($expr)="";
+   while(@_){
+      $_=shift;
+      /^$/o         and do {die "illegal operator/argument"};
+      # aliases
+      /^idle$/o     and do {unshift @_, "not", "recent";   next};
+      /^empty$/o    and do {unshift @_, "not", "nonempty"; next};
+      # syntactic sugar
+      /^not$/o      and do {$expr.=$and  ."not ";                                      $and="";     next};
+      /^and$/o      and do {$expr.="and ";                                             $and="";     next};
+      /^or$/o       and do {$expr.="or ";                                              $and="";     next};
+      /^\($/o       and do {$expr.=$and."( ";                                          $and="";     next};
+      /^\)$/o       and do {$expr.=") ";                                               $and="and "; next};
+      # functions
+      /^exists$/o   and do {$expr.=$and  .'-e &fn('.       &newfile(shift).') ';       $and="and "; next };
+      /^cpuidle$/o  and do {$expr.=$and  .'&cpuidle() ';                               $and="and "; next };
+      /^diskidle$/o and do {$expr.=$and  .'&diskidle('."'".        (shift) ."'".') ';  $and="and "; next };
+      /^netidle$/o  and do {$expr.=$and  .'&netidle('."'".         (shift) ."'".') ';  $and="and "; next };
+      /^recent$/o   and do {$expr.=$and  .'&recent(&fn('.  &newfile(shift,"dev").')) ';$and="and "; next };
+      /^ps$/o       and do {$expr.=$and  .'&grep_ps(\''.   shift().'\') ';             $and="and "; next };
+      /^grep$/o     and do {$expr.=$and  .'&grep_file(\''. shift().'\', &fn('.&newfile(shift).')) '; 
+                                                                                       $and="and "; next };
+      /^nonempty$/o and do {$expr.=$and  .'&nonempty(&fn('.&newfile(shift).')) ';      $and="and "; next };
+      # default
+      1             and do {$expr.=$and.'-e &fn('.&newfile($_).') ';                   $and="and "; next };
+      # not reached
+      next; # never reached
+   }
+   $expr="not ( $expr )" if $negate; # -v global negation of expr
+   $expr="&prep, $expr";
+   return $expr;
+}
+
+#-----------------------------------------------------------------------------------------------------------
 sub fn { # eval time: return $file($1), possibly replaced
          #         by the 1st file from a successful glob
    my $f=$file[$_[0]];
@@ -178,14 +187,15 @@ sub fn { # eval time: return $file($1), possibly replaced
 sub recent {
    # return false if file does not exist or file not 
    # modified in less than $recent seconds
-   warn "q: missing filename for recent/idle (or did you mean {cpu,net,disk}idle)?" if not $_[0];
-   return(time-(stat($_[0]))[9] < $recent); 
+   warn "# $Me: missing filename for recent/idle (or did you mean {cpu,net,disk}idle)?" if not $_[0];
+   
+   return((-e $_[0]) ? (time-(stat($_[0]))[9] < $recent) : 0); 
 }
 
 sub nonempty {
    # return false if file does not exist or file 
    # not having MORE bytes than bytesnonempty
-   warn "q: missing filename for nonempty/empty?" if not $_[0];
+   warn "# $Me: missing filename for nonempty/empty?" if not $_[0];
    return(-s $_[0] > $bytesnonempty); 
 }
 
@@ -194,22 +204,35 @@ sub grep_ps {
    $tmp=`$pscmd`;
    $tmp=~s/^.*//; # header line
    # exclude SELF, but hopefully not too much else (the \d\d:\d\d are sufficient)
-   $tmp=~s/.*\b$$\b.* \d\d:\d\d $tty\b.*$base\b.*//gm; 
+   $tmp=~s/.*\b$$\b.* \d\d:\d\d $tty\b.*$Me\b.*//gm; 
 
-   $rc=1 if eval '$tmp=~/$expr/'.$grep_opt; # no o!
-   die "invalid grep in ps output: $@" if $@;
+   $rc=1 if eval '$tmp=~/$expr/'.$grepopt; # no o!
+   warn "# $Me: invalid grep in ps output: $@" if $@;
    $tmp="";
   
    return($rc);
 }
 
 sub grep_file {
-   my($expr,$rc,$tmp)=($_[0],0,"");
-   open(FH, "<$_[1]"); read(FH,$tmp,$grep_max_size,0); close FH;
-  
-   $rc=1 if eval '$tmp=~/$expr/'.$grep_opt; # no o!
-   die "invalid grep in file: $@" if $@; 
-   $tmp="";
+   my($expr,$file)=@_;
+   my($tmp,$rc)=("",1);
+   # NOTE that '@file=("<", "file"); open(FH, @file)' != open(FH,"<",$file[1])
+   # there's something shady going on with varargs or scalar vs wantarray,as
+   # the @file attempt fails.
+   if ($file=~/\|\s*$/) {
+      # allow use of perl idiomatic 'command |' filenames 
+      # this block temporarily uses shell rc semantics
+      $rc=0; # shell.true
+      open(FH,$file) and defined read(FH,$tmp,$grepmaxsize,0) and close FH or $rc=256;
+      $rc=$?>>8 if $?;
+      warn "# $Me: failed open/read for pipe grep $expr $file\n" if $rc and $rc==256;
+      warn "# $Me: rc for pipe grep $expr $file: $rc\n"          if $rc and $rc!=256;
+      $rc= $rc ? 0 : 1;
+   } else {
+      open(FH, "<", $file); read(FH,$tmp,$grepmaxsize,0); close FH;
+   }
+   $rc and do{ eval '$tmp=~/$expr/'.$grepopt or $rc=0 }; # no o!
+   warn "# $Me: invalid grep in file: $@" if $@; 
   
    return($rc);
 }
@@ -222,7 +245,7 @@ sub cpuidle {
    $idle=~s/^\s+//;
    $idle=(split /\s+/,$idle)[5]; # %idle field content
    if ($idle=~/[^0-9\.]/) {
-      warn "parse problem with %idle / iostat: $idle?";
+      warn "# $Me: parse problem with %idle / iostat: $idle?";
    } else {
       return($idle >= $cpuidle);
    }
@@ -243,7 +266,7 @@ sub netidle {
       # counter wrap around is interpreted as transient busy
       return($netidle >= abs($packagecount-$oldpackagecount)) 
    } else {
-      warn "parse error with RX/TX sum/ ifconfig $dev: $packagecount?" if $iter>1;
+      warn "# $Me: parse error with RX/TX sum/ ifconfig $dev: $packagecount?" if $iter>1;
    }   
    return(0);
 }
@@ -263,7 +286,7 @@ sub diskidle { # iostat is SLOW! we need about 10s per measurement
    $tps=~s/^\s+//;
    $tps=(split /\s+/,$tps)[1]; # tps field content
    if ($tps=~/[^0-9\.]/) {
-      warn "parse problem with tps / iostat: $tps?";
+      warn "# $Me: parse problem with tps / iostat: $tps?";
    } else {
       return($tps <= $diskidle);
    }
@@ -272,13 +295,14 @@ sub diskidle { # iostat is SLOW! we need about 10s per measurement
 
 sub prep {
    $iostat=`iostat $ioargs` if $ioargs;
-   die "no iostat" if not $iostat;
+   warn "# $Me: no iostat" if $ioargs and not $iostat;
 }
 
 sub vprint {
    print(main::STDERR @_) if $verbose;
    return(@_);
 }
+
 
 #----------------------------------------------------------------------------------------
 
@@ -289,18 +313,23 @@ waitcond [OPTIONS] EXPR
 
 version: $version
 
-wait for a boolean condition expression to evaluate to true for $countinit
-iterations [unless -t or -c N/-1], otherwise return false after 
-a timeout of $loopmax iterations [*(<cpu>+<sleep>) seconds].
+Wait  for  a  boolean condition expression to evaluate to true  for  a
+minimum number of iterations (-c N; default $countinit).
 
-EXPR might be as simple as a non-empty list of filenames, which is
-expanded into a perl boolean expression that tests for the ANDed
-existence of all files.
+The command exits immediately after the test with a suitable exit code
+for  option  -t, and exits with a non-zero exit code after  a  timeout
+(default $loopmax iterations).
 
-Alternately it can be a valid complex boolean expression containing 
-parenthesis and the keywords "and", "or", "not" in addition to atoms.
-A sequence of multiple atoms are ANDed. Use ./ or similar if keywords
-and filenames collide. 
+EXPR  might  be as simple as a non-empty list of filenames,  which  is
+expanded  into  a  perl boolean expression that tests  for  the  ANDed
+existence  of  all files. Note that perl's AND actually is ANDSEQ  and
+thus  stops  testing the next sub expression if it cannot  reach  true
+anyway.
+
+Alternately  it  can be a valid complex boolean expression  containing
+parenthesis  and the keywords "and", "or", "not" in addition to atoms.
+A  sequence of multiple atoms is ANDed. Use ./ or similar if  keywords
+and filenames collide.
 
 Atoms for boolean expressions are
 
@@ -320,28 +349,34 @@ d) functions that take filenames or fileglobs as argument:
    4) "netidle"  (argument is device basename, e.g. eth0)
    DO _explicitely_ test for existance of the file, if it might
    not exist during at any point in time during execution.
-e) functions with a perl regex as first argument (modifiers: $grep_opt):
+e) functions with a perl regex as first argument (modifiers: $grepopt):
    1) "ps" greps in $pscmd
-   2) "grep" greps in the file given as second argument
+   2) "grep" greps in the file given as second argument, allowing
+       use of perl-style 'command |' pseudo filenames to regularly
+       run a shell command, test its return code and for a zero shell
+       return code, grep the command output. Use a regex like '()' 
+       if you are only interested in the commands shell return code.
 
 Options:
   -V     verbose output incl. printing of the compiled expression
   -i     ignore case for ps and grep
   -p CMD use as ps command 
   -t     test condition and return immediately with exit code 
-         for testing or e.g. for use in "while LIST; do LIST; done"-loops
+         for testing or e.g. for use in "while LIST; do LIST; done"
   -v     globally negate condition 
   
   -C N   require the expression to be true for a sequence of N 
          iterations before exiting. -1 implies -C 1 ($countinit) 
-  -T N   timeout after CNT iterations, returning last eval results ($loopmax)
+  -T N   timeout after CNT iterations, returning last eval results
+         ($loopmax)
+  -b N   nonempty(/empty): files must have more than N bytes 
+         ($bytesnonempty)
 
-  -b BYT nonempty(/empty): files must have more than BYT bytes ($bytesnonempty)
-
-         # NOTE that idle itself always refers to files, NOT cpu state
+         # NOTE that idle itself always refers to files, NOT to cpu
   -c N   cpuidle:  if more than N [%] ($cpuidle)
   -d N   diskidle: if less than N transactions per second ($diskidle)
-  -n N   netidle:  if less than N packets per iteration are sent or received
+  -n N   netidle:  if less than N packets per iteration are sent or 
+         received ($netidle)
 
   -r SEC recent(/idle): modified/touched within SEC seconds ($recent)
   -s SEC sleep SEC seconds ($sleep) 
@@ -358,13 +393,22 @@ sub usage_examples {
    print <<'EOF';
 
 Notes:
-  - grep has a sanity limit of $grep_max
+  - grep has a sanity limit of $grepmaxsize
   - changing $pscmd may profit from updating the self-removal in grep_ps
   - fwait is a similar tool to waitcond with a somewhat simpler 
     syntax. It implements a subset of waitcond, but lacks the idle*
     functionality.
 
 Examples: 
+  - regularly run a command and wait for a zero shell return code (=success)
+    waitcond grep '()' 'true|'
+
+  - regularly run a command and grep even if the command fails
+    (example waits for the existance of NaMe in the current dir):
+    waitcond grep 'NaMe(?!: No such file)' '{ ls -1d NaMe 2>&1; true; } |'
+    as the shell never sees the final '|', we can strip the braces:
+    waitcond grep 'NaMe(?!: No such file)' 'ls -1d NaMe 2>&1;true|'
+
   - wait for processes PID to exit:
     while ps -p 100 102 >/dev/null; do sleep 1; done
     waitcond not /proc/PID not /proc/PID # aka
