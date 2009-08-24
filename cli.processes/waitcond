@@ -19,7 +19,7 @@ my ($rc,$iter,$oldpackagecount,$packagecount,$count)=(0,0,0,0,0);
 my ($sleep,$recent,$cpuidle,$diskidle,$netidle,$bytesnonempty);
 my ($iostat,$ifconfig)=("","");
 my ($countinit,$loopmax);
-my ($grepmaxsize,$grepopt,$pscmd,$tty);
+my ($grepmaxsize,$grepopt,$pscmd,$pingcmd, $tty);
 $sleep=5;     # shorten to waitcond -V -C 1 -s 1 in case of debugging
 $recent=300; 
 $cpuidle=95;
@@ -32,6 +32,7 @@ $bytesnonempty=0;
 $grepmaxsize=100000000;
 $grepopt="m"; # eval "m//".$grepopt;
 $pscmd="ps -edalf";
+$pingcmd="ping -t 3 -c 2 >/dev/null 2>&1"; # command must provide rc 1 on fail
 $tty=`tty`; $tty=~s!(/dev/|\n)!!g; # the part of the pty name that top/ps/... display
 $loopmax=99999; # less than 6 days (assuming 5sec sleep + 0sec cpu usage per iteration)
 
@@ -148,6 +149,8 @@ sub compile {
       # aliases
       /^idle$/o     and do {unshift @_, "not", "recent";   next};
       /^empty$/o    and do {unshift @_, "not", "nonempty"; next};
+      /^sh$/o       and do {unshift @_, "grep", "()", shift()."|"; next };
+      /^ping$/o     and do {unshift @_, "sh", $pingcmd." ".shift(); next};
       # syntactic sugar
       /^not$/o      and do {$expr.=$and  ."not ";                                      $and="";     next};
       /^and$/o      and do {$expr.="and ";                                             $and="";     next};
@@ -226,10 +229,11 @@ sub grep_file {
       open(FH,$file) and defined read(FH,$tmp,$grepmaxsize,0) and close FH or $rc=256;
       $rc=$?>>8 if $?;
       warn "# $Me: failed open/read for pipe grep $expr $file\n" if $rc and $rc==256;
-      warn "# $Me: rc for pipe grep $expr $file: $rc\n"          if $rc and $rc!=256;
+      warn "# $Me: rc for pipe grep $expr $file: $rc\n"          if $rc and $rc!=256 and $verbose;
       $rc= $rc ? 0 : 1;
    } else {
-      open(FH, "<", $file); read(FH,$tmp,$grepmaxsize,0); close FH;
+      # ignore failure for this
+      open(FH, "<", $file) and read(FH,$tmp,$grepmaxsize,0); close FH;
    }
    $rc and do{ eval '$tmp=~/$expr/'.$grepopt or $rc=0 }; # no o!
    warn "# $Me: invalid grep in file: $@" if $@; 
@@ -339,18 +343,25 @@ b) fileglobs - beginning with '*', the remainder is assumed to be a
    the argument is replaced by the first of these matching files.
 c) functions without arguments
    1) "cpuidle" 
-d) functions that take filenames or fileglobs as argument:
-   0) "exists" (see case a)
-   1) "recent", "nonempty"
-   2) "idle", "empty" (implemented by prefixing "not").
-   3) "diskidle" (argument is device basename, e.g. sda; like
-       cpuidle, it is implemented via iostat and takes about
-       30s to get a usable value when using iostat 10 3)
-   4) "netidle"  (argument is device basename, e.g. eth0)
-   DO _explicitely_ test for existance of the file, if it might
-   not exist during at any point in time during execution.
+d) functions that take 'filenames' or fileglobs as argument:
+   (you may need to protect the execution of more complex tests 
+    with earlier tests for the existance of files - not being
+    able to grep an error string in the log might be due to an
+    even larger error when the application died before creating
+    or updating the log...)
+   1) "exists"        (alias ->see case a)
+   2) "recent"        (file is recently touched)
+   3) "nonempty"      (file is small/empty)
+   4) "idle", "empty" (alias ->recent, ->nonempty)
+   5) "diskidle"      (argument is device basename, e.g. sda; like
+                       cpuidle, it is implemented via iostat and takes
+                       about 30s to get a usable value when using 
+                       iostat 10 3)
+   6) "netidle"       (argument is device basename, e.g. eth0)
+   7) "sh"            (run shell command and use its return code; ->grep)
+   8) "ping"          (ping a host; update \$pingcmd if necessary ->sh)
 e) functions with a perl regex as first argument (modifiers: $grepopt):
-   1) "ps" greps in $pscmd
+   1) "ps" greps in $pscmd (update \$pscmd if necessary)
    2) "grep" greps in the file given as second argument, allowing
        use of perl-style 'command |' pseudo filenames to regularly
        run a shell command, test its return code and for a zero shell
