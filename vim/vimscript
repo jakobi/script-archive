@@ -5,11 +5,10 @@
 # 20040827 DS dsilvia@mchsi.com v1.1
 # 20090615 PJ forked, fixed and rewritten
 # copyright:  (c)2004 DS, (c)2009 PJ, GPL v3 or later
-my $version="1.2pj";
+version="1.2pj";
 
 
 # pj 200907
-# major problem: SCRIPTARGV and whitespace/quoting
 
 # originally named vimsh
 #
@@ -26,17 +25,21 @@ my $version="1.2pj";
 # To use, place vimsh in a directory in your path, e.g.: ~/bin
 
 function help {
-cat <<'EOF'
+cat <<EOF
 
 <block.vimscript> <arguments>
 vimscript <block.vimscript> <arguments>
 
+vimscript --stderr  <block.vimscript> <arguments>
+
 version: $version
+EOF
+cat <<'EOF'
 
 vimscript  is  a wrapper that allows the use of vimscript blocks  from
 shell  scripts  by  wrapping  the block into  a  function  definition,
 executing  it  and  then  invoking it once  with  the  <arguments>  as
-function arguments.
+function  arguments.  
 
 vimscript  executes the code, capturing the output for Vim  internals,
 and  then  echoes the output to the shell. Numeric user input  can  be
@@ -45,9 +48,15 @@ functions.  It is NOT possible to allow the user to temporarily edit a
 buffer  and then return to the script. Work-Around: Consider :!vi FILE
 or remote vim commands.
 
+Using  vimscript --stderr or let $REDIRSTDERR=1 prints the  redirected
+output  of the script to STDERR (including vim messages and warnings),
+while commands like :w !cat go to stdout immediately.
+
 The  shell  argument strings are available as a:{1},... and  $ARG1/...
 with  their  count  in a:0 and $ARG0, and list versions in  g:ARG  and
-a:000. 
+a:000. The current buffer contains the script itself. Use :new | :read
+/dev/stdin  to  read pipe contents into a buffer and :w !cat to  print
+the current buffer to a pipe.
 
 The  result  of the script is available in ~/.vimscript.out and is  in
 order  of  preference  the content of g:RET, the return value  of  the
@@ -55,7 +64,12 @@ vimscript  if non-zero, or the redirected output of the vim statements
 themselves  (excluding :!-command output). Use :cquit! to force vim to
 return with an arbitrary non-zero shell return-code. Define g:POSTPROC
 to  contain  a  function name to filter the results to be  written  to
-~/.vimscript.out.
+~/.vimscript.out.  
+
+Note  that commands like :w !cat bypass vim :redir and thus are not in
+.vimscript.out.  Furthermore,  g//p seems broken as well,  being  both
+redirected  with  spurious  newlines plus also going to  STDOUT,  with
+spurious spaces on empty lines.
 
 Things may become interesting if you run this script without access to
 a  proper pty, or redirect input or output. The result is available in
@@ -79,11 +93,56 @@ Example:
      call Inc()
   endwhile | echo ' '
   :!echo 'SH ECHO: All Done'
+  " EOF
+
+
+  #!/usr/bin/env vimscript
+  " the buffer is readonly and contains the script
+  " thus open a new one and read from stdin
+  :new
+  :read /dev/stdin
+  " modify a line
+  :normal 20ggitest2
+  " and print it to stdout, bypassing redirection
+  :w !cat
+  " and bypassing postprocessing
+  :qall!
+  " EOF
+
+
+  #!/home/jakobi/bin/vimscript 
+  " separate vim :redir messages from STDOUT
+  let $REDIRSTDERR=1
+  :new
+  :read /dev/stdin
+  :normal 20ggitest2
+  " :buffers and :echo honor vim :redir and thus go to STDERR
+  :buffers
+  :echo 43
+  " goes to stdout
+  :w !cat
+
+  " g/^/p is broken and goes to both plus
+  " with excess whitespace (with silent, only
+  " the redir remains, but this is also unusable
+  " as it doubls any \n).
+  " Note that non-printing g commands are find.
+  " 
+  " EOF
 
 
 Bugs: 
   - cannot be used in parallel due to use of ~/.vimscript.out.
-
+  - use of :redir inside <block.vim> is unsupported, or rather
+    will suppress further redirection of vim messages and output to
+    .vimscript.out, as :redir cannot be nested.
+  - @a may not be used within the script.
+  - g//p currently produces additional blank lines and spurious
+    in the redirection, and in addition just spurious spaces in
+    empty lines on STDOUT, thus resulting in the buffer being 
+    printed twice, with lots of excess whitespace. This seems
+    like a full grown bug rather than one of the architectural
+    issues.
 
 Intrinsic VIMISSUES:
   - ':!' shell escape commands can be used providing they are not imbedded
@@ -92,6 +151,7 @@ Intrinsic VIMISSUES:
     printed immediately to the console, not synchronous as part of the 
     vimscript-generated output nor available in the .vimscript.out file: 
     use system() instead.
+  - inability to nest redirs.
   - echo prints at the beginning, not at the end of the line; use
     explicit "\n", "\r", echon or echo '' to compensate. This is
     also the reason for :! to emit those annoying newlines and
@@ -116,13 +176,21 @@ Intrinsic VIMISSUES:
 EOF
 }
 
-export SCRIPT=$1
+export SCRIPT VIMSCRIPTREDIRSTDERR
+SCRIPT="$1"
 shift
-export SCRIPTARGV=$@ 
+REDIRSTDERR=0;
 
 if [ "$SCRIPT" = "--help" -o "$SCRIPT" = "-help" -o "$SCRIPT" = "-h" -o "$SCRIPT" = "" ]; then
    help; exit 1
 fi
+
+if [ "$SCRIPT" = "--stderr" -o "$SCRIPT" = "-stderr" ]; then
+   SCRIPT="$1"
+   shift
+   REDIRSTDERR=1;
+fi
+
 
 # numerically indexed zero-based arrays -- however vim cannot access/see them
 # declare -a ARGV or ARGV=("ab" [1]="c d"); access by ${ARGV[1]} - {} required!
@@ -131,9 +199,9 @@ fi
 # ${#name[@]}         - length of array itself
 i=0; for j in "${@}"; do
    let i=i+1
-   eval "export ARG$i=\$j"
+   eval "export ARG$i=\"\$j\""
 done
-export ARG0=$i
+export ARG0="$i"
 
 # start in 'ex' mode, 'readonly', 'noswapfile'
 vim -eRn -c "silent /^function SetUp/,$ yank z | silent @z | call SetUp() | :q" $0
@@ -181,18 +249,24 @@ function Interpret()
    if g:RET!=""
       let @a=g:RET
    endif
+   
+   " ------------------------- stdout  ------------------------------
+   " there is also a spurious space added to empty lines when
+   " using g//p to print to stdout. Workaround for this
+   " is using :w !cat in the script.
 
    " filter the output? "
    if g:POSTPROC!=""
       exe 'let @a='. g:POSTPROC .'(@a)'
    endif
-
+   
    bwipeout!
 " FIXME: allow multiple invocations "
    call delete(glob("~/.vimscript.out"))
    silent edit +set\ noswapfile ~/.vimscript.out
    silent put a
 
+   " ------------ error messages and warning for stderr ---------------
    " at least get rid of spurious initial empty lines, probably a side 
    " effect of e.g. echo accessing and lack of headless usage support
    " basically vim is pretty much braindead wrt subshell, shell and
@@ -204,5 +278,13 @@ function Interpret()
    
    " do not delete .vimscript.out, as vim itself cannot 
    " be properly used in redirections
-   execute 'silent :!cat '.glob("~/.vimscript.out")
+   if $REDIRSTDERR==1
+      execute 'silent :!cat '.glob("~/.vimscript.out").' 1>&2'
+   else
+      execute 'silent :!cat '.glob("~/.vimscript.out")
+   endif
+   
 endfunction
+
+
+" vim:ft=vim
