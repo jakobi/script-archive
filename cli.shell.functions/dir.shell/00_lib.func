@@ -98,7 +98,9 @@ function _pipe {
 
 
 # read a file or pipe into an array
-# find . -print | f2a -a ARGS; less "$ARGS[@]"
+#    find . -print | f2a -a ARGS; less "${ARGS[@]}"
+# using the possibly empty array as command arguments:
+#    printf "%s\n" ${f2a:+"${f2a[@]}"}
 function f2a { 
    # also an option: printf "%q" and loop
    typeset _a _l _i _f
@@ -111,7 +113,7 @@ function f2a {
        _a="f2a"
     fi
     unset -v $_a
-    if [ ! -f "$1" ]; then
+    if [ ! -e "$1" ]; then
        echo "Usage: f2a FILE [ARRAYNAME] -- load lines into array (default: f2a)" 1>&2;
        return 1;
     fi

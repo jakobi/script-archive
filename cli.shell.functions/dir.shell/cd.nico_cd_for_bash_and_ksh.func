@@ -21,9 +21,20 @@ typeset|grep -e '^typeset -a cdsx$'        -e '^integer cdsx$'        > /dev/nul
 # - print replaced by echo or printf if unsafe.
 # - unset array / typeset -a array / array=() is ok for bash,
 #   but ksh seems treats this like a parent-function-local-array.
-#   If you thing this confusing, ksh was also confused and crashed 
+#   If you think this confusing, ksh was also confused and crashed
 #   quite often (*). ksh ABSOLUTELY requires set -A var -- at least
-#   once on initialization (sh (AT&T Research) 93s+ 2008-01-31)
+#   once on initialization (sh (AT&T Research) 93s+ 2008-01-31; one
+#   of the culprits is var=(), leading to a delayed crash
+#
+# [alias 'setA'='set -A' vs alias 'setA'=':' is a possibility to
+#  remove a few ksh/bash if/then instances. Aliases are expanded in 
+#  the caller so this works. With a function, set -A (ksh only) and 
+#  var assignments are visible in the caller, however all typesets 
+#  are local for both shells [bash dynamically scoped; ksh statically scoped].
+#  In reality aliases fail with ksh as I already want to use them on
+#  sourcing, as they're only valid in the next round of parsing; 
+#  when set from within functions, they fail for both shells when
+#  using in the same 'parse'. Seems that the current workaround is ok (0825)]
 
 # Changes:
 # - cdinit tries to retain previous list/stack on sourcing
@@ -33,6 +44,7 @@ typeset|grep -e '^typeset -a cdsx$'        -e '^integer cdsx$'        > /dev/nul
 # - cdvi added to edit list
 # - *_copy is now a global (*)
 # - original ksh cdsv $PWD-only bug fixed
+# - replaces set -A and some pipes with shell specific functions
 
 # A note from Nicolas:
 #
@@ -42,40 +54,52 @@ typeset|grep -e '^typeset -a cdsx$'        -e '^integer cdsx$'        > /dev/nul
 # typing, cut-n-paste.
 
 
-cdlibsedopt=-r;           # use extended regex for sed
+cdlibsedopt=-r;           # set to -r to use extended regex for sed
 cdlibpushd="load";        # also load the pushd and friends
 
-cdlibusebash=""
-[ "${SHELL##*bash}" != "$SHELL" ] && cdlibusebash="bash"
-[ -n "$cdlibusebash" ] && shopt -s extglob && cdlibpushd=""
 
-# example using a pipeline-capable editor 
+# example using a pipeline-capable editor for use in cdvi
 # (e.g. pipe.vim from jakobi.github.com)
-cdlibpipeeditor=pipe.vim; # 
+cdlibpipeeditor=pipe.vim  # should be able to read from stdin/write to stdout
+                          # and still allow editing (using /dev/tty or X11)
 
 
-
-function cdpipe {
-   # compatility layer: bash doesn't place the final
-   # process of a pipe in the current environment
-   # while ksh process substitution doesn't reclaim
-   # fds and does not allow the resulting file (/dev/fd/N)
-   # to be used in another redirection... . 
-   # Bash: typeset local vars are dynamic scope, i.e. visible within cdpipe.
-   # Ksh:  typeset local vars seem lexical, i.e. NOT VISIBLE in called functions.
-   if [ -n "$cdlibusebash" ]; then
+# if you invoke a ksh from bash, you need to change $SHELL,
+# which ksh93 doesn't do by itself.
+if [ "${SHELL##*bash}" != "$SHELL" ]; then
+   # bash
+   cdlibusebash="bash" 
+   shopt -s extglob
+   cdlibpushd=""        # these are builtins
+   function cdsetA {
+      # no set -A
+      eval "unset $1; $1=()"
+   }
+   function cdpipe {
+      # bash executes the pipe tail also in a subshell,
+      # but allows an extended command substitution to
+      # cover this use. Which ksh cannot parse
       eval "$2 < <($1)"
-   else
-      eval "$1 | $2" 
-   fi
-}
+   }
+else
+   # ksh
+   cdlibusebash=""
+   function cdsetA {
+      # using var=() with or w/o set -A leads to delayed crashes
+      eval "unset $1; set -A $1"
+   }
+   function cdpipe {
+      eval "$1 | $2"
+   }
+fi
+
 
 function cdstripnum {
     printf "%s" "${1#*([	 ])+([0-9])+([	 ])}"
 }
 
 function cdvi { 
-    cdpipe 'cdls | pipe.vim -silent' 'cdrf -'; 
+    cdpipe 'cdls | $cdlibpipeeditor -silent' 'cdrf -'; 
 }
 
 function cdhelp
@@ -222,7 +246,8 @@ function cdto
         return 0
     else
         if cd "$dir"; then
-            cdsv > /dev/null
+# point of ksh crash
+            cdsv 
             cdshow
             return 0
         fi
@@ -438,24 +463,12 @@ cdcl0 () {
 
 cdcl1 () {
    cds=0
-   unset cdlist
-   if [ -n "$cdlibusebash" ]; then
-       typeset -a cdlist
-       cdlist=()
-   else 
-       set -A cdlist
-   fi
+   cdsetA cdlist
 }
 cdcl1s () {
    [ -n "$cdlibpushd" ] && return
    cdsx=0
-   unset cdstack
-   if [ -n "$cdlibusebash" ]; then
-       typeset -a cdstack
-       cdstack=()
-   else 
-       set -A cdstack      
-   fi
+   cdsetA cdstack      
 }
 
 ##################################################################
