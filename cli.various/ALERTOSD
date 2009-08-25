@@ -2,6 +2,8 @@
 
 # display or cancel a rather visible OSD ALERT 
 
+# see also: notify-send to use the ubuntu notification system
+
 osdsh=$(which osdsh)
 osdctl=$(which osdctl)
 osdcat=$(which osd_cat)

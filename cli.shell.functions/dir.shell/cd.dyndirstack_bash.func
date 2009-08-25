@@ -34,7 +34,94 @@ shopt -s extglob
 #
 #   [this is missing from the nico_cd set]
 #   
-#   what's still missing:
+#   what's still missing from the original dyndirstack
+#   (implementation after the comment, corresponding nico_cd name in parens)
+#   dir_to             (cdto)
+#   dir_vim / dir_vi   load/edit a dirstack (REQ: pipe.vim for simplicity;
+#                      or change this function and use tempfiles with an
+#                      arbitrary editor instead; cdvi)
+#   dir_grep           grep the dirstack and print (cdgrep)
+#   dir_load           load dirstack from specified file 
+#                      (use dir_load < <(...) instead of ...|dir_load; cdrf)
+#   dir_save           print dirstack to specified file (or stdout; cdls)
+#   +                  next     stack dir and  rotate
+#   -                  previous stack dir and rotate
+
+function dir_help { 
+    cat  <<-'EOF'
+        Usage: $CDPATH, $DIRSTACK[*]
+        
+        For internal completion use:
+               dir_bc_historycd_cat
+               dir_bc_historycd
+
+        Usage: dirs -c                   (nico_cd pendant: cdcl/cdinit)
+           clears dirstack
+
+        Usage: dirs [-p|-v]                                      (cdsl)
+           -p: print or save dirs -p
+           -v: print dirs with index number
+
+        Usage: dir_list
+            print dirstack, improved dirs -lp
+
+        Usage: d/dir_list_num
+            print dirstack, improved dirs -lv
+
+        Usage: dir_ls/dir_save [|<file>]                          (cdls)
+            show the cd list. Use this to save your cd list.
+            does exclude the current directory from output
+        
+        Usage: dir_rf/dir_load [<file>]                           (cdrf)
+            load a dirstack from file.
+            (use dir_load < <(...) instead of ...|dir_load)
+
+        Usage: dir_addcurrent
+            add current dir to the list if missing
+
+        Usage: dir_chdir [<cd arguments...>] [<path>]
+            add current dir, then cd and list files
+
+        Usage: pushd   [-n] [<path>]
+               pushd
+               pushd   [+<index>|-<index>]
+               +       
+               -       
+            add currentdir, then optionally cd
+            swap
+            rotate to numbered entry
+            next     (rotate with pushd +1)
+            previous (rotate with pushd -1)
+            
+        Usage: dir_popcd     [<index>|regex]
+               pcd/popcd     [<index>|regex]  (with pop)
+               jcd/jumpcd    [<index>|regex]  (without pop)
+            add current dir, optionally pop, then cd to selected dir 
+            (regex w/o backslashes)
+   
+        Usage: popd    [-n] [+<index>|-<index>]                 (~cdrm)
+            pop numbered dir from stack and optionally cd
+        
+        Usage: cd "$(dirs [+<index>|-<index>]"
+            cd to numbered entry without rotation
+
+        Usage: dirto/dir_to  [-n] [<expr>]                       (cdto)
+                       <index>|<path>|[+]<partial path> 
+            lookup a dir with dir_grep, modify it with the optional
+            sed expression <expr> (sed $cdlibsedopt), and either cd
+            or print (-n). dir_to does not modify/rotate the dirstack
+            (in contrast to both pushd and nico_cd's cdto). use
+            d to show the current index numbers.
+        
+        Usage: dir_grep [<egrep argument>...]                  (cdgrep)
+            egrep dirstack
+        
+        Usage: dir_vi/dir_vim                                    (cdvi)
+            edit a dirstack using the pipe.vim vi wrapper
+
+EOF
+}
+
 
 function dir_to { # similar to nico_cd
    typeset dir tmp expr nocd
@@ -115,8 +202,10 @@ function dir_save {
 }
 
 alias -- +='pushd +1'                    # next with rotate
-
 alias -- -='pushd -1'                    # prev with rotate
+alias dir_ls='dir_save'
+alias dir_rf='dir_load'
+alias dirto='dir_to'
 
 
 
@@ -208,6 +297,7 @@ dir_chdir ()
 	# lighten up stack if necessary
     [ ${#DIRSTACK[@]} -gt ${MAXDIRSTACK} ] && popd -0 > /dev/null
 	# list context without files known to be comming in lots
+# PJ - ls with blacklisting some files
     ls -I 'Rrun*.*' -I 's1r*.txt'
 	# debugging
 	# dirs -p
@@ -224,7 +314,7 @@ dir_popcd ()
                 | egrep "^[[:space:]]*$arg\>" | sed -e 's/^[ 0-9\t]*//g'`
 	else
 		# we need to shape it a bit in similar way to dir_bc_historycd_cat
-		arg=`echo $arg | sed -e 's/^"\(.*\)"/\1/g' \
+		arg=`echo "$arg" | sed -e 's/^"\(.*\)"/\1/g' \
                              -e 's/\([^\]\) /\1\\\ /g'`
 		newdir=`dir_list | tail -n +2 | egrep "^$arg\$" | head -n 1`
 		#echo "Guessed name '$newdir'"
@@ -243,8 +333,8 @@ dir_bc_historycd_cat ()
 {
 	# shape argument a bit - so it could be specified as "a b" in case
 	# if it has spaces
-	arg=`echo $2| sed -e 's/^"\(.*\)"/\1/g' \
-                      -e 's/\([^\]\) /\1\\\ /g'`
+	arg=`echo "$2" | sed -e 's/^"\(.*\)"/\1/g' \
+                        -e 's/\([^\]\) /\1\\\ /g'`
     dir_list | tail -n +2 | grep "$arg" | sed -e 's| |\\ |g'
 	return 0
 }

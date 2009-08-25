@@ -9,10 +9,11 @@
 # featuring a little improbility: perl -i.bak interactive one-liner,
 # and a small impossibility: a perl variable-length zero-width lookbehind regex.
 
-# 08.08.09 PJ        jakobi@acm.org -- initial version
-# 13.08.09 PJ  0.1   added diff -u style undo log to allow undo by patch, -flock, -p
+# 2009.08.08 PJ        jakobi@acm.org -- initial version
+# 2009.08.13 PJ  0.1   added diff -u style undo log to allow undo by patch, -flock, -p
+# 2009.08.25 PJ        switch diff order on stdout for consistency
 # copyright:  (c) 2009 jakobi@acm.org, placed under GPL v3 or later 
-my $version="0.1";  
+my $version="0.1.1";  
 
 use strict;
 use vars;
@@ -225,7 +226,7 @@ file: for $file (sort keys %files) {
             }
          }
       }
-$o_nosync=1;      
+#$o_nosync=1;      
 
       # go to the exact position for this match
       if (($skip ? m/(.*\n){$skip}/gm : 1) and ($o_nosync or $match eq substr($_,(pos() ? pos() : 0), length($match)))) {
@@ -233,8 +234,8 @@ $o_nosync=1;
          $BUFFER=substr($_,$pos0,$pos-$pos0);
          $MATCH=$match;
          $LINE=substr($_, $pos, index($_, "\n", $pos)+1-$pos); # == $match UNLESS $o_nosync
-warn "==$MATCH==\n";
-warn "==$LINE==\n";
+#warn "==$MATCH==\n";
+#warn "==$LINE==\n";
          $ORIGLINE=$LINE;
          
          $LINENO=$line;
@@ -330,9 +331,9 @@ warn "==$LINE==\n";
          my $l=length($file0); $l=length($file) if length($file) > $l;
          @time=localtime((stat($file))[9]);
          my $time=sprintf "%4d-%02d-%02d %02d:%02d:%02d", 1900+$time[5],1+$time[4],$time[3],@time[2,1,0];
-         printf "<<< %-${l}s  %s\n>>> %${l}s  %s\n", $file0, $time0, $file, $time;
+         printf "<<< %-${l}s  %s\n>>> %${l}s  %s\n", $file, $time, $file0, $time0;
       }
-      do{ open(FH,"| $diffcmd /dev/stdin \$file") and
+      do{ open(FH,"| $diffcmd \$file /dev/stdin") and
           print FH $_ and
           close(FH);
       };

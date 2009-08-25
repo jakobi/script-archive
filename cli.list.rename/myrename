@@ -401,6 +401,7 @@ our($rc,$errors,$errskip,$collisions,$collisionsskip,$renames,$renames0)=(0,0,0,
 our($suffix,$collisionssfx)=("","");
 our(@o,@n,@pathtrack)=();
 our($tmp,$eol,$prefix)=("","","");
+our($dotwarned,$totalprompted)=(0,0);
 
 
 while($_=shift,defined $_) {
@@ -728,8 +729,8 @@ file: foreach (@ARGV) {
 
 
 #if ($o_pathtrack and ($n_untracked ne $n_tracked or $o_untracked ne $o_tracked) ){
-#   warn "# TRK U $o_untracked -> $n_untracked\n";
-#   warn "# TRK T $o_tracked -> $n_tracked\n";
+#   warn "# TRK U ".pr($o_untracked)." -> ".pr($n_untracked)."\n";
+#   warn "# TRK T ".pr($o_tracked)  ." -> ".pr($n_tracked  )."\n";
 #}
 
 
@@ -782,12 +783,15 @@ file: foreach (@ARGV) {
             # processing loop taken from zap
             $prompt=1;
             while(1) {
+               print TTYOUT "# HLP press H for Help (default action: skip)\n" if 0==$totalprompted;
+               $totalprompted++;
                $prompted=1;
+ 
                if ($prompt) { 
                   if ($o_fullpath) {
-                     printf TTYOUT "? %-30s  ->  %-30s ", $o, $n;
+                     printf TTYOUT "? %-30s  ->  %-30s ", pr($o), pr($n);
                   } else {
-                     printf TTYOUT "? %-27s %-20s  ->  %-20s ", "$b: ", $f, $nf;
+                     printf TTYOUT "? %-27s %-20s  ->  %-20s ", pr($b).": ", pr($f), pr($nf);
                   }
                   $prompt=0;
                }
@@ -811,9 +815,9 @@ file: foreach (@ARGV) {
                if ($ans =~ /^e/i){
                   if ($o_readline) {
                      #&ttynormal; # not necessary for GNU readline?
-                     $term->addhistory($n, $o);
+                     $term->addhistory(pr($n), pr($o));
                      $tmp=$n; $tmp=$o if not $n or $n eq ".";
-                     $reply=$term->readline("# EDT ", $o);
+                     $reply=$term->readline("# EDT ", pr($o));
                      if ($reply) { 
                         $_=$reply;
                         $nb=""; $nf=$n=$_;
@@ -974,10 +978,10 @@ sub renamesub {
       } else {
          $renamed=0;
          if ($o ne $_) {
-            lstat $o and -e _ and rename($o,$_) and $renamed=1 or warn "# ERR $o -> $_\n" and $errors++;
+            lstat $o and -e _ and rename($o,$_) and $renamed=1 or warn "# ERR ".pr($o)." -> ".pr($_)."\n" and $errors++;
          }
          if ($ol ne $l) {
-            lstat $_ and do{unlink $_; symlink $l, $_} and $renamed=1 or warn "# ERR relink $_: $ol -> $l\n" and $errors++;
+            lstat $_ and do{unlink $_; symlink $l, $_} and $renamed=1 or warn "# ERR relink ".pr($_).": ".pr($ol)." -> ".pr($l)."\n" and $errors++;
          }
       }
       push @o, $o;
@@ -1004,19 +1008,20 @@ sub tracked {
    my($o, $n, $in, $out, $i, $l, $c, @out);
    foreach(@_) {
       $in=$out=$_;
-      warn "# WRN please try to avoid pathes with .. or /./ in input\n" if $in=~m@/\.\./|/\./@;
+      do{$dotwarned=1; warn "# WRN pathes with /../ or /./ in input or linkarget\n#     (->pathtracking may miss more than usual)\n"}
+         if $in=~m@/\.(\.)?/|^\.(\.)?/|/\.(\.)?$@ and not $dotwarned;
       foreach $i (@pathtrack){    # check+apply dir renames in chronological order
          ($o,$n)=@$i;
          $l=length($o);
          if ($o eq substr($out,0,$l)) {
             if ($l==length($out) or "/" eq substr($out,$l,1)) {
                $c++;
-# warn "# TRK . $o -> $n\n";
+# warn "# TRK . ".pr($o)." -> ".pr($n)."\n";
                substr($out,0,$l)=$n;
             }
          } 
       }
-# warn "# TRK = $in -> $out ($c changes)\n" if $c;
+# warn "# TRK = ".pr($in)." -> ".pr($out)." ($c changes)\n" if $c;
       push @out, $out;
    }
    if (wantarray or $#out>0) {
@@ -1030,10 +1035,10 @@ sub tracked {
 # log and scrip generation defaults for rename/relink reporting
          
 #        if ($o ne $_) {
-#            lstat $o and -e _ and rename($o,$_) and $renamed=1 or warn "# ERR $o -> $_\n" and $errors++;
+#            lstat $o and -e _ and rename($o,$_) and $renamed=1 or warn "# ERR ".pr($o)." -> ".pr($_)."\n" and $errors++;
 #         }
 #         if ($ol ne $l) {
-#            lstat $_ and do{unlink $_; symlink $l, $_} and $renamed=1 or warn "# ERR relink $_: $ol -> $l\n" and $errors++;
+#            lstat $_ and do{unlink $_; symlink $l, $_} and $renamed=1 or warn "# ERR relink ".pr($_).": ".pr($ol)." -> ".pr($l)."\n" and $errors++;
 #         }
 
 sub log_rename_and_relink { # default code scrap for maintaining the undo log;

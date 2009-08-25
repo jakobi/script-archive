@@ -51,7 +51,7 @@ warn "# loading config sfre.sfrerc\n" if $o_verbose >1;
 # # 4g) global hook
 # # $postaction
 
-
+$getrcsdiffcmd='diff -u -E -b -B -t'; # ignore all space change; gnu
 
 # don't forget to signal the success of reading your config with true :)
 1;

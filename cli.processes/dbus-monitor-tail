@@ -1,0 +1,87 @@
+#!/usr/bin/perl
+
+# list N dbus messages and terminate
+
+# example for blocking until we see a specific ping on the dbus:
+#   (the ibm python sample is broken :()
+# to ping:              dbus-send / org.freedesktop.dummy string:ping
+# to wait for one ping: dbus-monitor-tail 1 interface=org.freedesktop member=dummy
+
+# example printing the text of the next ubuntu notification
+# to notify:            notify-send falstaff
+# to wait for the next: 
+#   dbus-monitor-tail -1
+#      --grep 'string.*notify-send'
+#      --eval '/string.*notify-send.*\n.*int.*\n   string ".*\n   string "([\s\S]*?)"\n   string "/ and $_=$1 or $_=""'
+#      --
+#      interface=org.freedesktop.Notifications member=Notify
+#
+# to print the full event report, skip --eval. The --grep is probably
+# also overly cautious. The proper way would be using an xml file
+# (which seem to be missing) or introspection
+#
+# notify-send "$(echo 111; echo 'fal"staff')"
+# is reported by dbus-monitor as
+# ... \n\ {3}string\ "111\nfal"staff"\n\ {3}string\ " ...
+
+# Net::DBus is also of interest:  /usr/share/doc/libnet-dbus-perl/examples/
+# example clients, services, ping-examples
+# notification.pl # fail, probably due to dbus changes, like with the old ibm python ping
+#
+# *** dump-object.pl / dump-object-xml.pl # SERVICE   / | OBJECT
+#    dump-object-xml.pl org.freedesktop.Notifications /org/freedesktop/Notifications
+#    --> ... <method name="Notify">...<arg name=...>...</method></interface>
+#
+# *** lshal.pl lists the hal registered/known devices
+# 
+
+
+$qwhoami='(?!)';
+$grep='()';
+$eval='1';
+$i=0;
+$|=1;
+
+# use count   to wait for the countth message and exit after print its head
+# use count.1 same, but also print the 1st line/head of count+1st message
+# so to immediately exit use .1 as count
+
+while(@ARGV) {
+   $_=$ARGV[0];
+   /-(\d+)/     and do{shift;$count=$1;next};
+   /--grep/     and do{shift;$grep=shift;next};
+   /--eval/     and do{shift;$eval=shift;next};
+   /--/         and do{shift;last};
+   /()/         and do{last};
+}
+$count=10 if not $count;
+
+$pid=open(FH,"-|","dbus-monitor",@ARGV) and do {
+   loop: while(sysread(FH,$tmp0,65536),  
+               $tmp=$tmp0, (defined $tmp0)) {
+      while(defined $tmp and $tmp ne "") {
+         # if we're fast enough, $tmp will contain multiple full messages
+         # which we stash into $_ one by one (HEADER\n   ARG\n   ARG...)
+         $tmp=~s/^((?:(?i)signal|method)[\s\S]*?\n)(?=(?i)signal|method)// and $_=$1 or $_=$tmp and $tmp="";
+         
+         $i++;      # count seen messages
+         # try to suppress messages to the monitor (monitor will display these regardless of EXPR)
+         do{$whoami=$1;$qwhoami=quotemeta($whoami)} if ( 1==$i and /^.* -> dest=(:\S+) / );
+         next if ( /^.*interface=org.freedesktop.DBus/ and  /^.* -> dest=$qwhoami / );
+
+         /$grep/ or next;
+         eval ($eval); 
+         die "$@" if $@;
+         next if not $_;
+
+         $count--;  # count down limit
+         print;
+         print "\n" if $_!~/\n\z/;
+
+         last loop if ( $count<=0 );
+      }
+   }
+};
+kill 15,$pid;
+
+# vim:ft=perl

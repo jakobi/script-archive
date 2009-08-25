@@ -33,7 +33,14 @@ typeset|grep -e '^typeset -a cdsx$'        -e '^integer cdsx$'        > /dev/nul
 # - cdvi added to edit list
 # - *_copy is now a global (*)
 # - original ksh cdsv $PWD-only bug fixed
+
+# A note from Nicolas:
 #
+# Oh, also, the cd utils are not all mine.  I hacked on a version that I
+# got from Will Fiveash, also a Sun employee, and he got that from someone
+# else.  I use it every day; I depend on it; it cuts down enormously on
+# typing, cut-n-paste.
+
 
 cdlibsedopt=-r;           # use extended regex for sed
 cdlibpushd="load";        # also load the pushd and friends

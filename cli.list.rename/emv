@@ -14,9 +14,10 @@
 # 20090803 PJ? 2.00 modeline vim:filetype=netrw for syntax highlighting; I still
 #                   try to avoid a syntax file (see /\$foot and /hi .*link), thus
 #                   also switching to " as comment char (but still allowing #)
+# 20090825 PJ       added pr to messages to protect the terminal
 
 # Copyright (c) 2006-2009 jakobi@acm.org placed under GPL v3 and newer
-my $version="2.00pj"; 
+my $version="2.00pj.1"; 
 
 # emv consists of: emv  
 # and the helpers: emvx (extend emv session by expanding directories)
@@ -80,7 +81,7 @@ use vars;
 
 my($shell, $shellteelog, $shellpreproc, $shellpostproc);
 my($time, $edit, $mv, $mv2, $mvtty, $dir, $owner, $head, $foot, $commentchar);
-my($changes,$errors,$errors_severe,$convenience);
+my($changes,$errors,$errors_severe,$convenience,$dotwarned);
 my(@pathtrack,@pathtracked);
 my($tmp);
 my($o_verbose, $o_long, $o_dirtree, $o_perlblock, 
@@ -94,6 +95,7 @@ my(@orgfile, @linfile, @newfile, @errfile,
 $|=1;
 $o_debug=0;
 $o_checkuserlines=1;
+$dotwarned=0;
 
 init();
 parsearg();
@@ -199,7 +201,8 @@ Options:
                  example: emv -p 's/^/a/; \$_="" if /7/' *
 
    # renaming
-   -n            no-execution           (will not detect all collisions)
+   -n            no-execution (note: -n replaces control chars with '?',
+                 furthermore it might not detect all some collisions)
    --cmd    CMD  invoke CMD in pass1 (rename to intermediate; $mv)
    --cmd2   CMD  invoke CMD in pass2 (to new name; $mv2)
    --cmdtty TTY  input handle for CMD ($mvtty)
@@ -396,7 +399,11 @@ sub cleanexit {
 }
 
 sub noexec {
-   print qq!     mv -- '$_[0]' '$_[1]' '$_[2]' '$_[3]'\n! if $o_verbose;
+   my(@f)=@_;
+   foreach(@f){$_=pr($_)};
+   # warning - we CHANGE CHARS < 0x1f in the filenames, so when used as script
+   #           this may fail for a few renames
+   print qq!     mv -- '$f[0]' '$f[1]' '$f[2]' '$f[3]'\n! if $o_verbose;
 }
 
 sub arrayrefwrite {
@@ -441,6 +448,13 @@ sub sq{ # escape hack for single-quoting
    return($tmp);
 }
 
+sub pr { # return printable chars -- protect the tty against control codes below \x80
+         # Q: 9b vs. utf8 - leave alone for now
+   local($_)=@_;
+   # s/[\0-\x1f\x7f]/"%".unpack("H2",$&)/ge;
+   s/[\0-\x08\x0a-\0\x1f\x7f]/?/go; # emv: but allow tabs
+   return $_;
+}
 
 # setup to cleanup -------------------------------------------------
 
@@ -600,7 +614,7 @@ sub summarize {
    }
    if ($changes) {
       not $convenience and (-s $undfile or -s $redofile) and print "\n";
-      -s $undfile  and print "# Note: undolog    see $undfile (tac before exec!)\n";
+      -s $undfile  and print "# Note: undolog    see $undfile (-> tac)\n";
       -s $redofile and print "# Note: redoscript see $redofile\n";
       ($errors or $errors_severe) and 
          print "# !!!!! errors occured: $errors, severe errors $errors_severe\n";
@@ -711,7 +725,7 @@ sub conveniencecommands {
           next if /^\s*#/;
           next if /^\s*$/;
           next if /^\s*\d+\t/;
-          warn "# ignoring line ". $i++ ." $_" . (/\n\z/ ? "" : "\n" );
+          warn "# ignoring line ". $i++ ." ". pr($_) . (/\n\z/ ? "" : "\n" );
       }
    }
 
@@ -733,12 +747,12 @@ sub conveniencecommands {
                                      if ($l=~/(.*)\s+#\s*(\d+)\t(.+?)$/){ 
                                         $l=$1; $ENV{N}=$3;
                                         chomp($ENV{O}=$$linref[$2]); $ENV{O}=~s/^\s*\d+\t//}
-                                     print main::STDERR "# sh: $l"; 
-                                     print main::STDERR " (O: $ENV{O} N: $ENV{N})" if $l=~/\$N|\$O/;
+                                     print main::STDERR "# sh: ".pr($l); 
+                                     print main::STDERR " (O: ".pr($ENV{O})." N: ".pr($ENV{N}).")" if $l=~/\$N|\$O/;
                                      print main::STDERR "\n";
                                      system(qq@{ $l\n } 1>&2 @);  
                                      if ($?) {
-                                        print main::STDERR "# ERROR ", $?>>8, ": $_\n";
+                                        print main::STDERR "# ERROR ", $?>>8, ": ".pr($_)."\n";
                                         s/^/WITH ERROR /; # also add a reminder to the problem to @sh
                                      }
                                      push @sh, $_}; 
@@ -845,7 +859,7 @@ sub editorsession {
       if ($o_delta) {
          arrayrefappend($deltaorg,\@newfile);
          arrayrefappend($deltalin,\@linfile);
-         foreach(@newfile) { print $_, (/\n\z/ ? "" : "\n"); }
+         foreach(@newfile) { print $_, (/\n\z/ ? "" : "\n"); } # DO NOT USE pr() here!
          sleep 2 if $o_debug;
          return # emvx / $o_delta
       }
@@ -952,19 +966,19 @@ sub tracked {
    my($_)=@_;
    my($o, $n, $in, $out, $i, $l, $c);
    $in=$out=$_;
-   warn "# WRN please try to avoid pathes with .. or /./ in input\n" if $in=~m@/\.\./|/\./@;
+   warn "# WRN pathtracking - please try to avoid pathes with /../ or /./ in input\n" if $in=~m@/\.?\./|^\.?\./|/\.?\.$@ and not $dotwarned++;
    foreach $i (@pathtrack){    # check+apply dir renames in chronological order
       ($o,$n)=@$i;
       $l=length($o);
       if ($o eq substr($out,0,$l)) {
          if ($l==length($out) or "/" eq substr($out,$l,1)) {
             $c++;
-            # warn "# TRK . $o -> $n\n";
+            # warn "# TRK . ".pr($o)." -> $n\n";
             substr($out,0,$l)=$n;
          }
       } 
    }
-#warn "# TRK = $in -> $out ($c changes)\n" if $c;
+#warn "# TRK = ".pr($in)." -> ".pr($out)." ($c changes)\n" if $c;
    return $out;
 }
 
@@ -1050,7 +1064,8 @@ sub renaming2 {
          appendfile( $errfile, "# File '$newline' already exists - '$orgline' remains unchanged.");
          $undo=1;
       } else {
-         printf "  %-25s -> %-25s %s", "'$orgline0'", "'$newline'" , ( $tmp!~/\S/ ? "\n" : " (Trk $tmp:$orgline)\n");
+         # report
+         printf "  %-25s -> %-25s %s", pr("'$orgline0'"), pr("'$newline'") , ( $tmp!~/\S/ ? "\n" : pr(" (Trk $tmp:$orgline)")."\n");
 # DISK2 pass2:
          if ($mv ne "noexec") {
             system($shell, "-c", qq!$shellpreproc $mv2 '$esctmpline' '$escnewline' $mvtty $shellteelog $shellpostproc!); 

@@ -7,9 +7,11 @@
 # - backup and basic revision control of changed files
 
 # 20090729 PJ   0.1  jakobi@acm.org -- initial version
-#
+# 20090825 PJ        added getrcsdiffcmd + improved getrcs guesswork
+#                    added pr in messages to protect the terminal against
+#                    control codes in filenames
 # copyright:  GPL v3 or later
-our $version="0.1-still-lacks-a-bit-testing,but-safe-even-if-aliased-to-vi";
+our $version="0.1.1";
 our $debug=0;
 
 
@@ -28,6 +30,8 @@ our $o_nolock=0;            # set to one to skip flock
 # quiet (stripped if verbose); timeout for command less than 1h
 # retry interval 5s, report fact of being delayed ONCE, quiet otherwise
 our $lockcmd='lock.pl -1 -r 5 -q -t 3300'; 
+our $getrcsdiffcmd='diff'; # 'diff -E -b -B -t' # ignore all space change; gnu
+our $cocmd='co -M -zLT';   # 'co -M -zLT'       # default to local tz for -d, original mtime
 our $changetrackcmd='changetrack';
 
 
@@ -48,12 +52,28 @@ our $changetrackcmd='changetrack';
 #          a wrapper or say known modified files when e.g. invoking ypmake
 #          or similar stuff. options --add --addlist
 # - rejection lock/desc/journal command list
-#          (esp. for things like blank vi or emv or from within GIT please...)
-# - rejection filename lists for inclusion into changetrackable files
+#          (esp. for things like blank vi or emv or from within GIT,
+#           vi -R (assuming the user doesn't override vim's readonly
+#                  flag manually, as we'd have no backup then; thus 
+#                  vi -R is somewhat questionable; while e.g. vimming non
+#                  own files in non-owned dirs w/o write perms for dir
+#                  and file are reasonably safe, a suspend editor to
+#                  sudo chmod is a sufficiently high-profile conscious
+#                  act that ignoring those files can be deemed safe)
+#       add blacklist/whitelist,
+#       still I want paranoia flag for lock/journal/flock
+#       to turn off all things that reduce the tracked filesets... 
+#       (incl. lock-/journal-/blacklisted commands)
+#       HAVE FILE<N> BE THE FULL LIST, WITH BLACKLISTS APPLIED 
+#       JUST LOCALLY: FILES := FILES - (BLACKLIST UNLESS WHITELIST)
+# - rejection filename lists for validation of changetrackable files
 #     - DO implement it as a skip hash (&action style), but check it
 #          early during filesN selection.
 #     - DO add an option to load a \n pattern list into %skip
 #          --skip, --skiplist, --skiplist-regex
+#     e.g. when using the wrapper to e.g. vi -R an file outside of the scope
+#          of the project and files to be tracked.
+#     add blacklist/whitelist both
 # - reduce backups and questions for non-changable files
 #     avoid changetracking  any non-changable files
 #     - DO: options --mode/--modeappend
@@ -76,6 +96,7 @@ our $changetrackcmd='changetrack';
 #       avoid including file into file1 / file3 / file4.
 #       have a flag being part of mode to turn this on.
 #       == above all files if sudo mode flag
+#       --> check this wrt the command white/blacklist above
 #     - DO: have the deselected stuff as %rfilesN/@rfilesN,
 #       to still be included in the journal with a RFILE: prefix.
 #     - == these three points should do the trick.
@@ -270,7 +291,8 @@ On using sfre to wrap all interactive editor invocations
 
 The  following  example  executes sfre instead of vi, but  passes  all
 options and arguments on to vi (Bourne-shell and descendants, assuming
-/usr/bin/vi as location).
+/usr/bin/vi  as location). To add invocation-specific sfre options  to
+'vi', invoke the alias as SFREOPT="--nolock" vi.
 
    if [ -n "\$PS1" ]; then
       alias vim=vi
@@ -381,6 +403,22 @@ values (unless null):
   - SFRESHELL     -- /bin/bash or /bin/ksh (should support pipefail)
 
 
+On RCS, --diff and --cat
+
+The  RCS  revisions  can be accessed with --cat/--diff, with  take  an
+optional  date  or version string, which sfre will provide to co as  a
+-dDATE  or -rREV option. The default is '0', which is the most  recent
+version in the changetrack archive.
+
+To  specify the version option yourself, use a '=' as first character:
+=-d'Thu,  11  Jan  1990  20:00:00  -0800'.  Non-option  arguments  are
+provided  to the diff/cat command used. The diff command can be set in
+\$getrcsdiffcmd  and  takes e.g. on Linux the usual GNU  Diff  options,
+e.g.  -E -b -B -t to skip whitespace changes. Some valid date  strings
+are  '8:00  pm', 'Thu', '1990-01-12 04:00:00+01'. Note that sfre  adds
+-zLT to co, making the local time zone the default.
+
+
 Alternatives to sfre:
 
   - a real version control system, if you can guarantee all group
@@ -418,7 +456,7 @@ systemflightrecordereditor - a tool to support group memory and
                              - by f-locking mentioned files
                              - by archiving changed files
 
-$Me [OPTIONS] -- <EDITOR-ARGUMENTS AND FILES>
+SFREOPT="[OPTIONS]" $Me [OPTIONS] -- <EDITOR-ARGUMENTS AND FILES>
 
 version: $version.
 
@@ -438,7 +476,7 @@ The  implementation  is safe for concurrent use by multiple users  and
 cron-jobs  incl.  a multiple root scenario. sfre can be used  to  wrap
 your default editor in interactive shells, see --examples. It can also
 wrap  arbitrary  commands like cronjobs, protect them by  locking  and
-journal/backup  their changes. 
+journal/backup  their  changes.  
 
 By  default,  sfre will abort the command after waiting for nearly  an
 hour, without trying to break locks (see \$lockcmd).
@@ -481,12 +519,7 @@ Ooptions for locking and versioning
 Accessing journal and versions (if pathes are set within config
 files, consider providing -u and --domain as well)
   --cat       [S]        -- both commands use RCS co with S being either
-  --diff      [S]           -d<DATE> or -r<revision number or name>,
-                            with all arguments being passed to the
-                            system's cat or diff command, the last
-                            being the file of interest. Without S,
-                            both default to the most recent version
-                            in changetrack's RCS backup.
+  --diff      [S]           -d<DATE> or -r<revision number or name>
   --echo                 -- print the RCS file name (not checked out)
   --echod(ir)            -- print changetrack's backupdir
   --echoh(istory)        -- print changetrack's .history filename
@@ -698,7 +731,7 @@ if (not $ENV{SFRELOCKED} and $lockcmd and not $o_nolock and @files1) {
    push @ARGVOPT, "-u", $o_user, "--domain", $o_domain, "-m", $o_message, "--";
    @cmd=($shellcmd, "-c", $lockcmd." -f ".$lockoptcommand.' ${1:+"$@"}', "${Me}lock", 
                          @files1, @o_addlock, "--", $0, @ARGVOPT, @ARGV);
-   warn "# $Me: reinvoking as ", join(" ",map({"'".sq($_)."'"} @cmd)), "'\n" if $o_verbose>1;
+   warn "# $Me: reinvoking as ", join(" ",map({"'".pr(sq($_))."'"} @cmd)), "'\n" if $o_verbose>1;
    exec @cmd; 
 }
 
@@ -739,7 +772,7 @@ if ($o_addoutput) {
 
 #&debug_status;
 
-warn "# $Me: command ", join(" ", $shellcmd, "-c", $cmd, "${Me}cmd", @ARGV), "\n" if $o_verbose>1;
+warn "# $Me: command ", pr(join(" ", $shellcmd, "-c", $cmd, "${Me}cmd", @ARGV)), "\n" if $o_verbose>1;
 system $shellcmd, "-c", $cmd, "${Me}cmd", @ARGV;
 $rc2=$?>>8;
 $log=""; $log=`cat $tmpfile;rm $tmpfile` if $o_addoutput;
@@ -803,9 +836,9 @@ sub actions { # arrayref, files...
       for my $file (@files){
          $_=$file;
          if (/$re/) {
-            warn "# $Me: action match ($re : $file)\n" if $o_verbose>1;
+            warn "# $Me: action match ($re : ".pr($file).")\n" if $o_verbose>1;
             eval($perlscrap);
-            warn "$ ! Me: action configuration error ($re : $file) $@" if $@;
+            warn "$ ! Me: action configuration error ($re : ".pr($file).") $@" if $@;
             $@="";
          }
       }
@@ -1051,6 +1084,15 @@ sub absname {
 
 # insanity checks and debug help --------------------------
 
+sub pr { # return printable chars -- protect the tty against control codes below \x80
+         # Q: 9b vs. utf8 - leave alone for now
+   local($_)=@_;
+   # s/[\0-\x1f\x7f]/"%".unpack("H2",$&)/ge;
+   s/[\0-\x1f\x7f]/?/go;
+   return $_;
+}
+
+
 sub checkrequirements {
    my $tmp;
    $tmp=$changetrackcmd; $tmp=~s/ .*//g; 
@@ -1073,18 +1115,18 @@ sub debug_status {
    return if not $debug;
    my($mode);
    $mode=shift; $mode="" if not defined $mode;
-   warn join " ",@_,"\n" if @_;
+   warn pr(join " ",@_),"\n" if @_;
    if ($mode) {
       my $tmp="";
       for(qw/editorcmd shellcmd lockcmd o_configfile o_user o_domain o_message/) {
          $tmp.=qq!printf main::STDERR "# D %-20s: %s\\n", "$_", \$$_; !;
       }
       eval($tmp);
-      warn "# D ARGV:    ". join(" ",@ARGV) .  "\n";
-      warn "# D ARGVOPT: ". join(" ",@ARGVOPT)."\n";
+      warn "# D ARGV:    ". pr(join(" ",@ARGV)) .  "\n";
+      warn "# D ARGVOPT: ". pr(join(" ",@ARGVOPT))."\n";
    }
-   warn "# D files1:  ". join(" ",@files1) ."\n" if @files1;
-   warn "# D files3:  ". join(" ",@files3) ."\n" if @files3;
+   warn "# D files1:  ". pr(join(" ",@files1)) ."\n" if @files1;
+   warn "# D files3:  ". pr(join(" ",@files3)) ."\n" if @files3;
 }
 
 
@@ -1100,7 +1142,7 @@ sub changetrackpath {
 }
 
 
-sub getrcsfile {
+sub getrcsfile { # return string or shell exit code from diff
    my($file, @ARGV)=@_;
    my($rc)=0;
    # RCS annoyances, thus changetrack annoyances:
@@ -1109,15 +1151,27 @@ sub getrcsfile {
    # - there is no rcscat... so to get a file, I've to do an
    #   explicit checkout or create a mess of dummies for rcsdiff
    # - while co has a -dDATE option, rdiff doesn't
-   # - but like rcsdiff, co alsways has to have to create the file, not 
-   #   cat for you... - at least it allows date - ranges, which rcsdiff
-   #   does not.
+   # - co supports a -p[rev] option to output to pipe; but the
+   #   external diff should probably see the correct original time
+   #   of the revision
+
+   # untested / not yet bitten: do we need to suppress keyword expansion?
 
    # this work around requires write access to the repo 
    #   (if this is a problem, we can omit the backdir/RCS
    #   prefix and place the RCS/*,v file in question in a
    #   tmpdir, hopefully in the same fs with ln or cp otherwise;
    #   cd to tmpdir and invoke co locally)
+  
+   if (not $file) {
+      # looks like the non-option arg was
+      # NOT a version string, but the file
+      $file=$o_backupdiff if $o_backupdiff;
+      $file=$o_backupcat  if $o_backupcat;
+      $o_backupdiff=0 if defined $o_backupdiff;
+      $o_backupcat =0 if defined $o_backupcat;
+      return "cannot find file" if not $file;
+   }
 
    my $absfile=absname($file);
    my $ctname      =changetrackpath($file);
@@ -1132,10 +1186,13 @@ sub getrcsfile {
    do{return "$ctfile.yesterday\n"} if $o_echoyesterday;
    do{return "$backupdir\n"}        if $o_echodir;
 
+   my $cmd;
    link $ctfilercs,$ctfilercstmp and do{
       my $opt=$o_backupdiff; $opt=$o_backupcat if $o_backupcat;
       if ($opt) {
-         if($opt=~/[ :]|^\d+[:-]/) { # assume -ddate
+         if($opt=~s/^=//) {
+           ;
+         } elsif($opt=~/[ :]|^\d+[:\-\/]|^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)( |$)/i) { # assume -ddate
            $opt="-d$opt";
          } else {                    # assume -rrev number or symbolic name
            $opt="-r$opt";
@@ -1144,14 +1201,17 @@ sub getrcsfile {
       } else {
          $opt="";
       }
-      system "cd '".sq($backupdir)."'; co $opt -T '".sq($ctnametmp)."'";
+
+      $cmd="cd '".sq($backupdir)."'; $cocmd $opt -T '".sq($ctnametmp)."'";
+      system $cmd;
    };
-   my $cmd;
-   $cmd="diff"; $cmd="cat" if defined $o_backupcat;
+   $cmd="";
+   $cmd=$getrcsdiffcmd; $cmd="cat" if defined $o_backupcat;
    $cmd="cd '".sq($backupdir)."'; $cmd";
    for(@ARGV) { $cmd.=" '".sq($_)."'"; }
-   $cmd.=" '".sq($absfile)."'" if defined $o_backupdiff and not defined $o_backupcat;
    $cmd.=" '".sq($ctnametmp)."'";
+   $cmd.=" '".sq($absfile)."'" if defined $o_backupdiff and not defined $o_backupcat;
+
 
    system $shellcmd, "-c", "set -o pipefail; ".$cmd;
    $rc=$?>>8;
@@ -1176,6 +1236,8 @@ warn "# loading config sfre.sfrerc\n";
 # - $o_domain
 # - $o_message
 
+## customization
+# $getrcsdiffcmd='diff -E -b -B -t'; # ignore all space change; gnu
 
 ## hooks
 
@@ -1215,6 +1277,7 @@ $action4{"/etc/group"}= '{warn "A4 triggered /etc/group\n"}';
 
 # 4g) global hook
 # $postaction
+
 
 # don't forget to signal the success of reading your config with true :)
 1;

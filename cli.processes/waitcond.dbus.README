@@ -1,0 +1,49 @@
+[cat, tail, echo, logger]
+
+echo/logger-like  use  is possible when restricting yourself  to  just
+signals instead of using dbus methods for rcp-style ipc:
+
+-> dbus-monitor and a home-grown ping
+
+dbus-monitor-tail  is  an  example of tailing N messages  (instead  of
+forever    with   dbus-monitor)   incl.   an   example   of    abusing
+dbus-monitor/dbus-send to to send a ping and block-wait for it.
+
+    export f=~/.dbus.ping; rm $f; 
+    (dbus-monitor-tail 2 interface=org.freedesktop member=dummyping; echo ping seen > $f) & 
+    waitcond -V grep ping $f
+
+Which waits for a 'dbus-send / org.freedesktop.dummyping string:ping'.
+Waitcond  will  exit with 0 about 3-6 seconds later depending  on  the
+chosen  sleep  delay  (3s)  and  the  number  of  iterations  (2)  the
+conditions must remain true to no longer be considered a false hit.
+
+-> onscreen notifications:
+
+To  wait  for  a 'notify-send "a ping"' instead, which  uses  dbus  on
+Ubuntu, use the example below, possibly with --grep or --eval options.
+
+   dbus-monitor-tail -1 interface=org.freedesktop.Notifications member=Notify
+
+To  just  report the notification message string, something like  this
+should  work, possibly updated depending on the exact encoding for '"'
+in the message.
+
+   dbus-monitor-tail -1 
+      --grep 'string.*notify-send' 
+      --eval '/string.*notify-send.*\n.*int.*\n.*string.*\n.*?string "([\s\S]*?)"/ and $_=$1 or $_=""' 
+      -- interface=org.freedesktop.Notifications member=Notify
+
+-> HAL:
+
+And   this  can  be  also  used  to  waitcond  for  e.g.  hal   device
+announcements  on the system dbus. Or just grep the output of lshal -s
+(otherwise:    full   entries;   -m   tail   new)   or   the   simpler
+/usr/share/doc/libnet-dbus-perl/examples/lshal.pl
+
+-> Filesystems, FUSE...
+
+
+[ls / debugging/introspection/message-building]
+
+qdbus is a kind of "dbus-ls"; the GUI monitors/debuggers d-feet/qdbusviewer.
