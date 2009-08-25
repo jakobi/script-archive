@@ -246,7 +246,7 @@ function cdto
         return 0
     else
         if cd "$dir"; then
-# point of ksh crash
+# one of the points of ksh crashes when daring to use cdlist=()
             cdsv 
             cdshow
             return 0
