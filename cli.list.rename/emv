@@ -17,7 +17,6 @@
 # 20090826 PJ       added pr to messages to protect the terminal, single pass mode
 #                   when unsetting $mv2, --nopathtrack, --todir/--nodir, --perlpostedit
 # 20090826 PJ       fixed emvx bug - when did appending $deltaorg @orgfile change to @newfile!?                  
-
 # Copyright (c) 2006-2009 jakobi@acm.org placed under GPL v3 and newer
 my $version="2.00pj.3"; 
 
