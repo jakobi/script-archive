@@ -14,10 +14,11 @@
 # 20090803 PJ? 2.00 modeline vim:filetype=netrw for syntax highlighting; I still
 #                   try to avoid a syntax file (see /\$foot and /hi .*link), thus
 #                   also switching to " as comment char (but still allowing #)
-# 20090825 PJ       added pr to messages to protect the terminal
+# 20090826 PJ       added pr to messages to protect the terminal, single pass mode
+#                   when unsetting $mv2, --nopathtrack, --todir/--nodir, --perlpostedit
 
 # Copyright (c) 2006-2009 jakobi@acm.org placed under GPL v3 and newer
-my $version="2.00pj.1"; 
+my $version="2.00pj.2"; 
 
 # emv consists of: emv  
 # and the helpers: emvx (extend emv session by expanding directories)
@@ -81,26 +82,29 @@ use vars;
 
 my($shell, $shellteelog, $shellpreproc, $shellpostproc);
 my($time, $edit, $mv, $mv2, $mvtty, $dir, $owner, $head, $foot, $commentchar);
-my($changes,$errors,$errors_severe,$convenience,$dotwarned);
+my($changes,$errors,$errors_severe,$convenience,$dotwarned,$tmpsfx);
 my(@pathtrack,@pathtracked);
 my($tmp);
-my($o_verbose, $o_long, $o_dirtree, $o_perlblock, 
-   $o_delta, $o_stdin, $o_debug, $o_sort, $o_checkuserlines);
+my($o_verbose, $o_long, $o_dirtree, $o_perlblock, $o_perlposteditblock, $o_renametodir,
+   $o_delta, $o_stdin, $o_debug, $o_sort, $o_checkuserlines, $o_nopathtrack, $o_perlcmdblock);
 # logs and log contents
 my($orgfile, $linfile, $newfile, $errfile, 
    $undfile, $redofile, $edtfile, $deltalin, $deltaorg);
 my(@orgfile, @linfile, @newfile, @errfile, 
    @undfile, @redofile, @edtfile, @deltalin, @deltaorg);
+$tmpsfx=".tmp$$~";
 
 $|=1;
 $o_debug=0;
 $o_checkuserlines=1;
+$o_nopathtrack=0;
+$o_renametodir=1;
 $dotwarned=0;
 
 init();
 parsearg();
 getfiles();
-$o_perlblock ? perlblock() : editorsession();
+$o_perlblock ? perlblock() : editorsession(); 
 exit 0 if $o_delta; # emvx support, called from another emv
 
 print "\n";
@@ -135,11 +139,12 @@ directories  and their children within a single session, though  there
 is no generic cycle detection implemented.
 
 Renames  are done by first renaming all files to an intermediate name,
-then  in a second pass to the new filename. Deleting lines or changing
-the  order  during editing is possible (e.g. sorting filenames in  vim
-with  :sort  /\\t/, then deleting the first 20 lines). Note  that  this
-does  NOT  affect  the ordering of renames, which is the same  as  the
-order of the input (unless option -s/-r).
+then  in a second pass to the new filename (all directories in the new
+name  must exist). Deleting lines or changing the order during editing
+is  possible  (e.g.  sorting filenames in vim with  :sort  /\\t/,  then
+deleting  the  first  20 lines). Note that this does  NOT  affect  the
+ordering  of  renames,  which is the same as the order  of  the  input
+(unless option -s/-r).
 
 Invoke  with -stdin to use a file list from stdin. To reuse a previous
 sessions  editor  buffer content (availble in the logdir as edt-*)  as
@@ -185,6 +190,7 @@ Options:
    -v            verbose, also --v
    --examples    additional help, examples and notes
    --help        help, also -h
+   [--init BLOCK hook evaluated during option handling]
 
    # input and sorting
    -d            dirtree-mode        (roughly find . -type d | emv -r -)
@@ -199,13 +205,17 @@ Options:
    --perl BLOCK  use perl BLOCK instead of invoking \$EDITOR, also -p:
                  files will be renamed if \$_ is changed and non-empty
                  example: emv -p 's/^/a/; \$_="" if /7/' *
+   [--perlpostedit BLOCK -- eval hook to modify the data from \$EDITOR]
 
    # renaming
-   -n            no-execution (note: -n replaces control chars with '?',
+   -n            no-execution (note: -n prints control chars as '?',
                  furthermore it might not detect all some collisions)
    --cmd    CMD  invoke CMD in pass1 (rename to intermediate; $mv)
-   --cmd2   CMD  invoke CMD in pass2 (to new name; $mv2)
+   --cmd2   CMD  invoke CMD in pass2 (intermediate to new name; $mv2)
    --cmdtty TTY  input handle for CMD ($mvtty)
+   --nopathtrack (may be required when using overriding --cmd/--cmd2)
+   --todir / --nodir - allow/disallow mv FILE DESTDIR (allow: $o_renametodir)
+   [--perlcmd BLOCK -- eval hook run early in pass1 and pass2]
 
 
 EOF
@@ -233,6 +243,7 @@ on using renames:
      whitespace. To satisfy these, it is suffient to provide an absolute
      path or prefile the relative names with './'. 
    - filenames must not contain '\\n'
+   - all ancestor directory components of the new name must exist.
    - the new FILENAME must contain at least one non-whitespace character
    - renames are done in two passes: first all are renamed to intermediate
      names, only then all intermediates are renamed to the final name.
@@ -259,6 +270,16 @@ on adding convenience commands while editing:
    - unimplemented features:
      - recursive rm (use sh instead)
      - reloading emv after requesting execution of commands (on wish list)
+   - use sh SHORT-SCRIPT-NAME to run an arbitrary command. (search the 
+     source for 'expand sh aliases inplace' (around line 700) for the 
+     expansion of the cp and mv aliases, if you really want to add a
+     new alias for some sh command). 
+   - another way to add aliases: use the --perlpostedit hook and
+     modify \@\$newref (it _is_ ok to modify it inplace) and make a
+     suitable shell wrapper to invoke emv --perlpostedit '...'.
+   - the following shell variables are set: old and new name as \$O, \$N;
+     as well as the error, undo and redo logs \$errfile, \$undfile, 
+     \$redofile.
 
 on using vim: 
    - use :setl ft=netrw to use the netrw syntax highlighting for emv
@@ -306,26 +327,60 @@ example repairing a large number of broken links:
      convenience commands - the undo log merely lists the relink lines. 
      However full filename and targets information can still be found in 
      the other logs.
+   - see also: myrename '\$l=~s/oldtarget/newtarget/'
 
-notes on the shell and using -cmd / -cmd2:
+notes on the shell and using --cmd / --cmd2:
    - the shell _MUST_ support Bourne-style redirection and the
      set -o pipefail option like e.g. ksh or bash. \$EMVSHELL can be
      used to specify a specific shell instead of having emv guessing
      a suitable shell.
-   - use -cmd COMMAND to choose a command other than mv for the rename.
+   - command invocation is COMMAND src dst, where COMMAND is a string
+     containing the command name/arguments. Available shell variables
+     are \$srcline, \$dstline as the argument commands for the pass.
+   - additional shell variables are  \$orgline, \$tmpline, \$newline,
+     which are the original, intermediate and new name (pathtracked) 
+     as well as \$orgline0, \$newline0, which are not tracked.
+     The log names are available as \$errfile, \$undfile, \$redofile. 
+   - use --nopathtrack to turn pathtracking off if your COMMAND does
+     not rename directories when invoked with directory arguments, but
+     still returns success: otherwise emv will pathtrack the change
+     and modify any directory descendant in future renames.
+   - use --cmd COMMAND to use COMMAND instead of /bin/mv for the rename.
      COMMAND could e.g. check the contents and reject some files by
      exiting with a nonzero code, maybe to exclude binary files when 
      moving files into a new dir for later checking in into a version 
-     control system.
-   - -cmd2 COMMAND could e.g. be used with a script that appends
+     control system. Skips pass2 and directly uses the final name as 
+     2nd argument if cmd2 is unset. Use a wrapper script or have COMMAND
+     be both shell function and function invocation if your command is 
+     only interested in one name or requires additional parameters.
+   - --cmd2 COMMAND could e.g. be used with a script that appends
      files and optionally remove the old file, when safely appended.
-   - COMMAND is invoked as COMMAND oldname newname, where COMMAND is
-     a string containing the command name/arguments. In the environment
-     it has furthermore the variables O, I, N and O0, N0: pathtracked
-     original, intermediate and new filename, as well the unmodified
-     original and new filename. O is identical to O0 and N to N0 
-     as long as you do not rename directories and later on rename
-     children of the renamed directories in the same emv session.
+   - if you set --cmd1 and do have a --cmd2 (yours or the default), 
+     pass2 will use /bin/mv as necessary to undo the renaming to 
+     intermediary names in case of errors (targets exists or error
+     code from --cmd2)
+
+on using and abusing the perl eval hooks
+   - using --init, you can change arbitrary perl variables during
+     initialization. 
+   - use --perledit to add more sh convenience command aliases like 
+     cp and mv.
+   - use --perlpostedit to validate the user's filenames
+   - use --cmd and --perlpostedit to change a prefix of the filenames,
+     'join/merge trees' (think hurd fs-translators, mount --bind
+     and FUSE, make VPATH, unix view vs samba, file vs RCS/file,v, 
+     ...) to find/display names from one path, but use the second path
+     for the COMMAND with slightly differing semantics by editing both 
+     the original and the new lines...
+   - use perlcmd in similar fassion. It is evaluated for each file, 
+     being able to modify \$orgline, \$tmpline, \$newline. The pass
+     number is availble in \$pass.
+   - like convenience commands, hooks are nice for a quick hack,
+     but do be wary of regular and extensive use, as it is easy to 
+     break implicit assumptions, invalidate the usual filesystem 
+     semantics, or psychoanalyze the filenames with an Eliza clone,
+     at least the last of which probably is better done on top of
+     a simple find | perl -lpe ...
 
 alternatives:
    - gprename (perl gkt, probably somewhat hackable)
@@ -346,13 +401,12 @@ alternatives:
        at least reading from a plain file is portable:
        find > FILE; while read; do mv "\$i" "\${i##.TXT}".txt; done <FILE
      - if you prefer pain and excess forks, xargs is your friend:
-       find -print0 | \\
-       xargs -0 bash -c 'for i; do mv "\$i" "\${i##.TXT}".txt; done' SeCrEt {} \\;
-   and unicode:
-   - convmv to mass-fix the charset of file *NAMES* (dirtree 2 utf8;
+       find -print0 | xargs -0 bash -c \\
+          'for i; do mv "\$i" "\${i##.TXT}".txt; done' SeCrEt {} \\;
+   - convmv: mass-fix the charset of file *NAMES* (dirtree to utf8;
      for contents, use recode latin1..utf8 <File >File or perl -pe 
-     'BEGIN{use encoding 'utf8';}' (but don't feed them utf8!!);
-     --> man perlunicode; to flag, Encode::encode_utf8 (utf28bit))
+     'BEGIN{use encoding 'utf8';}' (but don't feed with utf8!!);
+     --> man perlunicode; to flag, use Encode::encode_utf8 (utf28bit))
 EOF
 }                               
 
@@ -373,8 +427,14 @@ sub parsearg {
       /^-?-cmdtty$/      and do{$mvtty=shift @ARGV;next};
       /^-d$/             and do{$o_dirtree=1;next};
       /^-l$/             and do{$o_long=1;next};
-      /^-n$/             and do{$mv="noexec";next};
+      /^-n$/             and do{$mv="noexec" if $mv; $mv2="noexec" if $mv2; next};
       /^-p$|-?-perl$/    and do{$o_perlblock=shift @ARGV;next};
+      /^-?-init$/        and do{eval shift @ARGV; die "$@" if $@; next};
+      /^-?-perlpostedit$/ and do{$o_perlposteditblock=shift @ARGV;next};
+      /^-?-perlcmd$/     and do{$o_perlcmdblock=shift @ARGV;next};
+      /^-?-nopathtrack$/ and do{$o_nopathtrack=1; next};
+      /^-?-nodir$/       and do{$o_renametodir=0; next};
+      /^-?-todir$/       and do{$o_renametodir=1; next};
       /^-r$/             and do{$o_sort=2;next};
       /^-s$/             and do{$o_sort=1;next};
       /^-v$|^-?-verbose$/i and do{$o_verbose++;next};
@@ -386,6 +446,18 @@ sub parsearg {
       /()/               and do{unshift @ARGV,$_; last};
    }
    $mvtty="<$mvtty" if defined $mvtty and $mvtty;
+
+   # don't prevalidate $o_perlcmdblock - due to higher likelihood of fs accesses
+
+   if ($o_perlposteditblock) { 
+      # check syntax before invoking the editor!
+      my($linref,$newref,@sh,$t,$tt,$l);
+      $linref=[]; $newref=[]; 
+      $_=$t=$tt=$l="";
+      eval "$o_perlposteditblock;"; die $@ if $@;
+   } else {
+      $o_perlposteditblock="";
+   } 
 }
 
 
@@ -403,7 +475,7 @@ sub noexec {
    foreach(@f){$_=pr($_)};
    # warning - we CHANGE CHARS < 0x1f in the filenames, so when used as script
    #           this may fail for a few renames
-   print qq!     mv -- '$f[0]' '$f[1]' '$f[2]' '$f[3]'\n! if $o_verbose;
+   print "     ".join(" ",@f)."\n" if $o_verbose;
 }
 
 sub arrayrefwrite {
@@ -452,7 +524,7 @@ sub pr { # return printable chars -- protect the tty against control codes below
          # Q: 9b vs. utf8 - leave alone for now
    local($_)=@_;
    # s/[\0-\x1f\x7f]/"%".unpack("H2",$&)/ge;
-   s/[\0-\x08\x0a-\0\x1f\x7f]/?/go; # emv: but allow tabs
+   s/[\0-\x08\x0a-\x1f\x7f]/?/go; # emv: still allow tabs (convenience cmd!)
    return $_;
 }
 
@@ -488,8 +560,9 @@ ${commentchar}              emvp [-p|-i] perlop             (without myrename: e
 ${commentchar}              emvs [-r]   (sort keeping dirs and dir-children together)
 ${commentchar}              sed   cut -f 2-   sort -k 2.1   grep .     (-f 3- -k 8.1)
 ${commentchar}      editors like vim also implement interesting commands
-${commentchar}              visual block changes     gf    :set list     :23,25s/^/d/ 
-${commentchar}              :%s#X#Y#   :sort /\\t/   :%g!/./d  :%g#X#d  (/\\v\\t.{-}\\t/)
+${commentchar}              :help visual-block  :set nu  :set list  gf   :23,25s/^/d/ 
+${commentchar}              :%s=X=Y=   :sort /\\t/   :%g!/./d  :%g=X=d  (/\\v\\t.{-}\\t/)
+${commentchar}              visual-block + I<DIR><ESC>   :<RANGE>s=\\t=&DIR/=  (=#\\t=)
 ${commentchar}      emv line format is         <WS>* NUMBER                <TAB> NAME
 ${commentchar}                          (-l)   <WS>* NUMBER <TAB> #[META]# <TAB> NAME
 ${commentchar}cp/mv creat|touch ln/ln-s mkdir relink rm|rmdir|d sh (col1, runs first)
@@ -617,11 +690,11 @@ sub summarize {
       -s $undfile  and print "# Note: undolog    see $undfile (-> tac)\n";
       -s $redofile and print "# Note: redoscript see $redofile\n";
       ($errors or $errors_severe) and 
-         print "# !!!!! errors occured: $errors, severe errors $errors_severe\n";
+         print "# !!!!! errors occured: $errors, severe errors $errors_severe, suffix $tmpsfx\n";
       -s $errfile and print "# !!!!! errorlog   see $errfile\n\n" and
          system(qq!sed -e 's/^/   # /g' < '$errfile'!);
       not -s $errfile and not $errors and not $errors_severe and
-         print "\n# All files have been successfully renamed/moved.\n";
+         print "\n# All files have been successfully renamed/moved" . ( $mv eq 'noexec' ? " (noexec)": "" ) . "\n";
    } else { 
       # harmless, though we'd forget a cleanexit somewhere!?
       warn "# ASSERT \$changes=$changes!=0 FAILED!?";
@@ -714,6 +787,8 @@ sub conveniencecommands {
    # expand sh aliases inplace
    grep {s/^cp(\s+-\S+)?\s+/sh test ! -z "\$O" -a ! -z "\$N" && cp -i $1 -- "\$O" "\$N" #/;
          s/^mv(\s+-\S+)?\s+/sh test ! -z "\$O" -a ! -z "\$N" && mv -i $1 -- "\$O" "\$N" #/} @$newref;
+
+   eval($o_perlposteditblock); die "# error in --perlposteditblock: ".$@ if $@; # don't continue
   
    # clear all list file name variables
    foreach(0..9){$ENV{"l$_"}=undef};$ENV{l}=undef; 
@@ -721,11 +796,11 @@ sub conveniencecommands {
    if ($o_checkuserlines or $o_debug or $o_verbose) {
       my $i=1;
       foreach( @$newref) {
-          next if /^(rm(dir)?|d|=|x|sh|ln|mkdir|mdkir|touch|l\d?|re?li?nk#?|create?)[ \t]/;
-          next if /^\s*#/;
-          next if /^\s*$/;
-          next if /^\s*\d+\t/;
-          warn "# ignoring line ". $i++ ." ". pr($_) . (/\n\z/ ? "" : "\n" );
+          next if    /^(rm(dir)?|d|=|x|sh|ln|mkdir|mdkir|touch|l\d?|re?li?nk#?|create?)[ \t]/;
+          next if    /^\s*#/;
+          next if    /^\s*$/;
+          next if    /^\s*\d+\t/;
+          warn "# ignoring line ". $i++ ." ". pr($_) . (/\n\z/ ? "" : "\n" ); # with pr()
       }
    }
 
@@ -946,10 +1021,14 @@ sub renaming {
    renaming2(\@orgfile, \@newfile);
 
    if ($changes) {
-      appendfile($undfile, "\n# actually used command in intermediary pass was $mv\n" .
-                             '# override with e.g. function mv { /bin/mv -i -- "$1" "$2";}') if -s $undfile;
-      appendfile($redofile,"\n# actually used command in intermediary pass was $mv\n".
-                             '# override with e.g. function mv { /bin/mv -i -- "$1" "$2";}') if -s $redofile;
+      appendfile($undfile, "\n# actually used command in intermediary pass was: $mv\n"  .
+                             "# actually used command in final        pass was: $mv2\n" .
+                             '# override with e.g. function mv { /bin/mv -i -- "$1" "$2";}'."\n" .
+                             "# temporary suffix was: $tmpsfx") if -s $undfile;
+      appendfile($redofile,"\n# actually used command in intermediary pass was: $mv\n".
+                             "# actually used command in final        pass was: $mv2\n" .
+                             '# override with e.g. function mv { /bin/mv -i -- "$1" "$2";}'."\n" .
+                             "# temporary suffix was: $tmpsfx") if -s $redofile;
    }
    if (@pathtrack) {
       appendfile($undfile,"\n################################################\n# \@pathtrack:\n");
@@ -971,7 +1050,8 @@ sub tracked {
       ($o,$n)=@$i;
       $l=length($o);
       if ($o eq substr($out,0,$l)) {
-         if ($l==length($out) or "/" eq substr($out,$l,1)) {
+         #if ($l==length($out) or "/" eq substr($out,$l,1)) {
+         if (                     "/" eq substr($out,$l,1)) { # DO NOT rename an exact matching (orgline) of a successful rename...
             $c++;
             # warn "# TRK . ".pr($o)." -> $n\n";
             substr($out,0,$l)=$n;
@@ -995,51 +1075,91 @@ sub renaming2 {
    
    my($orgref, $newref)=@_;
 
-   my($tmpsfx,$orgline,$orgline0,$newline0,$tmpline,$newline,$escorgline,$escnewline,$esctmpline,$tmpline1,@pass2,$undo,$cnt);
-   $tmpsfx=".tmp$$~";
-   $ENV{errfile}=$errfile;
+   my($orgline,$orgline0,$newline0,$tmpline,$newline,$escorgline,$escnewline,$esctmpline,$tmpline1,@pass2,$undo,$cnt);
+   my($dsttag,$dstline,$escdstline);
+   my($pass);
 
    # pass one - rename to intermediary
+   $pass=1;
    foreach $cnt (1..$#$orgref+1) {
       ($newline,$orgline)=($$newref[$cnt-1], $$orgref[$cnt-1]); 
-      next if $newline eq "" or $orgline eq "" or $newline eq $orgline;
+      $orgline=~s!/\.?$!!g;
+      $newline=~s!/\.?$!!g; 
+      next if $newline eq "" or $orgline eq "" or $newline eq $orgline; # possible user error - just skip
+      if ($newline=~s/\n/\?/g or $orgline=~s/\n/\?/g) { 
+          appendfile($errfile,  "#ERROR '$orgline'/'$newline' has embedded newlines - skipping.");
+          appendfile($redofile, "#ERROR '$orgline'/'$newline' has embedded newlines - skipping.");
+          appendfile($undfile,  "#ERROR '$orgline'/'$newline' has embedded newlines - skipping.");
+          printf "!! name with \\n: %s/%s\n", pr("'$orgline'"), pr("'$newline'");
+          $errors++;
+          $errors_severe++;
+          next;
+      }
+
       ($newline0,$orgline0)=($newline,$orgline);
       $newline   =tracked($newline); $orgline   =tracked($orgline); $tmpline   =tracked($orgline.$tmpsfx); $tmpline1=$tmpline;
+      if ($o_renametodir and not $mv2 and -d $newline) {
+         # in case of single pass mode: modify newline to newline/$(basename origline)
+         my $base=$orgline; 
+         $base =~ s!.*/!!;
+         $newline.="/$base";
+         $newline =tracked($newline);
+      }
+      if ($o_perlcmdblock) {
+         eval $o_perlcmdblock; die "#ERROR: perlcmd $@" if $@;
+      } 
       $escnewline=     sq($newline); $escorgline=     sq($orgline); $esctmpline=     sq($tmpline);
 
       $tmp="   ";
       $tmp=~s/^ /O/      if $orgline ne $orgline0;
       $tmp=~s/ $/N/      if $newline ne $newline0;
       $tmp=~s/ (?=.$)/T/ if $tmpline ne $tmpline1;
-      push @pathtracked, "# $tmp '$orgline0' > '$orgline' '$tmpline1' > '$tmpline' '$newline0' > '$newline'\n" if $tmp=~/\S/;
+      push @pathtracked, "# $tmp '$orgline0' > '$orgline' '$tmpline1' > '$tmpline' '$newline0' > '$newline'\n" if $tmp=~/\S/ and not $o_nopathtrack;
 
 # that dest dir case skipping the intermediate shouldn't be required (I)
 #
 #     if (-d $newline) {$tmpline=$orgline; $esctmpline=sq($tmpline)}
 #     if (not -d $newline) {
-         #  do an intermediate renaming step to allow
+         # do an intermediate renaming step to allow
          # simple name exchanges. This is NOT a generic solution to copy 
          # with naming cycles.
-         if (-e $tmpline) {
-            appendfile( $errfile, "# File '$tmpline' already exists - '$orgline' remains unchanged.");
-            appendfile( $undfile, "# File '$tmpline' already exists - '$orgline' remains unchanged. #INTERMEDIATE-$cnt");
-            $errors++; next;
-         }
-         if ($mv ne "noexec") {
-# DISK1 pass1: user-specified mv, possibly interactive
-            system($shell, "-c", qq!$shellpreproc $mv '$escorgline' '$esctmpline' $mvtty $shellteelog $shellpostproc!);
+         $dstline   = $mv2 ? $tmpline       : $newline;
+         $escdstline= $mv2 ? $esctmpline    : $escnewline;
+         $dsttag    = $mv2 ? "INTERMEDIATE" : "FINAL";
+         $ENV{orgline}=$orgline;
+         $ENV{tmpline}=$tmpline;
+         $ENV{newline}=$newline;
+         $ENV{srcline}=$orgline;
+         $ENV{dstline}=$dstline;
+         if ($mv) {
+            my $tmpcmd="$mv '$escorgline' '$escdstline'";
+            if (-e $dstline) {
+               appendfile( $errfile, "# File '$dstline' already exists - '$orgline' remains unchanged.");
+               appendfile( $undfile, "# File '$dstline' already exists - '$orgline' remains unchanged. #$dsttag-$cnt");
+               printf "!!%-25s -> %-25s %s", pr("'$orgline0'"), pr("'$dstline'") , ( $tmp!~/\S/ ? "\n" : pr(" (Trk $tmp:$orgline)")."\n");
+               $errors++; next;
+            }
+            if ($mv ne "noexec") {
+# DISK1 pass1: user-specified mv, possibly interactive with mv -i
+               system($shell, "-c", qq!$shellpreproc $tmpcmd $mvtty $shellteelog $shellpostproc!);
+            } else {
+               noexec($tmpcmd); $?=0;
+            }
+            print  "!!" if $?;
+            print  "  " if not $? and not $mv2;
+            printf "%-25s -> %-25s %s", pr("'$orgline0'"), pr("'$dstline'") , ( $tmp!~/\S/ ? "\n" : pr(" (Trk $tmp:$orgline)")."\n") if $? or not $mv2;
+            if ($?) {
+               appendfile2($undfile, "#ERROR $mv", 1, $cnt, $escdstline, $escorgline);
+               appendfile2($redofile,"#ERROR $mv", 1, $cnt, $escorgline, $escdstline);
+               $errors++; next;
+            } else {
+               appendfile2($undfile, $mv ,         1, $cnt, $escdstline, $escorgline);
+               appendfile2($redofile,$mv ,         1, $cnt, $escorgline, $escdstline);
+               push @pass2,[$cnt, $orgline, $tmpline, $newline,$orgline0,$tmpline1,$newline0] if $mv2;
+               push @pathtrack,[$orgline, $tmpline] if not $o_nopathtrack and -d "$dstline/."; # do track for noexec as well.
+            }
          } else {
-            noexec($escorgline,$esctmpline); $?=0;
-         }
-         if ($?) {
-            appendfile2($undfile, "#ERROR $mv", 1, $cnt, $esctmpline, $escorgline);
-            appendfile2($redofile,"#ERROR $mv", 1, $cnt, $escorgline, $esctmpline);
-            $errors++; next;
-         } else {
-            appendfile2($undfile, $mv ,         1, $cnt, $esctmpline, $escorgline);
-            appendfile2($redofile,$mv ,         1, $cnt, $escorgline, $esctmpline);
-            push @pass2,[$cnt, $orgline, $tmpline, $newline,$orgline0,$tmpline1,$newline0];
-            push @pathtrack,[$orgline, $tmpline] if -d "$tmpline/."; # do track for noexec as well.
+            die "# aborting -  no pass1 command (--cmd)\n";
          }
 # that dest dir case skipping the intermediate shouldn't be required (II)
 #     } else {
@@ -1050,29 +1170,49 @@ sub renaming2 {
    
 
    # pass two - rename intermediaries to final name
+   $pass=2;
    foreach(@pass2) {
       $undo=0;
       ($cnt, $orgline, $tmpline, $newline, $orgline0,$tmpline1,$newline0) = @$_;
       $newline   =tracked($newline); $orgline   =tracked($orgline); $tmpline   =tracked($tmpline);
+      if ($o_renametodir and $mv2 and -d $newline) {
+         # only if not already done above:
+         # modify newline to newline/$(basename orgline)
+         my $base=$orgline; 
+         $base=~s!.*/!!;
+         $newline.="/$base";
+         $newline =tracked($newline);
+      }
+      if ($o_perlcmdblock) {
+         eval $o_perlcmdblock; die "#ERROR: perlcmd $@" if $@;
+      } 
       $escnewline=     sq($newline); $escorgline=     sq($orgline); $esctmpline=     sq($tmpline);
+
       $tmp="   ";
       $tmp=~s/^ /O/      if $orgline ne $orgline0;
       $tmp=~s/ $/N/      if $newline ne $newline0;
       $tmp=~s/ (?=.$)/T/ if $tmpline ne $tmpline1;
-      push @pathtracked, "# $tmp '$orgline0' > '$orgline' '$tmpline1' > '$tmpline' '$newline0' > '$newline'\n" if $tmp=~/\S/;
-      if (-e $newline and not -d $newline) {
+      push @pathtracked, "# $tmp '$orgline0' > '$orgline' '$tmpline1' > '$tmpline' '$newline0' > '$newline'\n" if $tmp=~/\S/ and not $o_nopathtrack;
+      $ENV{orgline}=$orgline;
+      $ENV{newline}=$newline;
+      $ENV{tmpline}=$tmpline;
+      $ENV{srcline}=$tmpline;
+      $ENV{dstline}=$newline;
+
+      if (-e $newline) {
          appendfile( $errfile, "# File '$newline' already exists - '$orgline' remains unchanged.");
+         printf "!!%-25s -> %-25s %s", pr("'$orgline0'"), pr("'$newline'") , ( $tmp!~/\S/ ? "\n" : pr(" (Trk $tmp:$orgline)")."\n");
          $undo=1;
       } else {
-         # report
-         printf "  %-25s -> %-25s %s", pr("'$orgline0'"), pr("'$newline'") , ( $tmp!~/\S/ ? "\n" : pr(" (Trk $tmp:$orgline)")."\n");
-# DISK2 pass2:
+         my $tmpcmd="$mv2 '$esctmpline' '$escnewline'";
          if ($mv ne "noexec") {
-            system($shell, "-c", qq!$shellpreproc $mv2 '$esctmpline' '$escnewline' $mvtty $shellteelog $shellpostproc!); 
-            
+# DISK2 pass2:
+            system($shell, "-c", qq!$shellpreproc $tmpcmd $mvtty $shellteelog $shellpostproc!); 
          } else {
-            noexec($esctmpline,$escnewline); $?=0;
+            noexec($tmpcmd); $?=0;
          }
+         print $? ? "!!" : "  ";
+         printf "%-25s -> %-25s %s", pr("'$orgline0'"), pr("'$newline'") , ( $tmp!~/\S/ ? "\n" : pr(" (Trk $tmp:$orgline)")."\n");
          if ($?) {
             appendfile2($undfile, "#ERROR $mv2", 2, $cnt, $escnewline, $esctmpline);
             appendfile2($redofile,"#ERROR $mv2", 2, $cnt, $esctmpline, $escnewline);
@@ -1080,24 +1220,27 @@ sub renaming2 {
          } else {
             appendfile2($undfile, $mv2,          2, $cnt, $escnewline, $esctmpline);
             appendfile2($redofile,$mv2,          2, $cnt, $esctmpline, $escnewline);
-            push @pathtrack,[$tmpline, $newline] if -d "$newline/.";
+            push @pathtrack,[$tmpline, $newline] if not $o_nopathtrack and -d "$newline/.";
          }
       }
-      if ($undo and $tmpline eq $orgline) { 
-         $errors++;
+      if ($undo and $tmpline eq $orgline) {
          # nothing to undo, error already reported (error in mv to $newline/.)
+         # this should currently not be reachable 
+         $errors++;
       } elsif ($undo) {
          $errors++; $tmp="";
-         if ($mv ne "noexec") {
+         if ($mv2 ne "noexec") {
             if (-e $orgline) {
                ($errors_severe, $tmp)=($errors_severe+1, "#ERROR EXISTS ");
             } else {
-# DISK3 pass3: definitely non-interactive invocation of the real mv [-i as safety net, but no tty]
+# DISK3 "pass3": definitely non-interactive invocation of the real mv [-i as safety net, but no tty]
                system($shell, "-c", qq!$shellpreproc mv -i -- '$esctmpline' '$escorgline' </dev/null $shellteelog $shellpostproc!);
                if ($?) {
                   ($errors_severe, $tmp)=($errors_severe+1, "#ERROR MV ") if $?;
                }else{
-                  push @pathtrack,[$tmpline, $orgline] if -d "$orgline/.";
+                  # tracing and finding the corresponding original might be a tad
+                  # difficult, so just add a pathtracked rename to undo the harm
+                  push @pathtrack,[$tmpline, $orgline] if not $o_nopathtrack and -d "$orgline/.";
                }
             }
          }
