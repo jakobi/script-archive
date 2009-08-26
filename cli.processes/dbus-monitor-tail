@@ -60,7 +60,8 @@ $pid=open(FH,"-|","dbus-monitor",@ARGV) and do {
    loop: while(sysread(FH,$tmp0,65536),  
                $tmp=$tmp0, (defined $tmp0)) {
       while(defined $tmp and $tmp ne "") {
-         # if we're fast enough, $tmp will contain multiple full messages
+         # EVIL ASSUMPTION:
+         # if we're fast enough, $tmp will contain multiples of full messages
          # which we stash into $_ one by one (HEADER\n   ARG\n   ARG...)
          $tmp=~s/^((?:(?i)signal|method)[\s\S]*?\n)(?=(?i)signal|method)// and $_=$1 or $_=$tmp and $tmp="";
          

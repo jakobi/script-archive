@@ -124,7 +124,7 @@ if ($view) {
 #$cmd.="mc . ". join(" ", map {$_=sq($_)} @ARGV);
 $cmd.="mc ". join(" ", map {$_=sq($_)} @ARGV);
 
-
+$dir2='.' if not $dir2;
 $varcmd=
    "export _mt_dir_startdir='".sq($ENV{STARTDIR})."';\n".
    "export _mt_dir='".         sq($dir)          ."'; cd \"\$_mt_dir\"\n".

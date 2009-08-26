@@ -16,9 +16,10 @@
 #                   also switching to " as comment char (but still allowing #)
 # 20090826 PJ       added pr to messages to protect the terminal, single pass mode
 #                   when unsetting $mv2, --nopathtrack, --todir/--nodir, --perlpostedit
+# 20090826 PJ       fixed emvx bug - when did appending $deltaorg @orgfile change to @newfile!?                  
 
 # Copyright (c) 2006-2009 jakobi@acm.org placed under GPL v3 and newer
-my $version="2.00pj.2"; 
+my $version="2.00pj.3"; 
 
 # emv consists of: emv  
 # and the helpers: emvx (extend emv session by expanding directories)
@@ -140,11 +141,16 @@ is no generic cycle detection implemented.
 
 Renames  are done by first renaming all files to an intermediate name,
 then  in a second pass to the new filename (all directories in the new
-name  must exist). Deleting lines or changing the order during editing
-is  possible  (e.g.  sorting filenames in vim with  :sort  /\\t/,  then
-deleting  the  first  20 lines). Note that this does  NOT  affect  the
-ordering  of  renames,  which is the same as the order  of  the  input
-(unless option -s/-r).
+name  must exist). 
+
+Deleting  lines or changing the order during editing is possible (vim:
+e.g.  sorting  filenames with :sort /\\t/, then deleting the first  few
+files or emv -l to check files by size :sort!n/\\d\+ \\d/r). All of which
+does  NOT affect the sequence of renames, which is always the order of
+the  input (unless -s/-r). Pipe a region to emvx to replace it with an
+extended  view of e.g. directories (vim: :.,\$!emvx); the new files are
+added  to  the end of the sequence. You can mix long (option  -l)  and
+short listings within a single session.
 
 Invoke  with -stdin to use a file list from stdin. To reuse a previous
 sessions  editor  buffer content (availble in the logdir as edt-*)  as
@@ -239,37 +245,54 @@ on logs and the use of generated scripts:
      arbitrary commands instead.
 
 on using renames:
+   - non-conforming lines (mistyped convenience commands will be 
+     discarded earlier), whitespace lines and comments are silently ignored
    - the original filename must not start with a '#', '"' or just contain
-     whitespace. To satisfy these, it is suffient to provide an absolute
-     path or prefile the relative names with './'. 
+     whitespace. To satisfy this, it is suffient to provide an absolute
+     path or prefile the relative names with './'.
+   - the new filename must contain at least one non-whitespace character
    - filenames must not contain '\\n'
+   - emvx -l in a non -l emv session: mixing long and short listings i
+     requires that no file names match '^#\[.*\]#\t'. This is also true
+     if you delete the meta information manually
    - all ancestor directory components of the new name must exist.
-   - the new FILENAME must contain at least one non-whitespace character
+
+rename ordering:
    - renames are done in two passes: first all are renamed to intermediate
      names, only then all intermediates are renamed to the final name.
-     The -cmd option only overrides the mv command for pass 1.
-   - non-conforming lines are silently ignored
    - you can use find|emvs to ensure proper sorting (parent and entries
      are guaranteed to be sorted together and remain a single region, 
      as / is temporarily replaced by \\0).
+   - emvx replaces a region in the editor. In fact he keeps the original
+     section in the lists and appends the difference at the end of the
+     lists. As the original lines no longer can be edited, they will not
+     trigger renames, while 'new' lines can trigger renames.
 
-on adding convenience commands while editing: 
+usage considerations for convenience commands:
    - KIS,S! 
+   - do not use complex sh commands, use shell scripts with short names
+     or - if possible - use --cmd / --cmd2 instead
+   - use multiple simple emv invocations instead of depending on
+     multiple other renames or complex results from convenience commands
+   - suspend emv to run non-trivial command sequences
+
+on adding convenience commands to a session: 
    - commands remove their lines from further processing or renaming
-   - commands are run sequentially before reordering/logging/renaming
+   - commands are run sequentially BEFORE any reordering/logging/renaming
      and thus their effects may be made to clash with later renames
    - commands are not path-tracked nor remembered by pathtracking
-   - use multiple simple emv invocations instead of depending on
-     renames or complex results from convenience commands
-   - suspend emv to run non-trivial command sequences
    - logging for convenience commands for undo/redo is imcomplete
    - filenames must start with a non-whitespace character or e.g. './'
    - commands are perl builtins except for sh, for which perl invokes
      a shell. Note that cp/mv are aliases for longer sh commands.
-   - command side-effects on directories are NOT tracked.
-   - unimplemented features:
-     - recursive rm (use sh instead)
-     - reloading emv after requesting execution of commands (on wish list)
+   - mistyped commands are silently discarded
+   - NOT implemented:
+     - recursive rm (use sh rm -r)
+     - reloading emv after requesting execution of commands
+       (will no longer implement this: suspend the editor or type in 
+        a short shell script to paste to another terminal)
+
+on using the sh convenience command and adding aliases:
    - use sh SHORT-SCRIPT-NAME to run an arbitrary command. (search the 
      source for 'expand sh aliases inplace' (around line 700) for the 
      expansion of the cp and mv aliases, if you really want to add a
@@ -280,7 +303,7 @@ on adding convenience commands while editing:
    - the following shell variables are set: old and new name as \$O, \$N;
      as well as the error, undo and redo logs \$errfile, \$undfile, 
      \$redofile.
-
+   
 on using vim: 
    - use :setl ft=netrw to use the netrw syntax highlighting for emv
      (currently, a suitable modeline at EOF is already added)
@@ -558,11 +581,11 @@ ${commentchar}              perl -00ne ':'   perl -alne 'print \@F[1..\$#F]'   a
 ${commentchar}              emvx [-r]                            (expand directories)
 ${commentchar}              emvp [-p|-i] perlop             (without myrename: emvp0)
 ${commentchar}              emvs [-r]   (sort keeping dirs and dir-children together)
-${commentchar}              sed   cut -f 2-   sort -k 2.1   grep .     (-f 3- -k 8.1)
-${commentchar}      editors like vim also implement interesting commands
-${commentchar}              :help visual-block  :set nu  :set list  gf   :23,25s/^/d/ 
-${commentchar}              :%s=X=Y=   :sort /\\t/   :%g!/./d  :%g=X=d  (/\\v\\t.{-}\\t/)
-${commentchar}              visual-block + I<DIR><ESC>   :<RANGE>s=\\t=&DIR/=  (=#\\t=)
+${commentchar}              sed   cut -f 2-  sort -k 2.1   grep . (-l: -f 3-, -k 8.1)
+${commentchar}      editors like vim complement this: :help range, :help visual-block
+${commentchar}              :set number  :set list    :23,25s/^/#/   [V] + IDir/<ESC> 
+${commentchar}              :sort /\\t/   [V]+:s=\\t=&Dir/=    :%g=X=d  :%g!/./d     gf
+${commentchar}        (-l)  :sort /#\\t/  :.,\$s=#\\t=&Dir/=  :sort n/\\d\\+ \\d/r   [V]+gf
 ${commentchar}      emv line format is         <WS>* NUMBER                <TAB> NAME
 ${commentchar}                          (-l)   <WS>* NUMBER <TAB> #[META]# <TAB> NAME
 ${commentchar}cp/mv creat|touch ln/ln-s mkdir relink rm|rmdir|d sh (col1, runs first)
@@ -876,7 +899,7 @@ sub parseeditorresults {
    @lin=map {s/^\s+//; $_} @$linref; 
    unshift @lin,""; # 1-base it
    @new=grep /\S/, map {s/^\s+//; s/^["#].*//;                     # skip comments
-                        s/^((?:[a-z]\S*)?\s*\d+\t)#\[[^\]]{10,80}?\]#\t/$1/ if $o_long; # strip meta
+                        # did strip meta info here
                         s@/$@@;                                    # strip  dir-/
                         $_}      @$newref;
 
@@ -932,7 +955,7 @@ sub editorsession {
       push @newfile,$foot        if ($foot and not $o_delta);
      
       if ($o_delta) {
-         arrayrefappend($deltaorg,\@newfile);
+         arrayrefappend($deltaorg,\@orgfile); # not @newfile
          arrayrefappend($deltalin,\@linfile);
          foreach(@newfile) { print $_, (/\n\z/ ? "" : "\n"); } # DO NOT USE pr() here!
          sleep 2 if $o_debug;
@@ -958,21 +981,37 @@ sub editorsession {
       sleep 2 if $o_debug;
       print "\n\n";
 
-
-      # log to disk and resync edited filelist to orgfile/linfile
       arrayrefread($orgfile,\@orgfile);
       arrayrefread($linfile,\@linfile);
       arrayrefread($newfile,\@newfile);
+      # log to disk and resync edited filelist to orgfile/linfile
       arrayrefwrite($edtfile,\@newfile); # backup editor output to $edtfile
+                        
+      # protect from accidental mix of -l / normal mode - we don't
+      # really want to rename all files using the meta information...
+      if (not $o_long and grep {/^((?:[a-z]\S*)?\s*\d+\t)#\[[^\]]{10,80}?\]#\t/} @newfile) {
+         print "\n? emv detected possible meta info - do you wish to activate -l long mode ?\n" .
+                 "[ skip if you never used emvx -l, otherwise one of [yYjJ] to activate ]\n";
+         open(FH, "<", "/dev/tty") and $_=<FH>; close FH;
+         if (/^[YyjJ]$/) {
+            $o_long=1;
+            print "# possible meta info detected: activating -l mode: stripping meta info\n";
+         } else {
+            print "# possible meta info detected: requested to not activate -l mode\n";
+         }
+      }
+      grep {s/^((?:[a-z]\S*)?\s*\d+\t)#\[[^\]]{10,80}?\]#\t/$1/} @newfile if $o_long; # strip meta
+
       parseeditorresults(\@linfile,\@newfile);
       arrayrefwrite($newfile,\@newfile); # write resynchronized @newfile
 
-      
       # loop in case of file loss during editing
       if($#newfile != $#orgfile) {
          print "# ERROR: line count doesn't match by ". ( $#newfile - $#orgfile ) ." lines.\n";
          print "# tempfiles are in $dir ($$)\n";
          print "# [QUIT to exit, otherwise relaunching $edit]\n"; 
+# use orgfile or edtfile on relaunch instead?
+# for now orgfile, user has edtfile in the filesystem for reference
          open(FH,"<","/dev/tty") and $_=<FH>; close FH;
          &cleanexit(20) if /^quit/i;
       } else {
