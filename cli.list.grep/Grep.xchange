@@ -12,7 +12,7 @@
 # 2009.08.08 PJ        jakobi@acm.org -- initial version
 # 2009.08.13 PJ  0.1   added diff -u style undo log to allow undo by patch, -flock, -p
 # 2009.08.25 PJ        switch diff order on stdout for consistency
-# 2009.08.27 PJ        updated doc on patch -u use
+# 2009.08.27 PJ        updated doc on patch -u use, -relative option for easier patching
 # copyright:  (c) 2009 jakobi@acm.org, placed under GPL v3 or later 
 my $version="0.1.2";  
 
@@ -86,6 +86,7 @@ perl -i.bak -pe 'BEGIN{system "stty cbreak";$|=1;undef $/;warn "press y to run s
 my $backposmax=200;                            # -bpmax default for var length zero width look behind
 my $bufferlines=2;                             # number of lines to provide in buffer
 my $o_follow=1;                                # resolve symlinks?
+my $o_relative=1;                              # try to keep filenames relative in logs?
 my $o_preserve_hardlink=0;                     # preserve hardlinks?
 my $o_nosync=0;                                # don't insist on substring match of grep output at location
 my $verbose;                                   # --verbose
@@ -100,14 +101,16 @@ my $diffcmd="diff -u";                         # --diff command
 my $logcmd="diff -u";                          # diff command and format used in the diffset logs
 my @time=localtime(time);
 my $logtime=sprintf "%4d%02d%02d%02d%02d%02d", 1900+$time[5],1+$time[4],$time[3],@time[2,1,0];
-my $logdir="/var/tmp/Grep-xchange-$ENV{LOGNAME}";  # logdir
+my $logdir="/var/tmp";                         # logdir
+   $logdir="/tmp" if not -d $logdir;   
+   $logdir.="/Grep-xchange-$ENV{LOGNAME}"; 
 my $logfile="$logdir/diffset.$logtime.$$";     # logfile for this session
 my $logclean="diffset*";                       # pattern of too-ancient logs to remove
 my $logmaxage=8;                               # days to keep
 
 my (%files, %match);                           # hashes for the output of grep
-my ($file,$filebak,$absfile,$origfile);
-my ($logdata,$changedfiles,$errors,$rc);
+my ($file,$filebak,$absfile,$origfile)=("","","","");
+my ($logdata,$changedfiles,$errors,$changedlocations,$rc)=("",0,0,0,0);
 my ($backpos,$skip,$pos,$pos0,$line,$content,$match);
 # variables explicitely provided to matchsubst
 my ($ERR,$LINE,$ORIGLINE,$OLD,$POS,$NEW,$LINEOFFSET,$LINENO,$OLDPOS,$BUFFER,$MATCH); 
@@ -119,12 +122,16 @@ while(@ARGV) {
    /^-?-verbose$|^-V$/         and do { $verbose++; next};
    /^-?-backpos$/              and do { $backpos=shift; next};
    /^-?-f?lock$/               and do { $o_flock=1; next};
+   /^-?-norel(lative)?$/       and do { $o_relative=0; next};
+   /^-?-rel(lative)?$/         and do { $o_relative=1; next};
+   /^-?-follow$/               and do { $o_follow=1; next};
+   /^-?-nofollow$/             and do { $o_follow=0; next};
    /^-?-b(ack)?p(os)?max$/     and do { $backposmax=shift; next};
    /^-?-b(uffer(lines)?)?max$/ and do { $bufferlines=shift; next};
    /^-?-diff$|^-d$/            and do { $o_diff=1; next};
    /^-?-modified$/             and do { $o_nosync=1; $expr='$LINE=$MATCH'; next};
    /^-?-perl$/                 and do { eval shift; die $@ if $@; next};
-   /^-?-p((reserve)?h(ard)?l(inks?)?)?$/ and do { $o_preserve_hardlink=1; next };
+   /^-?-p((reserve)?(h(ard)?l(inks?)?)?)?$/ and do { $o_preserve_hardlink=1; next };
 
    /^-?-help$|^-h$/            and do { &usage; die("\n") };
    /^-?-examples$/             and do { &examples; die("\n") };
@@ -168,7 +175,7 @@ while(<>) {
 die "# !!! nothing to do (did you forget adding -n /dev/null to grep)" if not keys %files;
 
 
-warn "\n# log $logfile*\n\n";
+warn "\n# will log to $logfile". ( $o_diff ? ".virt" : ".real" ) . "\n\n";
 warn <<EOF if $version lt 0.2;
 #########################################################
 ##  experimental script; diffsets are always created in
@@ -188,7 +195,8 @@ file: for $file (sort keys %files) {
    $file=followlink($file) if -l $file;
    my $file0; $file0=( $file eq $origfile ) ? "" : " <- $origfile";
    do{warn "# !!  not a file !? -- skipped\n"; $errors++; next file} if not -f $file;
-   $absfile=$file; $absfile="$ENV{PWD}/$absfile" if $absfile!~/^\//; while($absfile=~s!/\.(?=/)|//+!/!g){;};
+   $absfile=$file; $absfile="$ENV{PWD}/$absfile" if $absfile!~/^\// and not $o_relative; 
+   while($absfile=~s!^\./+|(/\.|/+)(?=/)!!g){;};
    warn "# F   $file$file0\n";
    $ENV{file}=$file; 
    $fileh=undef;
@@ -269,6 +277,8 @@ file: for $file (sort keys %files) {
             warn "# !!  matcher aborts: $file ($ERR)\n";
             $errors++;
             next file;
+         } else {
+            $changedlocations++;
          }
 
       } else {
@@ -305,7 +315,7 @@ file: for $file (sort keys %files) {
 
       $ENV{file0}="/dev/stdin"; 
       $ENV{file1}=$absfile; 
-      $ENV{file2}="Grep.xchange$absfile"; 
+      $ENV{file2}="Grep.xchange"; $ENV{file2}.="/" if not $absfile=~m!^/!; $ENV{file2}.=$absfile; 
       $ENV{logfile}=$logfile;
       $logdata ="$logcmd $ENV{file2} $ENV{file1}\n"; # FIXME Q: does patch require us to inject a fake -r here???
                                              #       Q: patch and how to add 'safe' between diff whitespace???
@@ -316,8 +326,13 @@ file: for $file (sort keys %files) {
          die "# !!! log: cannot execute \$logcmd\n";
       close FH or 
          do{$rc=$?>>8; die "# !!! log: error with \$logcmd: rc>10\n" if $rc>10};
-      system q!perl -lpe 's@/dev/stdin@$ENV{file2}@ and $done=1 if not $done;' $logfile.tmp >> $logfile && 
+
+      # fix filename from /dev/stdin, so both paths end in the filename
+      # --------------------------------------------------------------------- ******************************************************** diff separator, ignored by patch
+      system q!perl -lpe 's@/dev/stdin@$ENV{file2}@ and $done=1 if not $done; END{$_="";print;print "# " . "-" x 70;print;print;print}' $logfile.tmp >> $logfile && 
                rm $logfile.tmp!;
+
+      $rc=$?>>8 and 
       $rc=$?>>8 and 
          die "# !!! log: error with appending to log: $rc\n";
    }
@@ -366,9 +381,16 @@ file: for $file (sort keys %files) {
 }
 
 
-exit 0 if $changedfiles;
-exit 2 if $errors;
-exit 1; # no files changed
+warn "# SUM $changedlocations changes in $changedfiles files" . ( $errors ? " ($errors errors)" : "" ) . "\n" .
+   ( -s $logfile ? "# LOG $logfile\n" : "" )
+   if $errors or $changedfiles or $changedlocations;
+
+
+exit 3 if $errors     and not $changedfiles;
+exit 2 if $errors     and     $changedfiles;
+exit 1 if not $errors and not $changedfiles;
+exit 0 if not $errors and     $changedfiles;
+exit 20; # cannot happen.
 
 
 
@@ -377,54 +399,85 @@ exit 1; # no files changed
 sub usage {
    warn <<EOF
 
+# PATCH GENERATION / MODIFY grep matches with perl expressions
 grep -n ... | pipe.vim | Grep.xchange [OPTIONS] EXPR
-grep -n ... | pipe.vim | Grep.xchange [OPTIONS] --modified
 
-grep -n ... >     GREPOUTPUT           # add /dev/null if necessary to
-vi                GREPOUTPUT           # have a filename in GREPOUTPUT
-Grep.xchange EXPR GREPOUTPUT
+or
+
+# MODIFY a single file of GREPOUTPUT
+grep -n ... >             GREPOUTPUT    # add /dev/null if necessary to
+vi                        GREPOUTPUT    # have a filename in GREPOUTPUT
+# to MASS-CHANGE any number of files
+# with UNDO and REDO
+Grep.xchange --modified   GREPOUTPUT    # instead   of  applying  EXPR,
+                                        # replace grep matches with the
+                                        # modified GREPOUTPUT
 
 version: $version.
 
-Use  perl  -i.bak  -ne 's///; print'  to  non-interactively  mass-edit
-files.  If  however  you  want  to use  something  like  emv,  not  to
-interactively   *mass-rename*   file-names,   but   to   interactively
-*mass-change* file-contents in emv-style, read on:
+Use perl -i.bak -ne 's///; print' to non-interactively mass-edit files
+when a simple backup file is enough of a precaution.
+
+
+If  however  you want to use something like emv, not to  interactively
+*mass-rename*   file-names,   but   to   interactively   *mass-change*
+file-contents  in  emv-style while generating a patch file for REDO  /
+UNDO, read on:
+
 
 Grep.xchange  is only suitable for the 3rd stage of this task, IFF you
-wish  to  preview and select (stage 2) the list of matches  from  grep
-(stage  1). The script reads grep output and for each file, it  slurps
-the  file,  then positions to the start of line for each match in  the
-file  and  executes  PERLSCRAP. 
+wish  to use your \$EDITOR to preview and select (stage 2) the list  of
+matches from grep (stage 1). The script reads grep output and for each
+file,  slurps  the file, then positions to the start of line for  each
+match   in   the  file  and  executes  the  perl  block   EXPR,   e.g.
 
-With  --modified, Grep.xchange does not apply EXPR to the matches, but
-instead  replaces  lines  with  the user editied  grep  output  (after
-'filename:linenumber:').  This  allows  only  replacement  within  the
-matched  line itself and is also somewhat less secure, as Grep.xchange
-can no longer verify that the grep output is still consistent with the
-file content.
+   '\$LINE=~s/foo/BAR/g'
 
-You  can modify either the current \$LINE or the contents of the  whole
+EXPR  can modify either the current \$LINE or the contents of the whole
 file  \$_, in which case m/\\G/g can be used to anchor to the  beginning
 of the current line. Note that unanchored PERLSCRAPs like m/FOO/ match
 the  first FOO anywhere after pos(), while \\G-less substitutions  like
 s/FOO/BAR/  and  s/FOO/BAR/g both ignore pos(), start matching at  the
 first FOO in the file and finally reset pos().
 
+
+Alternative  --modified  line-oriented mass-editing mode:  instead  of
+applying  EXPR, this mode simply replaces lines with the user  editied
+grep  output (after everything after 'filename:linenumber:'). You  not
+only  select matches to operate on in stage 2, but you actually change
+the old content in the grep output. Use a real editor with solid regex
+support  like  emacs/vim  or  a stream editor  like  sed/awk/perl  for
+editing.
+
+This  mode  is less flexible than the default and allows  replacements
+only  within the matched line itself. It is also somewhat less secure,
+as  Grep.xchange can no longer verify that files haven't changed since
+the grep.
+
+
 The  script is a bit on the paranoid side and rejects modifying a file
 on  the  slightest hint of trouble with  access/filetype/renaming  the
 file  as  well as any problem with matching or with finding the  exact
 grep  line  in  the content of the file currently being  modified.  It
-entirely aborts processing in case of troubles with logging. Note that
-we follow symlinks and by default break hardlinks (unless -p).
+entirely aborts processing in case of troubles with logging.
 
-Changes  are also logged into the UNDO-LOG, which can be applied  with
-patch  -u < /var/tmp/Grep-xchange-\$LOGNAME/diffset* (do check the  log
-first). Logs older than 8 days will be removed automatically. A backup
-is also available with a suffix of .<YYYYMMDDHHMMSS>.\$\$.bak.
+The script always follows symlinks and breaks hardlinks (unless -p).
 
+UNDO   /  REDO:  Changes  are  added  to  a  log  in   the   directory
+/var/tmp/Grep-xchange-\$LOGNAME. To undo/redo all changes from a run of
+Grep.xchange,  use  the  patch  program  with  the  log  in  question,
+otherwise  simply rename one or more of the backup files (time-stamped
+suffix:  .bak,  same directory as the source file). Logs older than  8
+days are removed.
 
-Use --examples for more information.
+   patch    -u < log # undo 
+   patch -R -u < log # redo - apply log as reverse patch
+
+The  log is a valid patch and can apply the same changes to other file
+sets when used with patch / patch -p<Number of dirs to strip>.
+
+See --examples for more information.
+
 
 Options:
   -C               *marked* context mode from e.g. Grep.pm -n -C -2 
@@ -443,9 +496,11 @@ Options:
   --examples       help
   --flock          use perl flock() to exclusively lock a file, skip
                    otherwise; implies -p.
+  --(no)follow     follow symlinks? ($o_follow)
   --modified       assume that the grep match text has been edited and
                    replace each matched line with the grep match text
   [--perl  S       perl scrap to be evaluated immediately]
+  --(no)relative   use relative names for logging? ($o_relative)
 
 EOF
 }
@@ -463,13 +518,15 @@ all other lines are silently discarded.
 On  diff formats: 
 
 To  modify,  use e.g. --perl and change the contents of \$diffcmd  (for
-stdout) and \$logcmd for the UNDOLOG. The filenames use for logging are
-the  absolute  in case of the real file. Both default to diff  -u. 
+stdout)  and  \$logcmd  for the UNDOLOG. Both default to diff  -u.  Use
+--(no)relative to control using absolute vs relative paths in the log.
 
 
 On backups and the UNDO LOG:
 
-We break hardlinks (unless -p) and (\$o_follow) resolve symlinks:
+We  break hardlinks (unless -p) and (\$o_follow) resolve symlinks. If a
+symlink points to a readonly file, consider replacing the symlink with
+a writable copy of the file.
 
 For  backup,  a suffix .TIMESTAMP.\$\$.bak is appended to the  filename,
 and the modified version is written to the original name. Symlinks are
@@ -483,6 +540,24 @@ involved, also check whether you need to update some of them).
 To undo changes made on August 27 in the early evening, just say
 
   patch -u < /var/tmp/Grep-xchange*/diffset.20090827182344.*.real
+
+where  .real denotes changes performed, while a .virt suffix is from a
+session  invoked  with  --diff  option which  didn't  write  back  any
+changes.  .virt  logs can be applied as a reverse patch to 'redo'  the
+change.  
+
+
+On reusing grep output and patches/logs:
+
+You  can  apply the same modified grep output to multiple filesets  as
+long  as the line numbers still match. Otherwise consider a pipe  like
+grep|sed|Grep.xchange.
+
+Applying  the  generated  logs as a patch to different  file  sets  is
+possible, as long as patch still can determine what section to change.
+If  the  logs were generated with absolute paths, use patch  -pNumber,
+edit  the  logs to strip a path prefix or use the Grep.xchange  option
+--relative.
 
 
 On usage restrictions:
@@ -555,6 +630,13 @@ left,  thus changing the notion of 'width'. Note that you can also use
 the modifier /c to retain pos() in case of a miss.
 
 
+On exit:
+
+0 - changes
+1 - no matches
+2 - errors occured, with changes
+3 - errors occured, no changes
+
 Examples:
 
 The  next example shows both ways of accessing the current line: First
@@ -602,16 +684,18 @@ sub followlink {
    ($_)=@_;
    if ($o_follow) {
       $p=$_; $c=1;
-      $p=~s@[^/]*/?$@@; $p=~s@(^\.|/\.|/+)(?=/)@@g; 
+      $p=~s@[^/]*/?$@@; $p=~s@(^\.(?=/)|/\.|/+)(?=/|$)@@g; 
       $p=$ENV{PWD}."/".$p if $p!~m@^/@;
       while(-l $_) {
          return "" if $c++>30; # bailout, depth is getting absurd
          $_=readlink($_);
          $_="$p/$_" if not m@^/@;
          $p=$_;
-         $p=~s@[^/]*/?$@@; $p=~s@(^\.|/\.|/+)(?=/)@@g; 
+         $p=~s@[^/]*/?$@@; $p=~s@(^\.(?=/)|/\.|/+)(?=/|$)@@g; 
          $p=$ENV{PWD}."/".$p if $p!~m@^/@;
       }   
    }
+   s@(^\.(?=/)|/\.|/+)(?=/|$)@@g; 
+   s!^\Q$ENV{PWD}/\E!!  if $o_relative;
    return $_;
 }
