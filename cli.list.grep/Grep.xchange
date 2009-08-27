@@ -557,18 +557,18 @@ the modifier /c to retain pos() in case of a miss.
 
 Examples:
 
-The  next example shows both ways of accessing the current line,  then
-it  changes  all occurances of 'local' in the line; the  diff  finally
-shows the effects of globalization.
+The  next example shows both ways of accessing the current line: First
+with a \\G-anchored match against \$_, then \$LINE with a substitution.
 
    grep -n local /etc/hosts /dev/null | Grep.xchange -V -diff \\
       '/\\G(?=(.*\\n?))/g and warn "SRC: \$1GREP: \$LINE"; 
       \$LINE=~s/local/global/g'
 
-Skipping  the  SRC/GREP demo, this examples makes the same  change  by
-modifying the file's contents instead. To stay within the line, we use
-\\G,  which  is slightly magic as s///g now avoids to advance the  next
-match position beyond the end of the previous match.
+Another  way  to write this is by anchoring the substitution with  \\G,
+which  is slightly magic: s///g now anchors all substitute attempts to
+the  original  position of \\G without advancing the start of the  next
+substitute  attempt. In this case, the (.*?) effectively restricts the
+substitutions to the line after \\G.
 
    grep -n local /etc/hosts /dev/null | \\
    Grep.xchange -V -diff 's/\\G(.*?)local/\$1global/g'
