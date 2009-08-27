@@ -9,7 +9,7 @@
 <p>This  toolbox compartment contains the heavy lifting tools for generic
 pipeline 'line'-based text processing.</p>
 
-<H3>Major Commands</H3>
+<H3>Commands</H3>
 
 <ul>
    <li><B>cat0</B> converts from and to \0-terminated lines. Additional wrappers 
@@ -27,16 +27,18 @@ pipeline 'line'-based text processing.</p>
        It also handles \0-lines, paragraphs and file slurping, as well as
        directory recursion and compressed files (both as in tcgrep). Dependencies: expansyn.
        It can masquerade as a perl module.
-   <li>How about a kind of emv not for mass-renaming filenames, but 
-       for mass-editing file-contents? If <B>Grep.xchange</B> is given (edited)
-       grep output, it applies a corresponding perl expression at each
-       match location in the specified files. It's a bit paranoid, but combined
-       with editing grep output (or Grep.pm -C -LINES <i>marked grep context output</i>),
-       the 3-Step <B>Grep.pm|vim.pipe|Grep.xchange</B> is a fairly safe way to 
-       mass-edit files. See comments for two example perl one-liners that interactively
-       ask before each substitution. See also the ancient <b>xchange.pl</b>. Dependencies: 
-       For flock-locking edited files, you also need to copy Compact_pm::Flock.pm; otherwise you can disable
-       it by commenting the use statement. 
+   <li>How about a kind of emv not for mass-renaming filenames, but for
+       mass-editing file-contents?<BR>
+       <B>Grep.xchange</B> bridges the gap between the grep and patch commands:
+       it takes grep output and a perl expression
+       and uses both to change an arbitrary number of files by applying
+       the expression at each of the grep matches, while
+       generating a <i>patch file</i> as its <i>UNDO / REDO log</i>.
+       It's a bit paranoid, so combined with edited grep output 
+       (or Grep.pm -C -LINES <i>marked grep context output</i>),
+       the 3-Step <B>Grep.pm|vim.pipe|Grep.xchange</B> is a rather safe way to 
+       mass-edit files.  Dependencies: For flock-locking edited files, you also need to copy
+       Compact_pm::Flock.pm; otherwise you can disable it by commenting the use statement. 
    <li><b>expansyn</b> is the command implementing basic English stemming and synonym
        expansion for Grep.pm / tagls using a configuration file expansyn.cfg 
        containing the synonymlists in perl syntax. I wrote it for 
@@ -50,6 +52,13 @@ pipeline 'line'-based text processing.</p>
        find . -print | f2a -a ARGS; less "$ARGS[@]" 
    <li><b>pipe.vim (aka vimpipe) , vimless</b> to run vim in the middle of a pipe or
        as a less replacement. Both are in the vim section.
+   <li><i>Alternatives for automatic mass file editing</i> are also the usual suspects:
+       stream editors from sed to perl -i.bak and the perl ped script, 
+       <b>selectlines</b>, <b>xchange.pl</b> (both pretty ancient and available elsewhere
+       in this archive) upto full-featured administration tools like cfengine
+       with their support to modify or generate configuration files. At the beginning 
+       of Grep.xchange you also find two <b>interative perl one-liner</b> examples that
+       interactively ask before each substitution. 
 </ul>
 
 
