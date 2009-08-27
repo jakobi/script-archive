@@ -115,7 +115,8 @@ operation modi (see -examples for its restrictions).
 
 All  changes  are logged in the UNDO log, which is basically  a  shell
 script  with  mv and ln statements; use a command like tac or perl  -e
-'\@l=<>; print reverse \@l' to reverse it before use.
+'\@l=<>;  print  reverse \@l' to reverse it before use. Logs older  than
+one day are removed automatically.
 
 Some examples:
 
@@ -398,10 +399,13 @@ our($o_stdin,$o_sh,$o_scp,$o_verboserename,$o_skip_final_report)=(0,0,"",0,0);
 $o_readline=1; $ENV{PERL_RL}="Gnu"; # turn on Term::ReadLine
 
 our($rc,$errors,$errskip,$collisions,$collisionsskip,$renames,$renames0)=(0,0,0,0,0,0,"000"); # counters
+our($logmaxage)=("");
 our($suffix,$collisionssfx)=("","");
 our(@o,@n,@pathtrack)=();
 our($tmp,$eol,$prefix)=("","","");
 our($dotwarned,$totalprompted)=(0,0);
+
+$logmaxage="-mtime +1"; # find argument for cleanup of logs (+1 = more than 1 day)
 
 
 while($_=shift,defined $_) {
@@ -543,8 +547,8 @@ if ($op_log) {
    @stat=lstat $dir or die "tmpdir: cannot create";
    $stat[4] == $< or die "tmpdir: not owner";
    chmod 0700, $dir;
-   system q@find "@ . $dir . q@" -mtime +1 -name "???.*"  -exec rm {} 2>/dev/null \; ;@ .
-          q@find "@ . $dir . q@" -mtime +1 -name "????.*" -exec rm {} 2>/dev/null \;  @ ;
+   system q@find "@ . $dir . q@" $logmaxage -name "???.*"  -exec rm {} 2>/dev/null \; ;@ .
+          q@find "@ . $dir . q@" $logmaxage -name "????.*" -exec rm {} 2>/dev/null \;  @ ;
    $logname="$dir/undo.$date.$$";
    open(LOGFH,">$logname") or die "cannot open log $logname";
    print LOGFH "# you may need to edit and reverse the commands" if $o_noexec;

@@ -12,8 +12,9 @@
 # 2009.08.08 PJ        jakobi@acm.org -- initial version
 # 2009.08.13 PJ  0.1   added diff -u style undo log to allow undo by patch, -flock, -p
 # 2009.08.25 PJ        switch diff order on stdout for consistency
+# 2009.08.27 PJ        updated doc on patch -u use
 # copyright:  (c) 2009 jakobi@acm.org, placed under GPL v3 or later 
-my $version="0.1.1";  
+my $version="0.1.2";  
 
 use strict;
 use vars;
@@ -96,13 +97,13 @@ my ($expr);
 # undo log setup
 my $o_log=1;                                   # create diffs?
 my $diffcmd="diff -u";                         # --diff command
-my $logcmd="diff -u";                          # diff command and format used in the diffset*virt logs
+my $logcmd="diff -u";                          # diff command and format used in the diffset logs
 my @time=localtime(time);
 my $logtime=sprintf "%4d%02d%02d%02d%02d%02d", 1900+$time[5],1+$time[4],$time[3],@time[2,1,0];
 my $logdir="/var/tmp/Grep-xchange-$ENV{LOGNAME}";  # logdir
 my $logfile="$logdir/diffset.$logtime.$$";     # logfile for this session
 my $logclean="diffset*";                       # pattern of too-ancient logs to remove
-my $logkeep=8;                                 # days to keep
+my $logmaxage=8;                               # days to keep
 
 my (%files, %match);                           # hashes for the output of grep
 my ($file,$filebak,$absfile,$origfile);
@@ -121,7 +122,7 @@ while(@ARGV) {
    /^-?-b(ack)?p(os)?max$/     and do { $backposmax=shift; next};
    /^-?-b(uffer(lines)?)?max$/ and do { $bufferlines=shift; next};
    /^-?-diff$|^-d$/            and do { $o_diff=1; next};
-   /^-?-modified$/             and do { $o_nosync=1; $expr='$LINE=~s/.*\n/$MATCH/'; next};
+   /^-?-modified$/             and do { $o_nosync=1; $expr='$LINE=$MATCH'; next};
    /^-?-perl$/                 and do { eval shift; die $@ if $@; next};
    /^-?-p((reserve)?h(ard)?l(inks?)?)?$/ and do { $o_preserve_hardlink=1; next };
 
@@ -168,7 +169,7 @@ die "# !!! nothing to do (did you forget adding -n /dev/null to grep)" if not ke
 
 
 warn "\n# log $logfile*\n\n";
-warn <<EOF if $version <0.2;
+warn <<EOF if $version lt 0.2;
 #########################################################
 ##  experimental script; diffsets are always created in
 ##  --> $logdir <--
@@ -226,9 +227,9 @@ file: for $file (sort keys %files) {
             }
          }
       }
-#$o_nosync=1;      
 
       # go to the exact position for this match
+      #                                         $o_nosync=1;      
       if (($skip ? m/(.*\n){$skip}/gm : 1) and ($o_nosync or $match eq substr($_,(pos() ? pos() : 0), length($match)))) {
          $OLDPOS=$POS=$pos= pos() ? pos() : 0;
          $BUFFER=substr($_,$pos0,$pos-$pos0);
@@ -245,8 +246,9 @@ file: for $file (sort keys %files) {
 
          # house keeping: bailout? update line offset if there's a
          # change in the number of \n
-         if (not $ERR and $LINE ne $match) {
-             pos() = $OLDPOS;
+         if (not $ERR and $LINE ne $ORIGLINE) {
+             pos() = $OLDPOS; 
+             # note that assignments reset pos as well
              if (not s/\G\Q$ORIGLINE\E/$LINE/) {
                 $errors++;
                 $ERR=2; warn "# !!  couldn't change content to new \$LINE, thus rejecting file ($line, $pos).\n"; 
@@ -293,7 +295,7 @@ file: for $file (sort keys %files) {
       if (not -f $logfile) {
          &setupworkdir($logdir) or 
             die "# !!! cannot create work dir $logdir\n";
-         $logfile.=".virt" if $o_diff;
+         $logfile.=  $o_diff ? ".virt" : ".real";
          open(FH,">",$logfile) or
             die "# !!! cannot create log $logfile\n";
          print FH "## ATTENTION -- -diff used -- CHANGES DO NOT EXIST IN FILE SYSTEM\n\n" if $o_diff;
@@ -393,8 +395,7 @@ Grep.xchange  is only suitable for the 3rd stage of this task, IFF you
 wish  to  preview and select (stage 2) the list of matches  from  grep
 (stage  1). The script reads grep output and for each file, it  slurps
 the  file,  then positions to the start of line for each match in  the
-file  and executes PERLSCRAP. It also maintains a patch  file/UNDO-LOG
-of all changes, usually as /var/tmp/Grep-xchange*/diffset*virt.
+file  and  executes  PERLSCRAP. 
 
 With  --modified, Grep.xchange does not apply EXPR to the matches, but
 instead  replaces  lines  with  the user editied  grep  output  (after
@@ -410,15 +411,18 @@ the  first FOO anywhere after pos(), while \\G-less substitutions  like
 s/FOO/BAR/  and  s/FOO/BAR/g both ignore pos(), start matching at  the
 first FOO in the file and finally reset pos().
 
-If  the file is changed, the original is renamed with a suffix \$\$.bak,
-and the modified version is written to the original name.
-
 The  script is a bit on the paranoid side and rejects modifying a file
 on  the  slightest hint of trouble with  access/filetype/renaming  the
 file  as  well as any problem with matching or with finding the  exact
 grep  line  in  the content of the file currently being  modified.  It
 entirely aborts processing in case of troubles with logging. Note that
 we follow symlinks and by default break hardlinks (unless -p).
+
+Changes  are also logged into the UNDO-LOG, which can be applied  with
+patch  -u < /var/tmp/Grep-xchange-\$LOGNAME/diffset* (do check the  log
+first). Logs older than 8 days will be removed automatically. A backup
+is also available with a suffix of .<YYYYMMDDHHMMSS>.\$\$.bak.
+
 
 Use --examples for more information.
 
@@ -454,6 +458,31 @@ On grep output formats:
 The  supported  grep  formats are  'FILE:NUMBER:CONTENT-OF-LINE\\n'  or
 Grep.pm's  modified context format 'FILE:NUMBER: > CONTENT-OF-LINE\\n',
 all other lines are silently discarded.
+
+
+On  diff formats: 
+
+To  modify,  use e.g. --perl and change the contents of \$diffcmd  (for
+stdout) and \$logcmd for the UNDOLOG. The filenames use for logging are
+the  absolute  in case of the real file. Both default to diff  -u. 
+
+
+On backups and the UNDO LOG:
+
+We break hardlinks (unless -p) and (\$o_follow) resolve symlinks:
+
+For  backup,  a suffix .TIMESTAMP.\$\$.bak is appended to the  filename,
+and the modified version is written to the original name. Symlinks are
+resolved first. For -p, the original is copied, than modified inplace,
+preserving the original inode and hardlinks.
+
+To  undo,  edit the session's log and remove any changes you  want  to
+retain,  then  feed the result to patch (if symlinks or hardlinks  are
+involved, also check whether you need to update some of them).
+
+To undo changes made on August 27 in the early evening, just say
+
+  patch -u < /var/tmp/Grep-xchange*/diffset.20090827182344.*.real
 
 
 On usage restrictions:
@@ -526,11 +555,6 @@ left,  thus changing the notion of 'width'. Note that you can also use
 the modifier /c to retain pos() in case of a miss.
 
 
-On links:
-
-We break hardlinks (unless -p) and (\$o_follow) resolve symlinks.
-
-
 Examples:
 
 The  next example shows both ways of accessing the current line,  then
@@ -567,7 +591,7 @@ sub setupworkdir {
    chmod 0700, $dir;
    return 0 if (stat $dir)[4] != $<;       # danger: ownership mismatch!?
    foreach (<$dir/$logclean>) { # clean old logs
-      unlink $_ if time-(stat $_)[9]>$logkeep*86400;
+      unlink $_ if time-(stat $_)[9]>$logmaxage*86400;
    }
    return 1;
 }

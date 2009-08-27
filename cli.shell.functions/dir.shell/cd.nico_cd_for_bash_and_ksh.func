@@ -36,6 +36,35 @@ typeset|grep -e '^typeset -a cdsx$'        -e '^integer cdsx$'        > /dev/nul
 #  when set from within functions, they fail for both shells when
 #  using in the same 'parse'. Seems that the current workaround is ok (0825)]
 
+# ksh issues
+# - cdlist=() leads to delayed crashes ... - replaced
+#   [ksh has multiple varname=(...) assignment styles, and for a
+#   bare first word performs alias expansion. Looks like this
+#   syntax is meant to mean: paren-assigments considered harmful,
+#   avoid to survive, and retain sanity. Though I cannot trigger
+#   it. Except one more ksh-ish: using just =() the empty list doesn't
+#   delete the previous array contents. Also kind of contrary to
+#   the man page, unless it is meant to read that =() is trying to
+#   turn a previously indexed array into a compound variable when
+#   no assigments are found. Also note that for normal assignments,
+#   a typeset -a is required as it default to creating a hash instead]
+#   a=(b=44 c=45) degenerated to a scalaer string assignment in contrast
+#   a=([b]=44) finally associative, silently changing the type (typeset -a
+#   must be inside the parens). a=(.b=44) compount, access with ${a.x},
+#   while it isn't accessible as a hash, typeset says the compound
+#   is just an assoc. array. So we've two overlapping abuses of the
+#   underlaying hashes, plus a overloaded access method for indexed
+#   arrays using the same syntax. Plus the crashes.
+#   to the manpage
+# - Nicolas: ksh93 seems almost a step backwards from ksh88 in many 
+#   ways.  I've gotten odd crashes here and there, and ^Z on a 
+#   pipeline where the last command is a function tends not to work.
+#   [PJ - probably if the function is in the parent envionment, there's
+#   no subshell to suspend, unless you'd be crazy enough to hack
+#   threading into a major shell to enable a few new modes of 
+#   broken semantics and deadlocks]
+
+
 # Changes:
 # - cdinit tries to retain previous list/stack on sourcing
 #   [bash doesn't allow array export :/, so taking the cd list into
