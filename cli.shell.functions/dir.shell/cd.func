@@ -1,22 +1,30 @@
-export CDPATH
+# export CDPATH # do NOT export it, CDPATH is not really suitable for noninteractive use.
 
 # cd functions (uniqpath is in 00_lib*)
 
 alias ..="cd .."
 alias tdb='tdir ~/sites/home/database'
 
-# CDPATH and CDPATH annoyances
-if [ -n "$_IS_BASH" ]; then
-   # . is implied, if set, BAD: does echo on stdout when PATH is used.
-   CDPATH=$HOME:$HOME/Desktop:/disk-WRK/proj:$HOME/bin/SCRIPTS.d
+# CDPATH and associated annoyances - only unteractive use.
+# use only for bash only if interactive and add a function to compensate
+if [ -n "$_IS_BASH" -a -n "$PS1" ]; then
+   # ./ doesn't seem implied, so we seem to require to add it
+   # at the cost of spurious messages from cd
+
+declare +x CDPATH
+CDPATH="$(uniqpath ".:$CDPATH:$HOME:$HOME/Desktop:/disk-WRK/proj:$HOME/bin/SCRIPTS.d")"
+
    function cd { # suppress stupid PATH pritning if I don't 
                  # need the darn path to find the dir
       typeset i suppress
+      # ensure a dot is in CDPATH - otherwise we may loose 
+      # the ability to cd to basename paths in PWD...
+      _dot_in_path "$CDPATH" || CDPATH=":$CDPATH"
       for i; do
          [ -n "$CDPATH" -a "$i" != "-L" -a "$i" != "-P" -a -d "$i" ] && suppress=1
       done
       if [ -n "$suppress" ]; then
-         builtin cd ${1:+"$@"} >/dev/null
+         builtin cd ${1:+"$@"} >/dev/null || builtin cd ${1:+"$@"}
       else
          builtin cd ${1:+"$@"}
       fi

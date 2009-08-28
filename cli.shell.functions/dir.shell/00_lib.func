@@ -22,18 +22,23 @@ function _echo {
          -e) shift; fmt='%b' ;;
          --) shift; break    ;;
           -) shift; break    ;;
-          *)           break ;;
+          *)        break    ;;
       esac
    done
+
    # printf -v var == sprintf to var
    # printf -q     == !! shell quoted !!
-   for i in ${1:+"$1"}; do
-      printf "$fmt" "$i"; fmt=" $fmt"; shift
-   done
+
+   # change fmt to prefix further args with blank
+   if [ $# -gt 1 ]; then
+      printf "$fmt" "$1"; 
+      shift
+      fmt=" $fmt"; 
+   fi
    printf "$fmt" ${1:+"$@"}
    printf "$nl" 
 }
-function _warn { _echo ${1:+"$@"} 1>&2; }
+function _warn  { _echo ${1:+"$@"} 1>&2; }
 function warn   { _warn ${1:+"$@"};      }
 
 
@@ -43,18 +48,13 @@ function warn   { _warn ${1:+"$@"};      }
 # - strip duplicates, "" and "."
 # - strip duplicates (this version is native w/o using external programs!)
 
-function is_in_path {
+function _is_in_path {
    typeset tmp=":$1:"
    [ "${tmp#*:$2:}" != "$tmp" ]
 }
-function uniqpath_no_dot {
-   typeset tmp
-   # "$()" seems to properly recurse in contrast to the on-off
-   #       nature of ",',`
-   tmp="$(uniqpath ${1:+"$@"})"
-   tmp="$(uniqpath "$tmp" "")"
-   # echo does NOT honor --
-   _echo "%s\n" "$(uniqpath "$tmp" ".")"
+function _dot_in_path {
+   typeset tmp=":$1:"
+   [ "${tmp#*::}" != "$tmp" ] || [ "${tmp#*:.:}" != "$tmp" ]
 }
 function uniqpath { # VAR="$(uniqpath \$VAR)"
    # arg1: :-separated string
@@ -66,18 +66,26 @@ function uniqpath { # VAR="$(uniqpath \$VAR)"
    if [ "$#" = "1" ]; then 
       skip="$1"; shift
    fi
-   
+
    typeset oldifs="$IFS"; IFS=:; set -- $path; IFS="$oldifs"
    while [ "$#" -gt "0" ]; do
       tmp=":$out:"
       elem="$1"
-#_warn "$elem" 
       shift
-      [ "$skip" = "$elem" ]               && continue
-      [ "${tmp#*:$elem:}" != "$tmp" ]    && continue
-      out="$out:$elem"; [ "$tmp" = "::" ] && out=$elem
+      [ "$skip" = "$elem" ]                                && continue
+      [ "$tmp" != "::" -a "${tmp#*:$elem:}" != "$tmp" ]    && continue
+      [ "$out" != ""   -a "${out##*:}" = "" ] && out="$out$elem" || out="$out:$elem"
+      [ "$tmp" =  "::" -a "$elem" != "" ] && out=$elem
    done
-   _echo "$out"
+   _echo -- "$out"
+}
+function uniqpath_no_dot {
+   typeset tmp
+   # "$()" seems to properly recurse in contrast to the on-off
+   #       nature of ",',`
+   tmp="$(uniqpath ${1:+"$@"})"
+   tmp="$(uniqpath "$tmp" "")"
+   _echo -- "$(uniqpath "$tmp" ".")"
 }
 
 

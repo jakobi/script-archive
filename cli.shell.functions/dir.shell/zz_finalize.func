@@ -1,11 +1,19 @@
 
+# note that some ~/.profile thrive on the idea
+# of mangling the path as a last command after
+# sourcing bashrc (for non-bash as well...).
+#
+# nice try.
+
 # final func def, for PATH cleanup, etc
            PATH="$(uniqpath_no_dot "$PATH")"
          CDPATH="$(uniqpath        "$CDPATH")"
         MANPATH="$(uniqpath        "$MANPATH")"
        INFOPATH="$(uniqpath        "$INFOPATH")"
       CLASSPATH="$(uniqpath        "$CLASSPATH")"
-export PATH CDPATH MANPATH INFOPATH CLASSPATH
+# EXCLUDE CDPATH
+export PATH MANPATH INFOPATH CLASSPATH
+
 
 # LD_PRELOAD is \s-separated; LD_AOUT_* is hopefully not used...
 LD_LIBRARY_PATH="$(uniqpath_no_dot "$LD_LIBRARY_PATH")" 
