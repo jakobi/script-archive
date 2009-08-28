@@ -71,7 +71,8 @@ while($lock=shift, defined $lock){
       my $parent=$lock; $parent=~s@/[^/]*$@@;
       warn "# $Me: lockpath parent $parent does not exist??" and ++$err if not -d $parent and not $parent eq $lock;
    }
-   push @lock,$lock; $mode{$lock}=$mode;
+   push @lock,$lock if not $mode{$lock}; # dupes: just update mode
+   $mode{$lock}=$mode;
 }
 die "# no locks specified\n" if not @lock;
 die "# erroneous locks\n" if $err;
