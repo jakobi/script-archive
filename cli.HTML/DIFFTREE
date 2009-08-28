@@ -7,6 +7,7 @@
 # 199XXXXX PJ        jakobi@acm.org -- initial version
 # 20000703 PJ   0.2  
 # copyright: (c) 2000-2009 jakobi@acm.org GPL v2 or later
+# archive:   http://jakobi.github.com/script-archive-doc/
 my $version="0.2";
 
 

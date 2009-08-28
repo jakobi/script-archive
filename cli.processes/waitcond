@@ -7,6 +7,7 @@
 # 20090722 PJ 
 # 20090824 PJ changed iostat, modified grep for 'command|', switched to strict
 # copyright:  (c)2007-2009, GPL v3 or later
+# archive:    http://jakobi.github.com/script-archive-doc/
 my $version="0.2.1";
 
 use warnings;

@@ -1,9 +1,11 @@
+# 20080118 PJ   0.1  jakobi@acm.org created
+# 20090729 PJ   0.2  uniqpath
+# copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
+# archive:    http://jakobi.github.com/script-archive-doc/
 
 # bash or ksh: common functions for shell startup: 00_lib.func
 # (for vars and logic, use 00_initialize.func/zz_finalize.func)
 
-# 20080118 PJ   0.1  jakobi@acm.org initial version
-# 20090729 PJ   0.2  uniqpath
 
 
 # have a version of echo for bash that behaves ksh-style and 

@@ -19,8 +19,16 @@ vim script file into presentable sections. Don't hold your breath.</p>
             script still requires a TTY due to short-comings of vim's head-less mode.
             For the time being, do <i>not</i> try to run multiple scripts in parallel; 
             the tempfile handling needs fixing. (bash; full rewrite of the vimscripts example) 
-        <li><b>pipe.vim</b> aka <b>vimpipe</b>, <b>vimless</b> (wrappers to interactively
-            use vim within a pipe, e.g. for grep | pipe.vim | Grep.xchange)
+        <li><b>pipe.vim</b> aka <b>vimpipe</b> (interactively use vim within a pipe, 
+            e.g. for <tt>grep|pipe.vim|Grep.xchange</tt>. It also allow end-of-pipe
+            style uses like <tt>find|xargs pipe.vim</tt>, editing all files being 
+            passed as arguments from xargs, with help and the contents of stdin 
+            available in the last buffer. Note that both pipe.vim and vimless
+            do <i>wait for the end of input</i> from earlier pipe stages)
+        <li><b>vimless</b> (similar, but for the last stage of a pipe, slightly preconfigured
+            to implement a less-clone capable of syntax highlighting. Like pipe.vim, it can 
+            also be wrapped by e.g. xargs. Simple vim options can also be placed in
+            VIMLESSOPT, e.g. export VIMLESSOPT='-c "set ft=perl"')
       </ul>
    <li>vim scripts
       <ul>

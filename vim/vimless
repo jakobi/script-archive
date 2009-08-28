@@ -1,6 +1,11 @@
 #!/bin/bash
 
-# vi as pager
+# vi as a less-style pager with syntax highlighting
+#
+# basic vim options options can also be passed with $VIMLESSOPT
+# (e.g. export VIMLESSOPT='-c "set ft=perl"'; but be very careful
+# when quoting)
+
 # " possibly unset shell vars
 # " and in bashrc
 # export PAGER="/bin/sh -c \"unset PAGER;col -b -x | vim -R -c 'set ft=man nomod nolist' -c 'map q :q<CR>' "    -c 'map <SPACE> <C-D>' -c 'map b <C-U>' \ "    -c 'nmap K :Man <C-R>=expand(\\\"<cword>\\\")<CR><CR>' -
@@ -14,18 +19,25 @@ if [ "$1" = "" ]; then
    input="-"
 fi
 
-cmd="vim -R -c 'set nomod $type nolist'"
+
+cmd="vim"
+cmd=$cmd" -R -c 'set nomod $type nolist'"
+
+# add some mappings
 cmd=$cmd" -c 'map b <C-U>'"
 cmd=$cmd" -c 'map <SPACE> <C-D>'"
-cmd=$cmd" ${1:+$@} $input"
- 
-# some possible mappings  
 # cmd=$cmd" -c 'map q :q<CR>'"
 # cmd=$cmd" -c 'map K :Man <C-R>=expand(<cword>)<CR><CR>'"
 
+cmd=$cmd" $VIMLESSOPT"
+cmd=$cmd" "${1:+"$@"}" $input"
+ 
+
 echo "running: ${filter:+$filter | }$cmd"
 if [ "$filter" ]; then
-   eval "$filter | $cmd"
+   eval "$filter | $cmd"  # vi dups stderr to it's command input
 else 
-   eval "$cmd"
+   eval "$cmd";           # vi doesn't quite do that, and might leave
+                          # the tty slightly insane :)
+   stty sane </dev/stderr # or just /dev/tty
 fi

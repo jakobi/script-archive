@@ -8,6 +8,7 @@
 # 20090729 PJ   0.2  added flock and command
 #
 # copyright: (c) 2002-2009 PJ, GPL v3 or later
+# archive:   http://jakobi.github.com/script-archive-doc/
 my $version="0.2";
 
 use strict;

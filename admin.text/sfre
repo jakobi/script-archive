@@ -11,6 +11,7 @@
 #                    added pr in messages to protect the terminal against
 #                    control codes in filenames
 # copyright:  GPL v3 or later
+# archive:    http://jakobi.github.com/script-archive-doc/
 our $version="0.1.1";
 our $debug=0;
 

@@ -1,3 +1,9 @@
+
+# created     PJ 200907XX jakobi@acm.org
+# copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
+# archive:    http://jakobi.github.com/script-archive-doc/
+my $version="0.1";
+
 use strict;
 use vars;
 use warnings;

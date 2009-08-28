@@ -5,6 +5,7 @@
 # XXXXXXXX PJ        jakobi@acm.org -- initial version
 # 20080524 PJ   0.2   
 # copyright:  (c) 2008 PJ GPL v3 or later
+# archive:    http://jakobi.github.com/script-archive-doc/
 my $version="0.2";
  
 # =<partial EXPR>: step expr

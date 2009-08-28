@@ -3,6 +3,7 @@
 # created     jakobi@acm.org 2004xxxx
 # last change jakobi@acm.org 20080107
 # copyright: (c) 2004-2009, jakobi@acm.org, GPL v3 or later
+# archive:   http://jakobi.github.com/script-archive-doc/
 
 
 # given URLs on ARGV or STDIN ($0 -stdin), load them into firefox.

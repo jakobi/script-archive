@@ -10,6 +10,7 @@
 #         1.3	  970527    small bugfixes (PJ970527 disabled)
 #         1.4     970705    some url parsing and umlaut translation
 # Copyright 1996-2009 jakobi@acm.org, placed under GPL v2 or higher
+# Archive:  http://jakobi.github.com/script-archive-doc/
 
 # some convenience functions for cgi usage (by DBFW and other scripts)
 

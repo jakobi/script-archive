@@ -5,14 +5,19 @@
 # implant an editor session into a pipe, allowing a 
 # fallback to also forwarding the unmodified contents
 # even if the user already saved a modified buffer to disk.
+#
+# if used with file arguments (xargs), help and (empty)
+#  contents of stdin can be found in the last buffer.
 
 # created     PJ 20090803 jakobi@acm.org
 # last change PJ 20090806
 # copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
-my $version="0.1";
+# archive:    http://jakobi.github.com/script-archive-doc/
+my $version="0.1.1";
 
 
 # editor requirements: 
+#
 # ability to  read and write from tty redirection. Test with
 # 'echo | ($EDITORPIPED /etc/hosts </dev/tty >/dev/tty;echo dummy) | wc -l'. 
 # This must both allow an editor session and have wc -l see exactly 1 line.
@@ -23,6 +28,10 @@ my $version="0.1";
 # to just edit a bunch of files with a bufferlist in buffer 1,
 # using gf to switch to the file under the cursor:
 # find | sort | vim - # this '-' is half-magic, just like '.'
+#
+# even if - is missing, vim still can edit if stdin is guaranteed
+# to be empty. However, that requires a stty sane (possibly
+# to </dev/stderr or </dev/tty) to restore the terminal afterwards.
 #
 # if the file contains arbitrary characters, use Vgf to treat
 # the whole line as the filename to jump to in a new buffer.
@@ -51,31 +60,29 @@ chomp($tmpname =`mktemp -q /tmp/bufpipe.$$.XXXXXX`);
 
 
 # read all the input from STDIN and invoke the editor
-warn <<EOF if not $silent;
-
+$msg=<<EOF;
 # $Me: pipe.vim - edit a pipe (version $version)
-#
-# $Me: Please edit the pipe's contents, then save.
-# 
-# $Me: You can break the pipe by using a non-zero exit code.
-# $Me: If you already updated the file, you can still fall back
-# $Me: to the original filelist by deleting all lines and
-# $Me: entering a single line of #PASS, #ORIGINAL or #ORG.
-# $Me: A single line of #FAIL N will not print anything and 
-# $Me: exit with a non-zero rc.
-
-# $Me: - To peek at a file in vim use gf or Vgf. 
+# $Me:
+# $Me: pipe.vim:
+# $Me: - header lines will be stripped only at the start of file
+# $Me: - return a single line of #FAIL or #EXIT (optionally 
+# $Me:   with RC) to force a exit. Just exit or use #PASS or #ORG
+# $Me:   to forward the original input to the next pipe stage
+# $Me: - a buffer of just whitespace sets the output to ""
+# $Me:
+# $Me: vim:
+# $Me: - use gf or [VISUAL]gf to preview files
 # $Me: - use :ViewHtml to view html files / :setl noro
-# $Me: (:com! ViewHtml exe "%!lynx -dump -force_html /dev/stdin" | setl ro)
+# $Me: (:com! ViewHtml exe "%!lynx -dump -force_html /dev/stdin" |setl ro)
 
 EOF
-$time=time;
+# $time=time;
 undef $/; $_=<>;
-open(FH,">",$tmpname) and print FH $_ and close FH or 
+open(FH,">",$tmpname) and print FH $msg, $_ and close FH or 
    do{unlink $tmpname; die "# ERR $Me: cannot write tmpfile\n" };
 
 
-sleep 2 if time-$time<3 and not $silent;
+# sleep 2 if time-$time<3 and not $silent;
 # with useless cat to also protect against <() 
 system "bash", "-c", $EDITOR.' "$@" </dev/tty >/dev/tty | cat', 
                      "$Me:$EDITOR", 
@@ -85,6 +92,7 @@ $rc=$?>>8;
 
 if (not $rc) {
    $tmp=`cat $tmpname`;
+   $tmp=~s/\A(#\Q $Me:\E.*\n)+\n?//; # remove remants of $msg
 	if    ($tmp=~/\A#[\t ]*(?:FAIL|EXIT)(?:[\t ](\d+))?([\t ].*|)\Z/) {
            $rc=20; $rc=$1 if $1;
            warn "# ERR $Me: setting rc to $rc as requestion - suppressing output\n";

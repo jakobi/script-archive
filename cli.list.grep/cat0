@@ -6,6 +6,7 @@
 # created     PJ 2005XXXX$ jakobi@acm.org
 # last change PJ 20090615 fixing copyright and version
 # copyright:  (c) 2005-2009 PJ, GPL v3 or later
+# archive:    http://jakobi.github.com/script-archive-doc/
 my $version="0.1";
 
 

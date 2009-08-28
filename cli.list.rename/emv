@@ -18,6 +18,7 @@
 #                   when unsetting $mv2, --nopathtrack, --todir/--nodir, --perlpostedit
 # 20090826 PJ       fixed emvx bug - when did appending $deltaorg @orgfile change to @newfile!?                  
 # Copyright (c) 2006-2009 jakobi@acm.org placed under GPL v3 and newer
+# archive:  http://jakobi.github.com/script-archive-doc/
 my $version="2.00pj.3"; 
 
 # emv consists of: emv  

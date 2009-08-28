@@ -11,6 +11,7 @@ eval 'exec perl -Sx $0 ${1:+"$@"}'
 # 20090803 PJ        copyright update; since 1997: only small fixes/examples added
 #
 # copyright:  (c) 1997-2009 jakobi@acm.org, placed under GPL v3 or later 
+# archive:    http://jakobi.github.com/script-archive-doc/
 my $version="0.2";
  
 # example invocations

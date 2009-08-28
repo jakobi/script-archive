@@ -14,6 +14,7 @@
 # 2009.08.25 PJ        switch diff order on stdout for consistency
 # 2009.08.27 PJ        updated doc on patch -u use, -relative option for easier patching
 # copyright:  (c) 2009 jakobi@acm.org, placed under GPL v3 or later 
+# archive:    http://jakobi.github.com/script-archive-doc/
 my $version="0.1.2";  
 
 use strict;

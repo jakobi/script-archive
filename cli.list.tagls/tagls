@@ -5,6 +5,7 @@
 # 20090729 PJ   0.2  added synonyms, highlighting, relevance sorting, -cmdX
 #
 # copyright:  (c)2007-2009 PJ GPL v3 or later
+# archive:    http://jakobi.github.com/script-archive-doc/
 my $version="0.2";
 
 

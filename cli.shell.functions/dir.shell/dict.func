@@ -1,3 +1,7 @@
+# created     PJ 200907XX jakobi@acm.org
+# copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
+# archive:    http://jakobi.github.com/script-archive-doc/
+
 # translation functions
 function xlate { # dict.leo.org E-D
     lynx -width=$COLUMNS -dump -nolist "HTTP://dict.leo.org/?lang=de&search="`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"` | \

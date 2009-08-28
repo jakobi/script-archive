@@ -13,6 +13,7 @@
 # 12.08.09 PJ        allow context mode to "> "-flag matching records, --show-files
 
 # (c) 2007-2009 PJ, placed under GPL v3
+# archive:   http://jakobi.github.com/script-archive-doc/
 my $version="0.4";
 
 # Bugs:
@@ -903,6 +904,7 @@ FILE: while (@_)  {
 
         $files_read++;
         $offset=$lineoffset=1;
+        $.=0;
         $dash_printed=undef;
         $lineoffset0=$len=$total=$matches=0;
 

@@ -5,7 +5,7 @@
 #                        script generation, interactive mode, undo log
 # 20090808 0.2       PJ
 # copyright:  (c) 2009 jakobi@acm.org, placed under GPL v3 or later 
-#
+# archive:    http://jakobi.github.com/script-archive-doc/
 our $version=0.2;
 
 our $o_pathtrack=1;# turn on tracking renames (dirs unless noexec; rather moronic)

@@ -9,6 +9,7 @@
 # 20090801 PJ   2.2  small fixes, sqfilename
 #
 # copyright:  (c)1993-2009 PJ, GPL v3 or later
+# archive:    http://jakobi.github.com/script-archive-doc/
 my $version="2.2";
 
 # pj2000: could stand a number of speedups: 

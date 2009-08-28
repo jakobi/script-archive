@@ -3,6 +3,7 @@
 # 20090813 PJ   0.1  jakobi@acm.org initial version
 #
 # copyright:  (c)2009 jakobi@acm.org, placed under GPL v3 or later 
+# archive:    http://jakobi.github.com/script-archive-doc/
 my $version="0.1";
 
 

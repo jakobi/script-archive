@@ -9,6 +9,7 @@ eval 'exec perl -Sx $0 ${1:+"$@"}'
 # 20081221 PJ   0.2  added -values
 # 20090717 PJ   0.21  
 # copyright:  (c) 1997-2009 jakobi@acm.org, GPL v2 or later
+# archive:    http://jakobi.github.com/script-archive-doc/
 my $version="0.21";
 
 

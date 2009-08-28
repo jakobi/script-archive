@@ -12,6 +12,7 @@ use strict; use vars;
 # 200907xx pj        added -disk, compiled matcher
 # 20090808 pj        added -reduce == -v filelist reduction
 # copyright:  (c) 2007-2009 jakobi@acm.org, placed under GPL v3 or later 
+# archive:    http://jakobi.github.com/script-archive-doc/
 my $version="0.3";
 
 # default usage scenario: 
