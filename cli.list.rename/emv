@@ -32,7 +32,6 @@ my $version="2.00pj.3";
 #                        severely stripped down variant. Use perl -npe
 #                        if you don't need path mangling or builtins.)
 
-
 # major bugs:
 # - none known.
 # 
