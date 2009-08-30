@@ -146,8 +146,8 @@ if      (1==$echo) {
 } elsif (2==$echo) {
    print "$varcmd$shellcmd\n";
 } else {
-   $shellcmd and     $cmd and $cmd="$varcmd$shellcmd $cmd";
-   $shellcmd and not $cmd and $cmd="$varcmd$shellcmd";
+   $shellcmd and                   $cmd and $cmd="$varcmd$shellcmd $cmd";
+   $shellcmd and (not $cmd or $skipcmd) and $cmd="$varcmd$shellcmd";
    exec $cmd if $cmd;
 }
 
