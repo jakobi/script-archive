@@ -1,1 +1,1 @@
-return true/false on available diskspace
+df.minfree - return true/false on available diskspace

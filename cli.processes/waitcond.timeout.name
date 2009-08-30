@@ -1,1 +1,1 @@
-executes process with timeout (time or exit of another process)
+waitcond.timeout executes process with timeout (time or exit of another process)

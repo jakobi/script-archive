@@ -1,1 +1,1 @@
-report N selected dbus events, optionally edited with --eval; incl. an example for catching 'pings' from dbus-send or notify-send
+dbus-monitor-tail: report N selected dbus events, optionally edited with --eval; incl. an example for catching 'pings' from dbus-send or notify-send

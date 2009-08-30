@@ -1,1 +1,1 @@
-locking using either atomic mkdir or perl-flock (REQ Flock.pm)
+lock.pl - locking using either atomic mkdir or perl-flock (REQ Flock.pm)

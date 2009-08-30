@@ -1,1 +1,1 @@
-generic condition waiter: boolean expression over regexes, pids, files, idleness
+waitcond - generic condition waiter: boolean expression over regexes, pids, files, idleness
