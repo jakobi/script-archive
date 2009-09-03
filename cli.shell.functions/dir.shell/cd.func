@@ -9,14 +9,18 @@
 alias ..="cd .."
 alias tdb='tdir ~/sites/home/database'
 
-# CDPATH and associated annoyances - only unteractive use.
-# use only for bash only if interactive and add a function to compensate
-if [ -n "$_IS_BASH" -a -n "$PS1" ]; then
+# CDPATH and associated annoyances - only unteractive use. if used at all.
+# use only for bash only if interactive and add a function to compensate.
+# (ksh also offers one btw)
+if [ -n "$_DISABLE_CDPATH" ]; then
+   unset CDPATH
+fi
+if [ -z "$_DISABLE_CDPATH" -a -n "$_IS_BASH" -a -n "$PS1" ]; then
    # ./ doesn't seem implied, so we seem to require to add it
    # at the cost of spurious messages from cd
 
-declare +x CDPATH
-CDPATH="$(uniqpath ".:$CDPATH:$HOME:$HOME/Desktop:/disk-WRK/proj:$HOME/bin/SCRIPTS.d")"
+   declare +x CDPATH
+   CDPATH="$(uniqpath ".:$CDPATH:$HOME:$HOME/Desktop:/disk-WRK/proj:$HOME/bin/SCRIPTS.d")"
 
    function cd { # suppress stupid PATH pritning if I don't 
                  # need the darn path to find the dir

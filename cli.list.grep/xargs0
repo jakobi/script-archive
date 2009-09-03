@@ -6,6 +6,9 @@
 # the shell's own name ($0), which is esp. deadly when using -n 1...
 # ( echo "a b"; echo c ) | xargs bash -c 'echo "$@"' dummy
 #                                bash -c '...'       dummy 'a b' 'c'
+#
+# note that find -exec ... \+ should substitute for some xargs uses
+# (if available that is)
 
 cat0 | exec xargs -0 ${1:+"$@"}
 

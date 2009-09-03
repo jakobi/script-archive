@@ -18,7 +18,7 @@ function gr_x {
           *)                   if head -c 300 < "$i" | tr -c -d '\0' | grep -a . >/dev/null; then
                                   tr '\0' '\12' < "$i"
                                else 
-                                  egrep -i "$@" < "$i"
+                                  cat < "$i"
                                fi
                                ;;
        esac

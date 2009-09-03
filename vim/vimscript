@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Vim script command line interpreter for UNIX
+# http://www.vim.org/scripts/script.php?script_id=2768
 
 # 20040827 DS dsilvia@mchsi.com v1.1
 # 20090615 PJ forked, fixed and rewritten

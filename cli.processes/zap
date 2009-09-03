@@ -5,102 +5,28 @@ eval 'exec perl -Sx $0 ${1:+"$@"}'
 
  
 # --.--.94 <user> <latest change>
-# 05.09.94 domke  (From "Programming Perl", L.Wall, R.Schwartz)
+# 05.09.94 domke      (From "Programming Perl", L.Wall, R.Schwartz)
 # ........ pj   0.2   various small changes to make it work on hpux,aix,bsd,linux,sunos and solaris
 # 06.05.01 pj         fixed no-tty handling for use under rsh/...
 # ........ pj   0.3   added display of children (so you know what to kill)
 # 23.10.05 pj   0.4   added/folded back renice code
 # 09.06.09 pj   0.5   small cleanup
+# 02.09.09 pj         added non-zero rc for -l -y, -help, -^ anchoring,
+#                     -u + more intelligent PID/PPID/USER/UID detection
 # (c) perl artistic licence
-my $version="0.5";
+my $version="0.5.1";
 
 
-($me = $0) =~ s#.*/##; # in $0 alles bis zum letzten '/' loeschen
-#---------------------------------------------------------------
-sub Usage {
-  %action=("100", "kill -$sig", "010", "renice $nice", "001", "list");
-  $action=$action{"$is_kill$is_nice$is_list"};
-  $pattern=join("\n       ","",@ARGV);
+#========================================================= Variables 1
 
-  die <<USAGE;
-     $me [-<SIGNAL> | <NICE-VALUE>] [OPTIONS] PATTERN ...
-
-     version $version
-
-     Zap searches the output of ps for anything matching one of the
-     perl regular expression PATTERNs. Matching processes are presented
-     to the user. To perform the predetermined action (see below), just
-     enter 'y' (or 'z'), possibly followed by 'enter'. This immediately
-     acts on the process and optionally its children.
-     Use 'q' to quit selecting or '^c' to abort.
-
-     Actions implemented / action selection:
-       # action   parts of basename   switches            defaults/notes
-       kill       zap/kill           -is_kill / -is_zap   15/TERM
-       renice     nice/renice        -(is_)(re)nice / -n  1; HINT: nice -n 1
-       list       ls/list/display    -is_list / -l        0; aka "renice 0"
-
-     So to renice processes, invoke $me e.g. as 'prenice' or use a switch
-     as in '$me -is_nice'. NICE goes from +1 to +19, and you're unable to
-     reduce a process NICE value (root: -19 to +19, anything goes). For
-     nice <1 and >7, $me also tries to run ionice if available to set
-     high/low values for the process [linux, requires >2.6.13 and CFQ IO
-     scheduler]. For nice values > 12, ionice c3 [idle] is used instead 
-     of class 2 [best effort, with ionice values of 0 or 7].
-
-     The last line on STDOUT returns the sort -u'd list of selected pids.
-     
-     Zap was invoked as "$me" with action "$action" and these PATTERNs: $pattern
-
-     Other options:
-       -a         consider all users, not just processes matching owned by
-                  $ENV{LOGNAME} plus possibly *some* of those that also 
-		  contain $ENV{LOGNAME} (root defaults to -a)
-       -c         display unsorted process tree for each selected process
-       -C         similar, sending signal to process AND children
-       -h         help, this text
-       -i         PATTERNs are case insignificant
-       -l         list, no action (short for -is_list action)
-       -not PATTERN skip processes matching PATTERN 
-                  (but the processes are still acted if selected via -c/-C)
-       -p PID	  restrict to process tree with root at PID, excluding PID
-       -y         Assume yes / send signal to all matching processes
-                  without asking (be VERY careful!)
-	
-     Examples: 
-       $me firefox # do the default action, probably list all processes 
-                  and ask which to kill ("zap -y firefox" might have 
-		  been better; assuming there's no risk to kill innocents
-		  owned by $ENV{LOGNAME} like "vim urls-for-firefox.txt")
-       $me / $me .                          # matches all processes
-       $me -INT vhdlsim vhdlcad             # to interrupt some CAD programs
-       $me -is_nice 9 firefox               # to have a niced 'fox
-       $me -l -y '^\\S+ +\\d+ +1 +'         # list orphaned processes
-       $me -l -y -a '^(?!.*00:0\\d:\\d\\d)' # list cpu hogs (perl5 only)
-       $me -p PID -c PATTERN                # allow selection of descendants
-                  of PID that match PATTERN, also listing their children
-       echo UNUSED | echo `$me -a -C provider </dev/tty | nl` # using $me
-                  within pipes to pass a processlist to other programs
-	          (provided tty magic is succeeding)
-
-     Bugs:
-       doesn't complain about impossible actions such as renicing 
-                  processes of other users when being non-root, or bad
-	          signals or nice values
-       doesn't know about process groups - but they're rarely useful
-                  for process selection...
-       behaves dangerously if more than one action is requested
-     
-     See also:    cpulimit, nice, renice* (*: as used by this script)
-                  ionice*
-                  traffic shaping (xnetload, wondershaper IF U D [Kb/s], 
-                                   trickle -d D -u U APP [KB/s])
-                  kill, killall, killproc, pgrep/pkill, skill/snice
-                  ps, gps/qps/xzap, ps (-edalf|aux) -H*, pstree
-USAGE
-}
+($me = $0) =~ s#.*/##;
+$BSD = -f '/vmunix' || -f "/boot/vmunix";
+$psopt  = $BSD ? "-auxww" : "-ef";
+$user=$ENV{LOGNAME} if $> > 0; # default to own user for non-root
+$anchorpsopt='-eo user,pid,ppid,c,stime,tty,time -o " ^%a"'; # gnu ps only
 
 $sig = 'TERM'; # kill -15
+
 $nice= '+1';   # nice +1
 ($is_kill=0, $is_nice=0, $is_list=1); # default action is list
 if (     $0=~/zap|kill/) {
@@ -109,7 +35,118 @@ if (     $0=~/zap|kill/) {
    ($is_kill=0, $is_nice=1, $is_list=0);
 }
 
-#================================================ Parameter Loop
+
+
+#================================================== Help and Arguments
+
+sub Usage {
+  %action=("100", "kill -$sig", "010", "renice $nice", "001", "list");
+  $action=$action{"$is_kill$is_nice$is_list"};
+  $pattern=join("\n       ","",@ARGV);
+
+  die <<USAGE;
+
+$me [-<SIGNAL> | <NICE-VALUE>] [OPTIONS] PATTERN ...
+
+version $version
+
+Zap  searches  the output of ps for anything matching one of the  perl
+regular  expression PATTERNs. Matching processes are presented to  the
+user.  To perform the predetermined action (see below), just enter 'y'
+(or  'z'), possibly followed by 'enter'. This immediately acts on  the
+process and optionally its children. Use 'q' to quit selecting or '^c'
+to abort.
+
+Scripting  support: The last line on STDOUT returns the sorted list of
+selected  pids.  The  exit  code is  1  if  non-interactively  listing
+processes (-l -y) but failing to find a match.
+
+
+action / personality selection (default for zap is sending SIGTERM):
+
+ACTION <-  NAME CONTAINS    -or-    SWITCHES          DEFAULT  / NOTES
+ kill      zap / kill              / -is_(kill|zap)   15;      SIGTERM
+ renice    (re)nice             -n / -(is_)(re)nice    1;  (nice -n 1)
+ list      ls / list / display  -l / -is_list          0;   (aka -n 0)
+
+!! Do use symlinks to change the script's personality, not switches !!
+
+So  to renice processes, invoke zap by using a symlink like 'prenice'.
+NICE  goes from +1 to +19, and you're unable to reduce a process  NICE
+value  (root: -19 to +19, anything goes). For nice <1 and >7, zap also
+tries  to  run  ionice  if available to set high/low  values  for  the
+process  [linux,  requires  >2.6.13 and CFQ IO  scheduler].  For  nice
+values > 12, ionice c3 [idle] is used instead of class 2 [best effort,
+with  ionice values of 0 or 7]. To interactively select processes  and
+print their list of PIDs, use a symlink like plist.
+
+Zap was invoked as "$me" with personality "$action" 
+and patterns: >>$pattern<<.
+
+
+Options:
+  +N or N    positive nice value                           (default: 1)
+  -N         signal number to send or negative nice value  
+  -WORD      send signal WORD                        (default: SIGTERM)
+
+  -l         use personality 'list'                (short for -is_list)
+  -n         use personality 'renice'              (short for -is_nice)
+  --help     this text (also -h)
+  
+  -^         anchor ^ to match start of command field     (GNU ps only)
+  -a         all processes instead of owned processes (root implies -a)
+  -c         display descendants of process          (information only)
+  -C         display and *act* on both process AND descendants
+  -i         ignore case
+  -o OPT     use OPT as ps options instead of defaults  (also add -ww?)
+  -p PID	    restrict to process tree rooted at PID, but excluding PID
+  -u USER    restrict output to processes owned by matching user / uid
+  --not PAT  skip processes matching regex PAT
+  -y         assume yes / signal all matching processes without asking
+
+
+Examples: 
+  # mix and match
+  zap -o '-eo ppid,user,pid,comm'      # customize ps listing
+  zap / zap .                          # matches all processes
+  zap -^ ^bash.--login                 # match only start of command
+  zap -p PID -c PATTERN                # match only descendants of pid
+                                       # plus report their offspring 
+                                       # (without including their pids)
+
+  # there's more to life than just SIGTERM
+  zap -USR1 dd                         # ask dd for statistics
+  zap -n 9 firefox                     # nice 'fox
+  zap -l -y '^\\S+ +\\d+ +1 +'         # list orphaned processes
+  zap -l -y -a '^(?!.*00:0\\d:\\d\\d)' # list cpu hogs (perl5 only)
+
+  # pipe dreams
+  echo UNUSED | echo `zap -l -a -C bash </dev/tty | nl` 
+  zap -l -y bash 2>&1 | nl             
+  zap -a -l -y apache >/dev/null 2>&1 || \
+     printf "To: \$LOGNAME\\nSubject: no apache\\n\\n" | sendmail -t
+
+
+Bugs:
+  - Larry Wall probably won't recognize this offspring of his 
+    process killer
+  - zap doesn't complain about impossible actions such as killing or
+    renicing processes of other users when being non-root, bad signals
+    bad nice values or using more than one personality switch
+  - zap doesn't know about process groups - but they're rarely 
+    useful for interactive process selection...
+
+
+See also:
+  - cpulimit, nice, renice* (*: as used by this script)
+  - ionice*
+  - traffic shaping (xnetload, wondershaper IF U D [Kb/s], 
+                              trickle -d D -u U APP [KB/s])
+  - kill, killall, killproc, pgrep/pkill, skill/snice
+  - ps, gps/qps/xzap, ps (-edalf|aux) -H*, pstree
+
+USAGE
+}
 
 
 @argv=@ARGV;
@@ -117,67 +154,85 @@ while ($ARGV[0] =~ /^-|^\+?\d\d?$/) {
   $_ = shift;
   /^--$/ && last;
   (/^-?-help$/ || /^-H$/ || /^-h$/) && ($help=1, next);
-  /^-a$/ && ($all=1, next);
-  /^-y$/ && ($yes=1, next);
-  /^-c$/ && ($child=1, next);
-  /^-C$/ && ($child=2, next);
-  /^-p$/ && ($parent=shift, next);
-  /^-i$/ && ($ignorecase='i', next);
-  /^-not$/ && ($not=shift, next);
+  /^-\^$/                           && ($anchor=1, $psopt=$anchorpsopt, next);
+  /^-a$/                            && ($user=undef, next);
+  /^-y$/                            && ($yes=1, next);
+  /^-c$/                            && ($child=1, next);
+  /^-C$/                            && ($child=2, next);
+  /^-o$/                            && ($psopt=shift, next);
+  /^-u$/                            && ($user=shift, next);
+  /^-p$/                            && ($parent=shift, next);
+  /^-i$/                            && ($ignorecase='i', next);
+  /^-?-not$/                        && ($not=shift, next);
   
   # switch personality: demonic, angelic, or plain boring
-  /^-?-is_(zap|kill)$/             &&  (($is_kill=1, $is_nice=0, $is_list=0), next);
-  /^-?-(is_)?(re)?nice$|^-n$/      &&  (($is_kill=0, $is_nice=1, $is_list=0), next);
-  /^(-?-is_(display|list|ls)|-l)$/ &&  (($is_kill=0, $is_nice=0, $is_list=1), next);
+  /^-?-is_(zap|kill)$/              &&  (($is_kill=1, $is_nice=0, $is_list=0), next);
+  /^-?-(is_)?(re)?nice$|^-n$/       &&  (($is_kill=0, $is_nice=1, $is_list=0), next);
+  /^(-?-is_(display|list|ls)|-l)$/  &&  (($is_kill=0, $is_nice=0, $is_list=1), next);
   
-  /^\+?(\d+)$/ && ($1<20)      && ($nice= $1, next);
-  /^-(\d+)$/   && ($1<20)      && ($sig = $1, $nice= -$1, next);
+  /^\+?(\d+)$/ && ($1<20)           && ($nice= $1, next);
+  /^-(\d+)$/   && ($1<20)           && ($sig = $1, $nice= -$1, next);
   /^-([A-Z][A-Z][A-Z][A-Z]?[A-Z0-9]?)$/ && ($sig = $1, next);
    
   die "$me: illegal option: $_\n";
 }
 &Usage if $help; # exits
 die "$me: -y requires PATTERN to be given.\n" if $yes and not @ARGV;
+$user='^('.quotemeta($user).'|$>)$' if defined $user and not $user=~/[\.$\(\*\+\[\\]/; #'
 
-#===================================================== Variables
+if ($anchor) {
+   # 5.10-style: s!\^!^.*? \\^(*COMMIT)!
+   $not=~s!\^!^[^\\^]*\\^! if $not;
+   grep {s!\^!^[^\\^]*\\^!} @ARGV;
+}
+
+
+#========================================================= Variables 2
+
 $col=512;
-$BSD = -f '/vmunix' || -f "/boot/vmunix";
-$pscmd  = $BSD ? "COLUMNS=$col ps -auxww </dev/null 2>/dev/null" : 
-                 "COLUMNS=$col ps -ef    </dev/null 2>/dev/null";
+$pscmd  = "COLUMNS=$col ps $psopt </dev/null 2>/dev/null";
 
-# if we deal with ppid and children:
-$pscmd2 = $BSD ? "COLUMNS=$col ps -alx   </dev/null 2>/dev/null" : "";
+# obtain children via separate ps command?
+$pscmd2 = $BSD ? "COLUMNS=$col ps -alx </dev/null 2>/dev/null" : "";
+
+# default fields only if title doesn't help:
+$uididx = 1;
 $pididx = $BSD ? 3-1 : 2-1;
 $ppididx= $BSD ? 4-1 : 3-1;
 
-# restrict selection to user processes (and those containing user name)
-# ps -u is bad, as it may break the output format 
-$all=1 if 0==$>; # shell var UID is not necessarily exported
-if (not $all and $ENV{LOGNAME} and $> > 0) {
-    $pscmd.=" | egrep '^$ENV{LOGNAME} '";
-   $pscmd2.=" | egrep '^$ENV{LOGNAME} '" if $pscmd2;
-   $notitle=1;
-}
-
 chomp($ionice=`which ionice 2>/dev/null`);
 
-#=================================================== Script Body
+
+
+#========================================================= Script Body
 
 open (PS,"$pscmd |") || die "Can't run $pscmd\n";
-if (not $notitle) { 
-   $title = <PS>; 
-   print STDERR $title if not $yes or $yes and $is_list; 
+$_=$title=<PS>; 
+print STDERR $title if not $yes or $yes and $is_list; 
+
+# assume USER/PID/PPID to come early within columns guaranteed to be ONE word
+$i=0;
+foreach $f (split) { 
+   do{$uididx=$i}  if ($f eq "UID" || $f eq "USER");
+   do{$pididx=$i}  if ($f eq "PID");
+   do{$ppididx=$i} if ($f eq "PPID");
+   $i++; 
 }
-@PS    = <PS>;
+   
+while(<PS>) {
+   next if defined $user and  not +(split)[$uididx] =~ /$user/o;
+   push @PS, $_;
+}
 close PS;
+
 
 # just map the ancestry into a data structure
 if ($child or $parent) {
-   # BSD lacks PPID, so run another ps if necessary
+   # BSD usually omits PPID, so run another ps if necessary
    if ($pscmd2 eq "") {
       @PPS=@PS;
    } else {
-      @PPS=`$pscmd2`; shift @PPS if not $notitle;
+      @PPS=`$pscmd2`; shift @PPS;
       die "Cannot run $pscmd2\n" if not @PPS;
    }
    foreach $cand (@PPS) {
@@ -198,6 +253,7 @@ if ($child or $parent) {
       }
    }
 }
+
 
 # prepare tty for interactive input
 if (not $yes) {
@@ -230,7 +286,9 @@ if (not $yes) {
    }
 }
 
-# hmm - why did I eval like that??
+
+# PJ hmm - why did I eval like that??
+# anyway, this is the interactive selection of matching processes
 #eval <<'EOF';
 foreach $cand (@PS) {
   chop($cand);
@@ -280,13 +338,19 @@ foreach $cand (@PS) {
 }
 #EOF
 
+
 &cleanup2;
 print STDERR "selected pids are:\n" if @selected_pids and (not $yes or $is_list);
 @set=(); foreach(sort {$a<=>$b} @selected_pids) { next if $last==$_; push @set, $_; $last=$_ }; # sort -u -n
 @selected_pids ? print join(" ", @set), "\n" : print "\n";
-exit;
 
-#---------------------------------------------------------------
+exit 1 if $yes and $is_list and not @selected_pids;
+exit 0;
+
+
+
+#========================================================= Subroutines
+
 sub cleanup {
   &cleanup2;
   print "\n";
@@ -349,4 +413,6 @@ sub getpstree {
 };
 
 
-#=========================================================== End
+
+#================================================================= End
+# vim:ft=perl
