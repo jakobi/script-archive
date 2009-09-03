@@ -18,7 +18,10 @@ my $version="0.1";
 # readility of a command log, consider going perl proper, 
 # maybe still as a perl -0777 -i.bak one liner, 
 # Grep.pm | sed | Grep.xchange or ped (a full perl variant on sed).
-# Or just sed -i.bak. The = and the REGEX location are probably
+# Or just sed -i.bak w or w/o --follow-symlinks.  (though ped
+# is probably preferable; note that perl -i.bak still lacks that 
+# option on how-to-(not)-break links when used inline)
+# The = and the REGEX location are probably
 # already too much for the intended readability of the command.
 #
 # Use line.print to first report the lines which this script

@@ -3,7 +3,6 @@
 eval 'exec perl -Sx $0 ${1:+"$@"}'
    if 0;
 
- 
 # --.--.94 <user> <latest change>
 # 05.09.94 domke      (From "Programming Perl", L.Wall, R.Schwartz)
 # ........ pj   0.2   various small changes to make it work on hpux,aix,bsd,linux,sunos and solaris
@@ -11,10 +10,11 @@ eval 'exec perl -Sx $0 ${1:+"$@"}'
 # ........ pj   0.3   added display of children (so you know what to kill)
 # 23.10.05 pj   0.4   added/folded back renice code
 # 09.06.09 pj   0.5   small cleanup
-# 02.09.09 pj         added non-zero rc for -l -y, -help, -^ anchoring,
+# 02.09.09 pj         added non-zero rc for -l -y, --nl anchoring,
 #                     -u + more intelligent PID/PPID/USER/UID detection
+#                     (-^ --> --nl: using explicit \\n instead of mangling ^)
 # (c) perl artistic licence
-my $version="0.5.1";
+my $version="0.5.2";
 
 
 #========================================================= Variables 1
@@ -24,6 +24,8 @@ $BSD = -f '/vmunix' || -f "/boot/vmunix";
 $psopt  = $BSD ? "-auxww" : "-ef";
 $user=$ENV{LOGNAME} if $> > 0; # default to own user for non-root
 $anchorpsopt='-eo user,pid,ppid,c,stime,tty,time -o " ^%a"'; # gnu ps only
+$anchortest='(?:\A|[^\\\\])(\\\\*)\1\\\\n';
+$ignorecase='';
 
 $sig = 'TERM'; # kill -15
 
@@ -92,16 +94,18 @@ Options:
   -l         use personality 'list'                (short for -is_list)
   -n         use personality 'renice'              (short for -is_nice)
   --help     this text (also -h)
-  
-  -^         anchor ^ to match start of command field     (GNU ps only)
+
   -a         all processes instead of owned processes (root implies -a)
   -c         display descendants of process          (information only)
   -C         display and *act* on both process AND descendants
   -i         ignore case
-  -o OPT     use OPT as ps options instead of defaults  (also add -ww?)
-  -p PID	    restrict to process tree rooted at PID, but excluding PID
+  -o OPT     use OPT as ps options instead of defaults 
+  -p PID     restrict to process tree rooted at PID, but excluding PID
   -u USER    restrict output to processes owned by matching user / uid
-  --not PAT  skip processes matching regex PAT
+
+  --nl       insert a newline before the  command for patterns with \\n
+                                          (implies NOT -o; GNU ps only)
+  --not PAT  first skip processes matching regex PAT
   -y         assume yes / signal all matching processes without asking
 
 
@@ -113,12 +117,14 @@ Examples:
   zap -p PID -c PATTERN                # match only descendants of pid
                                        # plus report their offspring 
                                        # (without including their pids)
+  zap -l --nl 'pts/22.*\\n'             # anchor and match a specific pty
+                                       # but ignore command field matches
 
   # there's more to life than just SIGTERM
   zap -USR1 dd                         # ask dd for statistics
   zap -n 9 firefox                     # nice 'fox
-  zap -l -y '^\\S+ +\\d+ +1 +'         # list orphaned processes
-  zap -l -y -a '^(?!.*00:0\\d:\\d\\d)' # list cpu hogs (perl5 only)
+  zap -l -y '^\\S+ +\\d+ +1 +'           # list orphaned processes
+  zap -l -y -a '^(?!.*00:0\\d:\\d\\d)'    # list cpu hogs (perl5 only)
 
   # pipe dreams
   echo UNUSED | echo `zap -l -a -C bash </dev/tty | nl` 
@@ -154,7 +160,7 @@ while ($ARGV[0] =~ /^-|^\+?\d\d?$/) {
   $_ = shift;
   /^--$/ && last;
   (/^-?-help$/ || /^-H$/ || /^-h$/) && ($help=1, next);
-  /^-\^$/                           && ($anchor=1, $psopt=$anchorpsopt, next);
+  /^-?-nl$/                         && ($anchor=1, $psopt=$anchorpsopt, next);
   /^-a$/                            && ($user=undef, next);
   /^-y$/                            && ($yes=1, next);
   /^-c$/                            && ($child=1, next);
@@ -162,7 +168,7 @@ while ($ARGV[0] =~ /^-|^\+?\d\d?$/) {
   /^-o$/                            && ($psopt=shift, next);
   /^-u$/                            && ($user=shift, next);
   /^-p$/                            && ($parent=shift, next);
-  /^-i$/                            && ($ignorecase='i', next);
+  /^-i$/                            && ($ignorecase='(?i)', next);
   /^-?-not$/                        && ($not=shift, next);
   
   # switch personality: demonic, angelic, or plain boring
@@ -180,11 +186,6 @@ while ($ARGV[0] =~ /^-|^\+?\d\d?$/) {
 die "$me: -y requires PATTERN to be given.\n" if $yes and not @ARGV;
 $user='^('.quotemeta($user).'|$>)$' if defined $user and not $user=~/[\.$\(\*\+\[\\]/; #'
 
-if ($anchor) {
-   # 5.10-style: s!\^!^.*? \\^(*COMMIT)!
-   $not=~s!\^!^[^\\^]*\\^! if $not;
-   grep {s!\^!^[^\\^]*\\^!} @ARGV;
-}
 
 
 #========================================================= Variables 2
@@ -196,9 +197,9 @@ $pscmd  = "COLUMNS=$col ps $psopt </dev/null 2>/dev/null";
 $pscmd2 = $BSD ? "COLUMNS=$col ps -alx </dev/null 2>/dev/null" : "";
 
 # default fields only if title doesn't help:
-$uididx = 1;
+$uididx =              1-1;
 $pididx = $BSD ? 3-1 : 2-1;
-$ppididx= $BSD ? 4-1 : 3-1;
+$ppididx= $BSD ? 4-1 : 3-1; # on BSD, this may go against ps -alx instead
 
 chomp($ionice=`which ionice 2>/dev/null`);
 
@@ -207,18 +208,11 @@ chomp($ionice=`which ionice 2>/dev/null`);
 #========================================================= Script Body
 
 open (PS,"$pscmd |") || die "Can't run $pscmd\n";
-$_=$title=<PS>; 
-print STDERR $title if not $yes or $yes and $is_list; 
-
-# assume USER/PID/PPID to come early within columns guaranteed to be ONE word
-$i=0;
-foreach $f (split) { 
-   do{$uididx=$i}  if ($f eq "UID" || $f eq "USER");
-   do{$pididx=$i}  if ($f eq "PID");
-   do{$ppididx=$i} if ($f eq "PPID");
-   $i++; 
-}
-   
+$title=<PS>; 
+&parsetitle($title);
+$title=~s/^ // or $title=~s/ //;
+$title=~s/\^// if $anchor;
+print STDERR '#'.$title if not $yes or $yes and $is_list; 
 while(<PS>) {
    next if defined $user and  not +(split)[$uididx] =~ /$user/o;
    push @PS, $_;
@@ -228,11 +222,14 @@ close PS;
 
 # just map the ancestry into a data structure
 if ($child or $parent) {
+   local($pididx,$ppididx,$uididx)=($pididx,$ppididx,$uididx);
    # BSD usually omits PPID, so run another ps if necessary
    if ($pscmd2 eq "") {
       @PPS=@PS;
    } else {
-      @PPS=`$pscmd2`; shift @PPS;
+      @PPS=`$pscmd2`; 
+      $_=shift @PPS;
+      &parsetitle($_);
       die "Cannot run $pscmd2\n" if not @PPS;
    }
    foreach $cand (@PPS) {
@@ -249,7 +246,7 @@ if ($child or $parent) {
       $ppid=$pid;
       while ($ppid > 0) {
          $ancestor{$ppid,$pid}=1;
-	 $ppid=$parent{$ppid};
+         $ppid=$parent{$ppid};
       }
    }
 }
@@ -287,19 +284,30 @@ if (not $yes) {
 }
 
 
-# PJ hmm - why did I eval like that??
-# anyway, this is the interactive selection of matching processes
-#eval <<'EOF';
+# interactive selection of matching processes
 foreach $cand (@PS) {
   chop($cand);
-  ($user,$pid) = split(' ',$cand);
-  next if $pid == $$; # we may list $$, but won't act on it!
+  @field=split(' ', $cand);
+  $pid=$field[$pididx];
+  next if $pid == $$; # skip our own process
+
   $found = !@ARGV;
-  if (not $not   or eval("\$cand!~m{\$not}$ignorecase")) {
-    foreach $pat (@ARGV) {
-      $found = 1 if eval("\$cand=~m{\$pat}$ignorecase");
-    }
+  $candnl=$cand; 
+  if ($anchor) {
+     $cand  =~s/\^//;
+     $candnl=~s/\^/\n/;
   }
+
+  if ($not) {
+     $_ =\$cand; $_=\$candnl if $not=~/$anchortest/;
+     next if $$_=~/$ignorecase$not/;
+  }
+
+  foreach $pat (@ARGV) {
+     $_ =\$cand; $_=\$candnl if $pat=~/$anchortest/;
+     do{$found=1,last} if $$_=~/$ignorecase$pat/;
+  }
+
   next if (!$found);
   next if ($parent and ( 1 != $ancestor{$parent,$pid} ) );
 
@@ -307,7 +315,7 @@ foreach $cand (@PS) {
      print main::STDERR "\n### ATTN ### PERSONALITY IS ZAP/KILL\n\n";
      $already_warned=1;
   }
-  
+
   @pidlist=($pid);
   @pidlist=(@pidlist, getpstree($pid)) if $child>1;
   if ($yes and $is_list) {
@@ -321,14 +329,14 @@ foreach $cand (@PS) {
      print TTYOUT "? ";
      read(TTYIN,$ans,1);
      if (not $TTY) {
-	# fallback if insane host tty environment
+        # fallback if insane host tty environment
         $tmp=<TTYIN> if $ans ne "\n";
      } else {
         print TTYOUT "\n" if ($ans !~ /\n/);
      }
      if ($ans =~ /^y|^z/i) { 
         print TTYOUT "\n" if $child;
-	action(@pidlist) 
+        action(@pidlist) 
      }
      if ($ans =~ /^q/i) {last;}
   } else {
@@ -336,7 +344,6 @@ foreach $cand (@PS) {
      action(@pidlist);
   }
 }
-#EOF
 
 
 &cleanup2;
@@ -372,7 +379,7 @@ sub cleanup2 {
 sub action {
    @selected_pids=(@selected_pids, @_);
    if(      $is_nice) { # renice is global, not cummulative.
-			# also try using ionice if available 
+                        # also try using ionice if available 
                         # to complement very high/low nice values
       system("renice $nice -p @_");
       if (-x $ionice) { # some ionice actions may require root privs?
@@ -411,6 +418,18 @@ sub getpstree {
    }
    return(@pidlist);
 };
+
+# assume USER/PID/PPID to come early within columns guaranteed to be ONE word
+sub parsetitle {
+   local($_)=@_;
+   my($f,$i)=("",0);
+   foreach $f (split) { 
+      do{$uididx=$i}  if ($f eq "UID" || $f eq "USER");
+      do{$pididx=$i}  if ($f eq "PID");
+      do{$ppididx=$i} if ($f eq "PPID");
+      $i++; 
+   }
+}
 
 
 
