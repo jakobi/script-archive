@@ -38,9 +38,11 @@ emv thrives and wilts with the capability of the editor invoked).</P>
       file list splitting, link target editing (use e.g. 
       GNU find -type l -xtype l | emv -); quite capable when used with 
       the vim editor's visual block changes. Can also be used non-interactively by
-      providing a perl expression for renaming files.
+      providing a perl expression for renaming files. Use  <b>emxv</b>
+      to "grow" a session e.g. by listing subdirectories.
       (You may wish to set EMVSHELL to a Bourne-style shell that supports 
-      set -o pipefail.)
+      set -o pipefail). Published on <a href="http://freshmeat.net/projects/emv">freshmeat</a> 
+      and as <a href="http://www.vim.org/scripts/script.php?script_id=2767">vimscript#2767</a>
    <li><B>myrename</b> (perl): mass renaming using a perl expression like 
       e.g. s/old/new/, also allowing for predefined actions and extensive 
       user customization of actions, e.g. things like <tt>myrename lc</tt> to lowercase 

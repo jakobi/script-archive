@@ -108,7 +108,8 @@ function _pipe {
 
 
 # read a file or pipe into an array
-#    find . -print | f2a -a ARGS; less "${ARGS[@]}"
+#    ksh93: find . -print | f2a -a ARGS ; less "${ARGS[@]}"
+#    bash:  f2a -a ARGS <(find . -print); less "${ARGS[@]}"
 # using the possibly empty array as command arguments:
 #    printf "%s\n" ${f2a:+"${f2a[@]}"}
 function f2a { 
@@ -122,15 +123,26 @@ function f2a {
     else
        _a="f2a"
     fi
-    unset -v $_a
-    if [ ! -e "$1" ]; then
-       echo "Usage: f2a FILE [ARRAYNAME] -- load lines into array (default: f2a)" 1>&2;
+
+    # file
+    _f="-"
+    if [ "$1" != "" ]; then
+       _f="$1"; shift
+    fi
+    if [ "$_f" = "-" ]; then
+       _f=/dev/stdin
+    fi
+
+    unset -v $_a # !the var pointed to!
+    if [ -n "$1" -o ! -e "$_f" ]; then
+       echo "Usage:   f2a [-a ARRAYNAME] [FILE] -- load lines into array (default: f2a)" 1>&2;
+       echo "Example: f2a <(cat /etc/hosts)" 1>&2;
        return 1;
     fi
     eval ' while read _l;do 
               '${_a}'[_i]="$_l";
               _i=_i+1;
-           done < "$1";
+           done < "$_f";
            echo "# \$$_a[]: $_i lines loaded" 1>&2
          '
 }
