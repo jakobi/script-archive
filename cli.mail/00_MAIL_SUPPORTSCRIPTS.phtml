@@ -28,11 +28,16 @@ it for now (<i>is procmail still being actively maintained at all??</i>)</p>
        <p class=anno>The original code's strictly functional and a pleasure
        to read. Partly because of this I'm still unwilling to fork this one
        for real. Then again, it's a pity that the classic grepmail doesn't 
-       know about MIME at all. So here's a modified interim version that 
-       de-mimes anything greppable just before the grep while returing the
-       original email for further processing. Note that there still are some 
-       'modern times' problems with e.g. encoding mixtures 
-       when using grepmail as part of a pipe.</p>
+       know about MIME at all. So here's a modified interim version as a 
+       proof of concept that de-mimes anything greppable just before the grep
+       while by default
+       returning the original email for further processing. Note that there 
+       probably still are some 'modern times' problems with e.g. encoding 
+       mixtures of body parts and headers (with specified or unspecified!!
+       differing charset encodings) within and between mails. But it should
+       work well enough for UTF8, ascii and latin1 mixes, at least for the
+       common subset plus German umlauts, which should be standardized
+       for the grep as ae, oe, ue, etc.</p>.
 </ul>
 
 
