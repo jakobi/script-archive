@@ -25,7 +25,9 @@
    <li><b>_echo, _warn</b> (bash actually manages to have no echo/print honoring -- as end-of-options-option;
        the only reasonably safe function happens to be printf; 00_lib.func)
    <li><b>f2a</b> is a shell function reading a file into an array, allowing
-       e.g. safe argument passing: find . -print | f2a -a ARGS; less "$ARGS[@]" (00_lib.func)
+       e.g. safe argument passing (00_lib.func):<BR>
+       <tt>ksh93$      find . -print | f2a -a ARGS; less "$ARGS[@]"</tt><BR>
+       <tt>bash$&nbsp; f2a -a ARGS < <(find . -print); less "$ARGS[@]"</tt>
    <li><b>uniqpath</b> deals with :-separated strings and removes duplicates and 
        optionally '.' and '' (both of which are a security risk e.g. in $PATH; 00_lib.func)
 </ul>

@@ -30,8 +30,8 @@ pipeline 'line'-based text processing.</p>
        stemming and synonym-expansion in regular expressions (using expansyn). 
        It also handles \0-lines, paragraphs and file slurping, as well as
        directory recursion and compressed files (both as in tcgrep). Dependencies: expansyn.
-       It can masquerade as a perl module. Published 
-       <a href="http://freshmeat.net/projects/Grep.pm">freshmeat</a> (combined
+       It can masquerade as a perl module. Published on
+       <a href="http://freshmeat.net/projects/Grep.pm">freshmeat</a> (together
        with Grep.xchange).
    <li>How about a kind of emv not for mass-renaming filenames, but for
        mass-editing file-contents?<BR>
@@ -46,7 +46,7 @@ pipeline 'line'-based text processing.</p>
        mass-edit files.  Dependencies: For flock-locking edited files, you also need to copy
        Compact_pm::Flock.pm; otherwise you can disable it by commenting the use statement. 
    <li><b>expansyn</b> is the command implementing basic English stemming and synonym
-       expansion for Grep.pm / tagls using a configuration file expansyn.cfg 
+       expansion for both <B>Grep.pm</B> / <B>tagls</B>. It uses a configuration file expansyn.cfg 
        containing the synonymlists in perl syntax. I wrote it for 
        automatic expansion of some computer science terms I
        always seem to use in parallel.
@@ -59,8 +59,8 @@ pipeline 'line'-based text processing.</p>
        or filesystem contents
    <li><a href="../cli.shell.functions/00_SHELL_SETUP.html"><b>f2a</b></a>
        in 00_lib.func: a shell function reading a file into an array:<BR>
-       <tt>ksh93$ find . -print | f2a -a ARGS; less "$ARGS[@]"</tt><BR>
-       <tt>bash$  f2a -a ARGS < <(find . -print); less "$ARGS[@]"</tt>
+       <tt>ksh93$      find . -print | f2a -a ARGS; less "$ARGS[@]"</tt><BR>
+       <tt>bash$&nbsp; f2a -a ARGS < <(find . -print); less "$ARGS[@]"</tt>
    <li><a href="../vim/00_VIM.html"><b>pipe.vim (aka vimpipe) , vimless</b></a> 
        to run vim in the middle of a pipe or
        as a less replacement. Both are in the vim section.

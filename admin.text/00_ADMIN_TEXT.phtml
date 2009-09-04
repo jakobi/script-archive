@@ -48,7 +48,7 @@ to be used for accounts <B>other</b> than root.</i></p>
        lines according to embedded directives with variable expansion.
        Useful for trivial cases, provided you switch to more suitable 
        tools for heavier lifting.
-   <li><B>systemflightrecorderedit (sfre)</B> - sfre tries to sequence file 
+   <li><B>systemflightrecordereditor (sfre)</B> - sfre tries to sequence file 
       edits and augment group memory in  concurrent  file change scenarios like
       multiple root users plus cron jobs. For each edit (or more generally
       any arbitrary command given with the -e option) sfre logs a description
@@ -56,10 +56,10 @@ to be used for accounts <B>other</b> than root.</i></p>
       changetrack to backup changes. It also supports lookup/diff of files
       from a changetrack backupdir by date, revision number or symbolic name 
       allowing all options of the cat or diff commands (e.g. all GNU diff 
-      options instead of just the small subset of options available via rcsdiff).<BR>
+      options instead of just the small subset of options available via rcsdiff).
       Dependencies: changetrack (changetrack.sf.net) and lock.pl/Flock.pm.
       (You may wish to set SFRESHELL to a Bourne-style shell that supports 
-      set -o pipefail; published on <a href="http://freshmeat.net/projects/sfre">freshmeat</a>)
+      set -o pipefail). Published on <a href="http://freshmeat.net/projects/sfre">freshmeat</a> .
    <li><B>unescape.pl</b> strips some of the line noise from script typescripts.
       Modified version with prompt guessing, tries to remove e.g. vim session.
       Using a tool like this may make typescripts somewhat more usable as a base
@@ -68,7 +68,7 @@ to be used for accounts <B>other</b> than root.</i></p>
 
 <p>See also:</p>
 <ul>
-   <li><A HREF="../script-archive-doc/vim/00_VIM.html"><b>vimsh</b></a> 
+   <li><A HREF="../vim/00_VIM.html"><b>vimsh</b></a> 
       as helper for system documentation / documentation creation
       captured from session transcripts: see the vimsh script from vim.org for a
       non-typescript approach (non-interactive commands only, unless you use some kind
