@@ -63,7 +63,7 @@ print main::STDERR "i:$t\n" if $o_verbose;
    if (not $o_enc) {
       $t=~s/\Q$o_char\E([\da-f][\da-f])/pack(C,hex($1))/geoi;
    } else {
-      $t=~s/([\0$chars_nok]|[^\0$chars_ok])/$o_char.unpack("H2",$1)/geoi;
+      $t=~s/([\0$chars_nok]|[^\0$chars_ok])/$o_char.uc(unpack("H2",$1))/geoi;
    }
 print main::STDERR "o:$t\n" if $o_verbose;
    return $t
