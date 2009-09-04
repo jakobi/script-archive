@@ -22,7 +22,8 @@ it for now (<i>is procmail still being actively maintained at all??</i>)</p>
        but a giant leap for mailkind and this project. Or something like 
        that :). The inclusion of my MIME/UTF sketch below is still at the 
        TODO level. See also David's official sites on 
-       <a href="http://grepmail.sf.net">Sourceforge</a> and
+       <a href="http://code.google.com/p/grepmail/">google code</a>
+       (old: <a href="http://grepmail.sf.net">Sourceforge</a>) and
        <a href="http://cpansearch.perl.org/src/DCOPPIT/">CPAN</a>.
        
        <p class=anno>The original code's strictly functional and a pleasure
@@ -43,7 +44,11 @@ it for now (<i>is procmail still being actively maintained at all??</i>)</p>
        Note that for unspecified charset encodings, we've nice conflicts 
        between 8bit LATIN1 umlauts above 0xA0 and UTF8, possibly leading
        to too many character remappings to ae&amp;co (which could be
-       worked-around by also remapping the grep pattern).</p>
+       worked-around by also remapping the grep pattern - if in doubt,
+       add a false hit). As an aside see also Egmont's issue on sf.net
+       about perl's native charset encoding/transcoding capabilities, which
+       could be used to smash the string representations of the parts of an 
+       email to a single specific encoding for the final grep).</p>
 </ul>
 
 
