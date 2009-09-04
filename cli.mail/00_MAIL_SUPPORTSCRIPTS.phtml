@@ -17,13 +17,22 @@ it for now (<i>is procmail still being actively maintained at all??</i>)</p>
 
 
 <ul>
-   <li><b>mygrepmail</b>. The original code's strictly functional and a pleasure
-       to read. Partly because of this I'm still unwilling to fork this one for real.
-       Then again, it's a pity that the classic grepmail doesn't know about MIME at all.
-       So here's a modified interim version that de-mimes anything greppable
-       just before the grep while returing the original email for further processing. 
-       Note that there still are some 'modern times' problems with e.g. encoding mixtures 
-       when using grepmail as part of a pipe.
+   <li><b>mygrepmail</b>. <u>Update 9/09</u>: I'm happy to report spotting
+       5.3034 on CPAN from 8/09. It's only a small diff for one file,
+       but a giant leap for mailkind and this project. Or something like 
+       that :). The inclusion of my MIME/UTF sketch below is still at the 
+       TODO level. The official sites on 
+       <a href="http://grepmail.sf.net">Sourceforge</a> and
+       <a href="http://cpansearch.perl.org/src/DCOPPIT/">CPAN</a>.
+       
+       <p class=anno>The original code's strictly functional and a pleasure
+       to read. Partly because of this I'm still unwilling to fork this one
+       for real. Then again, it's a pity that the classic grepmail doesn't 
+       know about MIME at all. So here's a modified interim version that 
+       de-mimes anything greppable just before the grep while returing the
+       original email for further processing. Note that there still are some 
+       'modern times' problems with e.g. encoding mixtures 
+       when using grepmail as part of a pipe.</p>
 </ul>
 
 
