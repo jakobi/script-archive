@@ -31,13 +31,19 @@ it for now (<i>is procmail still being actively maintained at all??</i>)</p>
        know about MIME at all. So here's a modified interim version as a 
        proof of concept that de-mimes anything greppable just before the grep
        while by default
-       returning the original email for further processing. Note that there 
+       returning the original email for further processing.</p>
+  
+       <p class=anno>Note that there 
        probably still are some 'modern times' problems with e.g. encoding 
        mixtures of body parts and headers (with specified or unspecified!!
-       differing charset encodings) within and between mails. But it should
-       work well enough for UTF8, ascii and latin1 mixes, at least for the
-       common subset plus German umlauts, which should be standardized
-       for the grep as ae, oe, ue, and the like.</p>
+       differing charset encodings) within and between mails: But it should
+       work well enough for grepping against UTF8, ASCII and LATIN1 header/
+       body-part mixes, at least for the common subset plus German umlauts, 
+       which should be standardized for the grep as ae, oe, ue, and the like.
+       Note that for unspecified charset encodings, we've nice conflicts 
+       between 8bit LATIN1 umlauts above 0xA0 and UTF8, possibly leading
+       to too many character remappings to ae&amp;co (which could be
+       worked-around by also remapping the grep pattern).</p>
 </ul>
 
 
