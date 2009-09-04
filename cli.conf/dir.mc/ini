@@ -76,7 +76,7 @@ editor_backup_extension=~
 
 [Layout]
 equal_split=1
-first_panel_size=95
+first_panel_size=102
 message_visible=1
 keybar_visible=1
 xterm_title=1
@@ -88,8 +88,8 @@ permission_mode=0
 filetype_mode=1
 
 [Dirs]
-other_dir=/home/jakobi/Desktop
-current_is_left=0
+other_dir=/home/jakobi/git/github/LINKLAYER/HTML/script-archive-doc
+current_is_left=1
 
 [New Left Panel]
 display=listing
