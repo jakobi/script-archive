@@ -12,8 +12,6 @@
 
 [# invoke content #]
 [- Execute('*') -]
-
-
 [-
     $d=$ENV{PATH_TRANSLATED};
     $d=~s!/?[^/]+$!!;
@@ -22,7 +20,7 @@ warn "d: $d ($ENV{PWD})";
     @f=grep {s/\.phtml/.html/;1} <${d}*.{p,}htm{l,}>;
 warn "F: @f";
     %f=(); foreach(@f){$f{$_}++}; @f=sort keys %f;
-    $f=""; foreach(@f){$f.="* [$_]($_)\n"};
+    $f=""; foreach(@f){$f.="* [$_]\n  ($_)\n"};
     if ($f) {
        $f=<<EOF;
 Use these links for viewing the rendered HTML files in this directory
@@ -35,9 +33,7 @@ warn "f: $f";
     }
 -]
 
-[+ 
-    $f
-+]
+[+ $f +]
 
 See also
 --------
