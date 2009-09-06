@@ -18,7 +18,8 @@ Use these links for viewing the rendered HTML files in this directory
 ---------------------------------------------------------------------
 
 [-
-    warn "$ENV{PATH_TRANSLATED}";
+    $d=$ENV{PATH_TRANSLATED};
+    $d=~s!/?[^/]+$!!;
 -]
 
 [+ 
