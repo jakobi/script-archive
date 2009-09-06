@@ -19,7 +19,7 @@
     $d=~s!/?[^/]+$!!;
     $d.='/' if $d;
 warn "d: $d ($ENV{PWD})";
-    @f=grep {s/\.phtml/.html/;1} <${d}*.(p|)htm(l|)>;
+    @f=grep {s/\.phtml/.html/;1} <${d}*.{p,}htm{l,}>;
 warn "F: @f";
     %f=(); foreach(@f){$f{$_}++}; @f=sort keys %f;
     $f=""; foreach(@f){$f.="* $_\n"};
