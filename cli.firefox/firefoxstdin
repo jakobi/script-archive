@@ -30,7 +30,7 @@ use vars;
 #   retaining their ordering?
 # 
 
-my($runlength,$pat,$o_pat,$o_norun,$o_verbose,$runlength,$urls,@urls);
+my($runlength,$pat,$o_pat,$o_norun,$o_verbose,$runlength,$urls,@urls,@firefoxopt);
 $runlength=40; # max no of urls to pass before waiting for RETURN
 
 # for o_pat: recognize URLs in arbitrary text [also skips GREP lines]
@@ -50,6 +50,7 @@ while(@ARGV){
    do{$runlength=shift, next}     if /^-(p|runlength|pagesize)$/;
    do{$runlength=999, next}       if /^-np$/;
    do{&help; die}                 if /^-?-(h|help)$/;
+   do{push @firefoxopt, $_; next} if /^-(3|sm)$/; # collect and forward to firefox later on
    last                           if /^--$/;
 
    # short cuts: url collections,  bookmark grepping,
@@ -229,7 +230,7 @@ foreach(@urls) {
                                # might reduce number of x communication errors
       print "running "         if $o_verbose;
       print "$_\n"             if $o_norun or $o_verbose;
-      system "firefox", "$_"   if not $o_norun; # which include pinging, remoting and sleeping to avoid probs
+      system "firefox", @firefoxopt, "$_"   if not $o_norun; # which include pinging, remoting and sleeping to avoid probs
    }
 }
 

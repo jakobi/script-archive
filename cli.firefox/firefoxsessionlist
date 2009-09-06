@@ -1,10 +1,18 @@
 #!/usr/bin/perl
 
-# basically create a readable version of xml-ish files like firefox sessionstore,
-# optionally grepping some values within sessionstore files
+# basically create a readable version of xml-ish files like 
+# firefox sessionstore, optionally grepping some values. This is 
+# more of a quick hackish parser testbed for a quick way to 
+# mangle structured files  than a stable and unchanging program.
+# 
+# also useful for things like moving tabs from the default
+# current firefox instance to a -3 3.0 firefox instance, or
+# -sm seamonkey, or whatever you added to the firefox(stdin)? wrapper
+# firefoxsessionlist -tree | grep github | firefoxstdin -3
 
 # 20090213 PJ   0.1  jakobi@acm.org initial version
 # 20090729 PJ   0.2  small fixes for ff3.5
+# 20090906 PJ        fixed default/-list to work with 3.5
 #
 # copyright:  (c) 2009 jakobi@acm.org, placed under GPL v3 or later 
 # archive:    http://jakobi.github.com/script-archive-doc/
@@ -35,18 +43,30 @@ options:
   -grep REGEX    
   -i / -t        # grep: ignore case, include title
   
-  # these try to print only tabs
-  -list          # list or grep urls from sessionstore file (default)
-  -cookies       # generate cookies.txt-style output from sessionstore
-  -tree          # list or grep urls from parsed sessionstore (active tabs only)
+  # these try to print only data from tabs
+  -list          # list or grep urls from sessionstore file 
+                 # (default; fast, but really not properly parsing at all)
+  -cookies       # generate cookies.txt-style output from treeview-parsed sessionstore
+  -tree          # list or grep urls from treeview-parsed sessionstore 
 
   # view sessionstore.js style files (might also prettyprint paranthesed data)
-  -treeview
-  -listview
+  -listview      # no real parsing, but keep track of paren levels
+  -treeview      # proper recursive parsing into an internal data structure
 
 notes:
   - mozilla may take quite a few seconds to update the sessionstore.js file,
     so sleeping is advised.
+  - if it doesn't like the input, also try the -tree/-treeview and
+    the -listview options, as those might still work for your input
+  - I'm looking forward to the PEGs of perl 6 :)
+  - use firefoxsessionlist -tree | grep ... | firefoxstdin -3 
+    to load a subset of active tabs into another browser
+    (for this trick you need 2 browsers that do NOT 'see' each 
+     other with the --remote command, such as firefox 3.0 and 3.5.
+     NOTE that this is implemented by X resources, thus any 3.5
+     firefox on the same X DISPLAY will use the 'first' 3.5 and
+     its profile for all --remote uses. NOTE2: the default for
+     --remote/--no-remote has been switched with 3.5).
 
 EOF
    exit;
@@ -68,8 +88,8 @@ die "no input.\n" if not $contents;
 
 
 $cmd=" list " if not $cmd;
-$grep="(?i)$grep"; # extends beyond '|', but not beyond an enclosing ')'
-$titlegrep=$grep if $titlegrep;
+$grep="(?i)$grep" if $igncase; # extends beyond '|', but not beyond an enclosing ')'
+$titlegrep=$grep  if $titlegrep;
 
 
 # common init for tree/treedump
@@ -214,7 +234,7 @@ sub tab2list {
    my($url,@return);
    local($_)=$contents;
    pos=undef;
-   while(/url:"(\S+?)"/g){
+   while(/url(?:":"|:")(\S+?)"/g){
       $url=$1; 
       next if $grep and $url!~/$grep/o; 
       next if $url{$url}++;
