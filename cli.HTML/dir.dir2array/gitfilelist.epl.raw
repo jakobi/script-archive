@@ -1,6 +1,6 @@
 [# #]
 [! 
-   $nopaddir=$ENV{__EMB_FL_NOPADDIR}; $nopaddir='Compact_pm' if not $nopaddir;
+   $nopaddir=$ENV{__EMB_FL_NOPADDIR}; $nopaddir='Compact_pm|dir\..*' if not $nopaddir;
    $u=$ENV{__EMB_FL_URL};
    $raw=$ENV{__EMB_FL_RAW};
    $tmp=`cd \$__EMB_FL_DIR && find | sort | dir2array.pl`;
@@ -18,7 +18,7 @@ also use native git to access the repository :).<p>
 
 <TABLE>
    [- $escmode=0; -]
-   [+ 0==$row ? "<TR><TH>Date</TH><TH></TH><TH>Size</TH><TH>GIT-DIR</TH><TH>Filename</TH><TH>Description / Section Introduction</TH></TR>\n" : "" +]
+   [+ 0==$row ? "<TR><TH>Date</TH><TH></TH><TH>Size</TH><TH>GIT-DIR</TH><TH>Filename</TH><TH width=50%>Description / Section Introduction</TH></TR>\n" : "" +]
    [- # above does go into row accounting
       # however below we still need the maxrow limit, as
       # the magic stops only on WS-only rows... sigh-squared
@@ -26,13 +26,15 @@ also use native git to access the repository :).<p>
    -]
    [-  
        $maxrow=scalar @$VAR1; $f=$VAR1->[$row]; 
-       $d=$n=$f->{name}; $d=~s!(^|/)[^/]+$!!; $d.="/" if $d ne "";
+       $d=$n=$f->{name}; $d=~s!(^|/)[^/]+/?$!!; $d.="/" if $d ne "";
        $pad=""; 
        if ($oldd ne $d) {
           # vertical padding on change of dirs unless difference is matched by blacklist nopaddir
           ($haystack,$needle)=($oldd,$d); ($haystack,$needle)=($d,$oldd) if length($d)>length($oldd);
           $haystack=~s!\Q$needle\E!!;
-          $pad="style='padding-top:.6em'" if not $haystack=~m!^/?($nopaddir)/?$!; 
+          # $pad="style='padding-top:.6em'" 
+          $pad="style='border-top-style: dotted; border-top-style: 1px;'" 
+             if not $haystack=~m!^/?($nopaddir)/?$!; 
        }
        $oldd=$d;
    -]
@@ -54,7 +56,13 @@ also use native git to access the repository :).<p>
       [$ if ($b) $]
       <TD [+$pad+] class=desc><A HREF="[+ $n +]"><B>--&gt; [+ $f->{desc} +] &lt;--</B></A></TD>
       [$ else $]
+         [$ if ($f->{desc}!~/\S/) $]
+            [- $escmode=0 -]
+      <TD [+$pad+] class=desc>[+ "&nbsp;" +]</TD>
+            [- $escmode=1 -]
+         [$ else $]
       <TD [+$pad+] class=desc>[+ $f->{desc} +]</TD>
+         [$ endif $]
       [$ endif $]
    </TR>
 </TABLE>

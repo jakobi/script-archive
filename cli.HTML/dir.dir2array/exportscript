@@ -1,8 +1,20 @@
 #!/bin/bash
 
 # script to export the 
-#   current directory's SRC HTML/. and REPO*/.
+#   current directory's SRC HTML/. and REPO.*/.
 #   to the parent's     DST HTML/. and REPO*/.
+
+
+# BUGS
+# - phtml generation should be make style by checking
+#   file dates (which is rather messy both when object style
+#   embperl would work, but also with embpexec and the
+#   use of the search path)
+# =>AVOID for now - regenerate/cpio anyway and let
+#   git validate changes instead; we use a forced
+#   cpio pmdu / cp -Lpr anyway (just that git suppresses
+#   non changes and limits the network transmitted changes
+#   to the actual ones. Despite the messed up ctime/...)
 
 
 
@@ -39,9 +51,25 @@
 
 
 
-SRC="$PWD"
-DST="$PWD/.."
+export msg="$(date +%Y%m%d-%H:%M:%S)"
+export  src=~/git/github/LINKLAYER
+export sdoc=$src/HTML/script-archive-doc
+export srep=$src/REPO.script-archive
+export  doc=~/git/github/HTML/script-archive-doc
+export  rep=~/git/github/REPO.script-archive
+export  doc=http://jakobi.github.com
 
+
+if [ "$1" = "-m" -o "$1" = "-msg" -o "$1" = "--msg" ];then
+   shift
+   msg=$msg" - $1"
+   shift
+fi
+
+
+export SRC="$PWD"
+export DST="$PWD/.."
+SKIP3=1
 
 
 [ ! -f "@LINKTREE" ] && exit 20
@@ -58,16 +86,30 @@ find . -type l -xtype l || exit 1
 echo
 echo '# Step 2 - Check SRC for stop words (4LW/German)'
 {
-Grep.pm -H -i -r -e '\bfehler|fehler\b|\bnicht|\b(der|das|ein|(eine|diese|jene)(|r|s))\b' */.; #ENGLISHOK
+Grep.pm -H -i -r -e '\b(donot|no)exporttogithub\b|\bnogithub\b' */.;                           #ENGLISH-OK
+Grep.pm -H -i -r -e '\bfehler|fehler\b|\bnicht|\b(der|das|ein|(eine|diese|jene)(|r|s))\b' */.; #ENGLISH-OK
 } | egrep -v '#ENGLISH-?OK' | grep . && exit 2
 
 
 
-# assumption - we generate the html anyway, thus
-# there shouldn't be locally modified files in 
-# GIT UNLESS from this very step
 echo
-echo '# Step 3a - Generate Html for HTML* to DST/HTML'
+if [ -z "$SKIP3" ]; then
+   echo '# Step 3 -- add previous changes into GIT'
+   for i in HTML* REPO*; do
+      cd "$DST/$i"
+      echo "#   $PWD"
+      git add -A .
+      git commit -m "export0 on $msg"
+      cd "$SRC"
+   done
+else
+   echo "# Step 3 -- skipped"
+fi
+
+
+
+echo
+echo '# Step 4 - Generate Html for HTML* to DST/HTML'
 for i in HTML*; do
    cd "$i"
    echo "# cp -Lpr $i -> $DST/$i/."
@@ -88,11 +130,12 @@ done
 
 
 echo
-echo '# Step 3b - Generate Html for REPO* to DST/HTML/*'
+echo '# Step 5 - Generate Html for REPO* to DST/HTML/*'
 for i in REPO*; do
    cd "$i"
    m="$(echo "$i" | sed -r -e 's/^REPO\.//')"
    echo "# cpio $i -> $DST/HTML/$m-doc/."
+   # there shouldn't be dirs having these end of names...
    find    {*,*/*,*/*/*}{.html,.htm,.phtml,.phtm,.epl,.png,.txt,.css,README} \
            2>/dev/null | \
            cpio -pmdu -L "$DST/HTML/$m-doc/."
@@ -109,23 +152,40 @@ done
 
 
 
-# but also for the repos, there shouldn't be
-# local mods. Anyway, check them in if we find
-# some...
 echo
-echo '# Step 4 -- Prepare GIT DST/REPO'
-for i in REPO*; do
-   cd "$DST/$i"
-   echo "#   $PWD"
-   git add -A .
-   git commit -m "export phase 0 on $(date)"
-   cd "$SRC"
-done
+echo '# Step 6 - Generate missing index.html pointers in the HTML Tree (w/auto-refresh)'
+( cd $DST/HTML; find . -type d | fgrep -v '/.git' | sort -u | while read d; do
+     test -f "$d/index.html" && { grep -i '<!--GENERATED-INDEX-TO-REGENERATE-->' "$d/index.html" >/dev/null || continue ;}
+     (  cd "$d"
+        rm index.html 2>/dev/null
+        perl -e '@files=<*>; @files=grep {not /\.phtml$/ and not /^index\.html$/} @files;
+                 print "<HTML><HEAD><!--GENERATED-INDEX-TO-REGENERATE-->\n";
+                 print qq!<META http-equiv="refresh" content="1;URL=$files[0]">\n! if $#files==0;
+                 print qq!</HEAD><BODY>\n!;
+                 print qq!<A HREF="$ENV{doc}">HOME: $ENV{doc}</A><hr>\n!;
+                 print qq!<h1>Files in this Documentation Directory</h1>\n<ul>\n!;
+                 foreach(@files){print qq!   <li><a href="$_">$_</a>\n!};
+                 print qq!</ul></BODY></HTML>\n!;
+                ' > index.html
+     )    
+  done     
+)
 
 
 
 echo
-echo '# Step 5 -- Copy REPOs to DST/REPO'
+echo '# Step 7 - Generate Google textual link list Sitemap'
+( cd $DST/HTML; find . -type f -name '*.html' | sort -u | \
+     perl -lpe 's!([^A-Za-z0-9/:\-\.])!"%".uc(unpack("H2",$1))!ge; s!^\.!http://jakobi.github.com!' | \
+     cat > sitemap
+     cp -f sitemap script-archive-doc/sitemap 
+     #perl -lpe 's!([^a-z0-9/:\-]|\.(?!html$))!"%".uc(unpack("H2",$1))!ge; s!^\.!http://jakobi.github.com!' | \
+)
+
+
+
+echo
+echo '# Step 8 -- Copy REPOs to DST/REPO'
 for i in REPO*; do
    cd "$i"
    echo "# cp -Lpr $i -> $DST/$i/."
@@ -136,21 +196,60 @@ done
 
 
 echo
-echo '# Step 6 -- Update GIT'
+echo '# Step 9 - Generate markdown README files for REPO.*'
+# these kind of files do display e.g. clickable links in the GIT view
+for i in REPO*; do
+   cd "$i"
+   m="$(echo "$i" | sed -r -e 's/^REPO\.//')"
+   #find *html */*html */*/*html 2>/dev/null | sed 's![^/]*$!!' | while read d; do
+   find */* */*/* -xtype f 2>/dev/null | grep -v -e '\.name$' -e '\.skip$' -e '/README.md$' | \
+      sed 's![^/]*$!!' | grep . | sort -u | while read d; do
+         # auto-generate missing as symlinks to the uplevel README.md
+         # these will be replaced in output tree by the populated versions 
+         # (so any markdown README the earlier cp created is replaced)
+         [ -e README.md -a ! -e "$d/README.md" -a ! -e "$d/README.md.skip" ] && ln -s "$PWD/README.md" "$d/README.md"
+   done
+   for j in README.md */README.md */*/README.md; do
+      k="$j"
+      l="$(dirname "$j")";
+      [ ! -f "$j" ] && continue
+      echo "# embperl $j"
+      export EMBPERL_PATH="$SRC/$i/$l:$SRC/$i";
+      embpexec "$j" > "$DST/REPO.$m/$k"
+   done
+   cd "$SRC"
+done
+
+
+
+if [ "$1" = "-prep" -o "$1" = "--prep" -o "$1" = "-diff" -o "$1" = "--diff" ]; then
+   echo "# you can now check generated html or diff"
+   echo "# the repositories -> finishing early"
+   echo '# $SRC $DST - $src $sdoc $srep - $doc $rep' 
+   echo "# cd \$doc; git diff"
+   echo "# cd \$rep; git diff"
+   echo "# exec shell"
+   exec bash -i
+fi
+
+
+
+echo
+echo '# Step 10 -- Update GIT'
 for i in HTML* REPO*; do
    cd "$DST/$i"
    echo "#   $PWD"
    git add -A .
-   git commit -m "export phase 1 on $(date)"
+   git commit -m "export1 on $msg"
    cd "$SRC"
 done
 
 
 
 echo
-echo  '7. for DST/REPO* git-push'
+echo  '11. for DST/REPO* git-push'
 if [ "$1" = "-commit" -o "$1" = "--commit" ]; then
-   ssh-add -l | grep . || ssh-add
+   ssh-add -l | grep 'The agent has no identities.' && ssh-add
    ssh-add -l
    for i in HTML* REPO*; do
       cd "$DST/$i" && git push origin master; cd "$SRC"

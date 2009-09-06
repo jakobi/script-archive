@@ -1,1 +1,1 @@
-example of embperl use from phtml to github export
+export local tree to github, incl. embperl generation of markdown README.md, static user pages/documentation tree, etc

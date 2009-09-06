@@ -1,0 +1,34 @@
+[# #]
+[- 
+   $escmode=0;
+-]
+
+
+[# invoke content #]
+[- Execute('*') -]
+[-
+    $d=$ENV{PATH_TRANSLATED};
+    $d=~s!/?[^/]+$!!;
+    $d.='/' if $d;
+    @f=grep {s/\.phtml/.html/;1} <${d}*.{p,}htm{l,}>;
+    %f=(); foreach(@f){$f{$_}++}; @f=sort keys %f;
+    $f=""; foreach(@f){$f.="* [$_]\n  (http://jakobi.github.com/script-archive-doc/$_)\n"};
+    if ($f) {
+       $f=<<EOF;
+To view the HTML files
+----------------------
+
+$f
+EOF
+    }
+-]
+
+[+ $f +]
+
+See also
+--------
+
+* [the archive's documentation overview / filelist page]
+  (http://jakobi.github.com/script-archive-doc/
+  "Peter's Script-Archive Overview and Filelist")
+
