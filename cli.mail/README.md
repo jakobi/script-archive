@@ -1,4 +1,4 @@
-Basedir for the script archive
+Basedir for the mail stuff in the script archive
 
 
 See also
