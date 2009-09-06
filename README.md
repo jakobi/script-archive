@@ -2,7 +2,8 @@ Basedir for the script archive
 
 Use these links for viewing the rendered HTML files in this directory
 ---------------------------------------------------------------------
-* TEMPLATE.html
+
+* [TEMPLATE.html](TEMPLATE.html)
 
 
 

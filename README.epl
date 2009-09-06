@@ -22,11 +22,12 @@ warn "d: $d ($ENV{PWD})";
     @f=grep {s/\.phtml/.html/;1} <${d}*.{p,}htm{l,}>;
 warn "F: @f";
     %f=(); foreach(@f){$f{$_}++}; @f=sort keys %f;
-    $f=""; foreach(@f){$f.="* $_\n"};
+    $f=""; foreach(@f){$f.="* [$_]($_)\n"};
     if ($f) {
        $f=<<EOF;
 Use these links for viewing the rendered HTML files in this directory
 ---------------------------------------------------------------------
+
 $f
 
 EOF
