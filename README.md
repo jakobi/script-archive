@@ -1,10 +1,10 @@
 Basedir for the script archive
 
-Use these links for viewing the rendered HTML files in this directory
----------------------------------------------------------------------
+To view the HTML files
+----------------------
 
 * [TEMPLATE.html]
-  (TEMPLATE.html)
+  (http://jakobi.github.com/script-archive-doc/TEMPLATE.html)
 
 
 See also

@@ -18,11 +18,11 @@
     $d.='/' if $d;
     @f=grep {s/\.phtml/.html/;1} <${d}*.{p,}htm{l,}>;
     %f=(); foreach(@f){$f{$_}++}; @f=sort keys %f;
-    $f=""; foreach(@f){$f.="* [$_]\n  ($_)\n"};
+    $f=""; foreach(@f){$f.="* [$_]\n  (http://jakobi.github.com/script-archive-doc/$_)\n"};
     if ($f) {
        $f=<<EOF;
-Use these links for viewing the rendered HTML files in this directory
----------------------------------------------------------------------
+To view the HTML files
+----------------------
 
 $f
 EOF
