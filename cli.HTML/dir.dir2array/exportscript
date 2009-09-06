@@ -86,8 +86,8 @@ find . -type l -xtype l || exit 1
 echo
 echo '# Step 2 - Check SRC for stop words (4LW/German)'
 {
-Grep.pm -H -i -r -e '\b(donot|no)exporttogithub\b|\bnogithub\b' */.;                           #ENGLISH-OK
-Grep.pm -H -i -r -e '\bfehler|fehler\b|\bnicht|\b(der|das|ein|(eine|diese|jene)(|r|s))\b' */.; #ENGLISH-OK
+Grep.pm -H -i -r -e '\b(donot|no)exporttogithub\b|\bnogithub\b' */.;                             #ENGLISH-OK
+Grep.pm -H -i -r -e '\bfehler|fehler\b|\bnicht|\b(der|das|ein|(eine|diese|jene)(|r|s))\b' */.;   #ENGLISH-OK
 } | egrep -v '#ENGLISH-?OK' | grep . && exit 2
 
 
@@ -113,14 +113,15 @@ echo '# Step 4 - Generate Html for HTML* to DST/HTML'
 for i in HTML*; do
    cd "$i"
    echo "# cp -Lpr $i -> $DST/$i/."
-   # cp -Lpr . "$DST/$i/."
-   # find . | egrep -v -e '\.epl$|\.phtm|\.phtml' |\
-   find . | cpio -pmdu -L "$DST/HTML/$m/."
+   find "$DST/$i/." -name README.md  -exec rm {} \;
+   find "$DST/$i/." -name README.md~  -exec rm {} \;
+   find "$DST/$i/." -name index.html -exec rm {} \;
+   find . | cpio -pmdu -L "$DST/$i/."
    for j in *.phtml */*.phtml */*/*.phtml; do
       k="$(echo "$j" | sed -r -e 's/\.p(html?)$/.\1/')"
       l="$(dirname "$j")";
       [ ! -f "$j" ] && continue
-      echo "# embperl $j -> $DST/$i/$k"
+      echo "# embperl DOC $j"
       export EMBPERL_PATH="$SRC/$i/$l:$SRC/$i";
       EMBPERL_OBJECT_BASE="$SRC/$i/base.epl" embpexec "$j" > "$DST/$i/$k"
    done
@@ -143,7 +144,7 @@ for i in REPO*; do
       k="$(echo "$j" | sed -r -e 's/\.p(html?)$/.\1/')"
       l="$(dirname "$j")";
       [ ! -f "$j" ] && continue
-      echo "# embperl $j -> $DST/HTML/$m-doc/$k"
+      echo "# embperl REPO2DOC $j"
       export EMBPERL_PATH="$SRC/$i/$l:$SRC/$i:$SRC/HTML/$m-doc/$l:$SRC/HTML/$m-doc:$SRC/HTML";
       embpexec "$j" > "$DST/HTML/$m-doc/$k"
    done
@@ -154,22 +155,26 @@ done
 
 echo
 echo '# Step 6 - Generate missing index.html pointers in the HTML Tree (w/auto-refresh)'
-( cd $DST/HTML; find . -type d | fgrep -v '/.git' | sort -u | while read d; do
-     test -f "$d/index.html" && { grep -i '<!--GENERATED-INDEX-TO-REGENERATE-->' "$d/index.html" >/dev/null || continue ;}
-     (  cd "$d"
-        rm index.html 2>/dev/null
-        perl -e '@files=<*>; @files=grep {not /\.phtml$/ and not /^index\.html$/} @files;
-                 print "<HTML><HEAD><!--GENERATED-INDEX-TO-REGENERATE-->\n";
-                 print qq!<META http-equiv="refresh" content="1;URL=$files[0]">\n! if $#files==0;
-                 print qq!</HEAD><BODY>\n!;
-                 print qq!<A HREF="$ENV{doc}">HOME: $ENV{doc}</A><hr>\n!;
-                 print qq!<h1>Files in this Documentation Directory</h1>\n<ul>\n!;
-                 foreach(@files){print qq!   <li><a href="$_">$_</a>\n!};
-                 print qq!</ul></BODY></HTML>\n!;
-                ' > index.html
-     )    
-  done     
-)
+for i in $DST/HTML*; do
+   cd "$i"
+   find . -type d | fgrep -v '/.git' | sort -u | while read d; do
+      test -f "$d/index.html" && { grep -i '<!--GENERATED-INDEX-TO-REGENERATE-->' "$d/index.html" >/dev/null || continue ;}
+      (  cd "$d"
+         rm index.html 2>/dev/null
+         perl -e '@files=<*>; @files=grep {not /\.phtml$/ and not /^index\.html$/} @files;
+                  print "<HTML><HEAD><!--GENERATED-INDEX-TO-REGENERATE-->\n";
+                  print qq!<META http-equiv="refresh" content="2;URL=$files[0]">\n! if $#files==0;
+                  print qq!</HEAD><BODY>\n!;
+                  print qq!<A HREF="$ENV{doc}">HOME: $ENV{doc}</A><hr>\n!;
+                  print qq!<h1>Files in this Documentation Directory</h1>\n<ul>\n!;
+                  print qq!<p>(you will be forwarded to the only entry in 2 seconds)</p>\n! if $#files==0;
+                  foreach(@files){print qq!   <li><a href="$_">$_</a>\n!};
+                  print qq!</ul></BODY></HTML>\n!;
+                 ' > index.html
+      )    
+   done     
+   cd "$SRC"
+done
 
 
 
@@ -196,26 +201,42 @@ done
 
 
 echo
-echo '# Step 9 - Generate markdown README files for REPO.*'
+echo '# Step 9 - Generate markdown README files for the GITVIEW'
 # these kind of files do display e.g. clickable links in the GIT view
 for i in REPO*; do
-   cd "$i"
-   m="$(echo "$i" | sed -r -e 's/^REPO\.//')"
-   #find *html */*html */*/*html 2>/dev/null | sed 's![^/]*$!!' | while read d; do
+   cd "$i" || continue
    find */* */*/* -xtype f 2>/dev/null | grep -v -e '\.name$' -e '\.skip$' -e '/README.md$' | \
-      sed 's![^/]*$!!' | grep . | sort -u | while read d; do
-         # auto-generate missing as symlinks to the uplevel README.md
-         # these will be replaced in output tree by the populated versions 
-         # (so any markdown README the earlier cp created is replaced)
-         [ -e README.md -a ! -e "$d/README.md" -a ! -e "$d/README.md.skip" ] && ln -s "$PWD/README.md" "$d/README.md"
+   sed 's![^/]*$!!' | grep . | sort -u | while read d; do
+      [ -e README.md -a ! -e "$d/README.md" -a ! -e "$d/README.md.skip" ] && \
+      ln -s "$PWD/README.md" "$d/README.md" && \
+      touch "$d/README.md.skip"
    done
    for j in README.md */README.md */*/README.md; do
       k="$j"
       l="$(dirname "$j")";
       [ ! -f "$j" ] && continue
-      echo "# embperl $j"
+      echo "# embperl MD REPO $j"
       export EMBPERL_PATH="$SRC/$i/$l:$SRC/$i";
-      embpexec "$j" > "$DST/REPO.$m/$k"
+      embpexec "$j" > "$DST/$i/$k"
+   done
+   cd "$SRC"
+done
+
+for i in $DST/HTML*; do
+   cd "$i" || continue
+   find */* */*/* -xtype f 2>/dev/null | grep -v -e '\.name$' -e '\.skip$' -e '/README.md$' | \
+   sed 's![^/]*$!!' | grep . | sort -u | while read d; do
+      [ -e README.md -a ! -e "$d/README.md" -a ! -e "$d/README.md.skip" ] && \
+      cp "$PWD/README.md" "$d/README.md"
+   done
+   for j in README.md */README.md */*/README.md; do
+      k="$j"
+      l="$(dirname "$j")";
+      [ ! -f "$j" ] && continue
+      echo "# embperl MD DOC $j"
+      export EMBPERL_PATH="$i:$i/$l";
+      embpexec "$j" > "$j~"; rm "$j"; 
+      mv "$j~" "$j"
    done
    cd "$SRC"
 done
