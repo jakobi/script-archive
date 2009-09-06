@@ -1,5 +1,3 @@
-Basedir for the script archive
-
 To view the HTML files
 ----------------------
 
