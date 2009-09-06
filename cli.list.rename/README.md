@@ -1,8 +1,8 @@
 To view the HTML files
 ----------------------
 
-* [cli.mail/00_MAIL_SUPPORTSCRIPTS.html]
-  (http://jakobi.github.com/script-archive-doc/cli.mail/00_MAIL_SUPPORTSCRIPTS.html)
+* [cli.list.rename/00_MASS-RENAME.html]
+  (http://jakobi.github.com/script-archive-doc/cli.list.rename/00_MASS-RENAME.html)
 
 
 See also

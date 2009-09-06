@@ -1,8 +1,8 @@
 To view the HTML files
 ----------------------
 
-* [cli.mail/00_MAIL_SUPPORTSCRIPTS.html]
-  (http://jakobi.github.com/script-archive-doc/cli.mail/00_MAIL_SUPPORTSCRIPTS.html)
+* [cli.conf/00_EXAMPLE_CONFIGURATIONS.html]
+  (http://jakobi.github.com/script-archive-doc/cli.conf/00_EXAMPLE_CONFIGURATIONS.html)
 
 
 See also
