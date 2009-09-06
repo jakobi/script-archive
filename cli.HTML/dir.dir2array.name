@@ -1,1 +1,2 @@
-dir2array -- the modern embperl template approach the replaces dir2html.pl (actually a copy from 09-22-09 of the code that creates this very github site cum filelist)
+dir2array -- a more modern embperl template approach to replace dir2html.pl 
+(also includes as example the code to export/generate the github sites as of 09-06-09)
