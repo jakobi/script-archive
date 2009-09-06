@@ -1,12 +1,13 @@
-[*
-   $escmode=0;
-   $ENV{__EMB_EXTRATITLE}="";
-   $ENV{__EMB_COUNT}++; 
-   if (1==$ENV{__EMB_COUNT}) {
-      Execute('README.epl');
-   } else {
-*]
-
 Basedir for script archive
 
-[*}*][# MUST BE AT EOF! #]
+Use these links for viewing the rendered HTML files in this directory
+---------------------------------------------------------------------
+
+==README.md==
+See also
+--------
+
+* [the archive's documentation / filelist page]
+  (http://jakobi.github.com/script-archive-doc/
+  "Peter's Script-Archive Overview and Filelist")
+
