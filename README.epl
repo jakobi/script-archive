@@ -14,16 +14,24 @@
 [- Execute('*') -]
 
 
-Use these links for viewing the rendered HTML files in this directory
----------------------------------------------------------------------
-
 [-
     $d=$ENV{PATH_TRANSLATED};
     $d=~s!/?[^/]+$!!;
+    @f=grep {s/\.phtml/.html/} <$d/*.(p|)htm(l|)>;
+    %f=(); foreach(@f){$f{$_}++}; @f=sort keys %f;
+    $f=""; foreach(@f){$f.="* $_\n"};
+    if ($f) {
+       $f=<<EOF
+Use these links for viewing the rendered HTML files in this directory
+---------------------------------------------------------------------
+$f
+
+EOF
+    }
 -]
 
 [+ 
-   "==$ENV{PATH_TRANSLATED}=="
+    $f
 +]
 
 See also
