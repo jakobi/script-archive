@@ -17,7 +17,7 @@
 [-
     $d=$ENV{PATH_TRANSLATED};
     $d=~s!/?[^/]+$!!;
-    $d.='/';
+    $d.='/' if $d;
 warn "d: $d";
     @f=grep {s/\.phtml/.html/} <${d}*.(p|)htm(l|)>;
 warn "F: @f";
