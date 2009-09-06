@@ -38,7 +38,7 @@ file: while(<>) {
       $namefile="$_.name" if not -e $namefile;
    }
    #                                  # skip if in a skipped dir
-   for my $d (sort keys %leafdir) { next file if m!^\Q$d\E/.*?/!};
+   for my $d (sort keys %leafdir) { next file if m!^\Q$d\E/.+?!};
    for my $d (sort keys %skipdir) { next file if m!^\Q$d\E/!};
    next if not -r $_;                 # skip on bad perm
    next if -e "$_.skip";              # skip files
