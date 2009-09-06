@@ -1,0 +1,29 @@
+[# #]
+[- 
+   $s=$ENV{__EMB_SECTION}; 
+   if (not $s) {
+      $s="Peter's Script-Archive" if $ENV{PATH_TRANSLATED}=~/script-archive(-doc)?/;
+      $s="Peter's Homepage" if not $s;
+   }
+   $t=$ENV{__EMB_EXTRATITLE}; $t = $t ? " - $t" : ""; 
+-]
+
+
+[# invoke content #]
+[- Execute('*') -]
+
+
+Rendered links for all phtml and html files in the directory
+------------------------------------------------------------
+
+[+ 
+   "$ENV{PATH_TRANSLATED}"
++]
+
+See also
+--------
+
+* [the archive's documentation / filelist page]
+  (http://jakobi.github.com/script-archive-doc/
+  "Peter's Script-Archive Overview and Filelist")
+

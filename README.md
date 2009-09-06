@@ -1,11 +1,11 @@
-Rendered links for all phtml and html files in the directory
-------------------------------------------------------------
+[*
+   $ENV{__EMB_EXTRATITLE}="TEMPLATE";
+   $ENV{__EMB_COUNT}++; 
+   if (1==$ENV{__EMB_COUNT}) {
+      Execute('README.epl');
+   } else {
+*]
 
-See also
---------
+Basedir for script archive
 
-* [the archive's documentation / filelist page]
-  (http://jakobi.github.com/script-archive-doc/
-  "Peter's Script-Archive Overview and Filelist")
-
-
+[*}*][# MUST BE AT EOF! #]
