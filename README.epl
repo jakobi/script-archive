@@ -6,6 +6,7 @@
       $s="Peter's Homepage" if not $s;
    }
    $t=$ENV{__EMB_EXTRATITLE}; $t = $t ? " - $t" : ""; 
+   $escmode=0;
 -]
 
 
