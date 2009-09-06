@@ -1,5 +1,5 @@
-To view the HTML files
-----------------------
+To view the rendered HTML
+-------------------------
 
 * [cli.various/00_VARIOUS.html]
   (http://jakobi.github.com/script-archive-doc/cli.various/00_VARIOUS.html)

@@ -1,5 +1,5 @@
-To view the HTML files
-----------------------
+To view the rendered HTML
+-------------------------
 
 * [cli.conf/00_EXAMPLE_CONFIGURATIONS.html]
   (http://jakobi.github.com/script-archive-doc/cli.conf/00_EXAMPLE_CONFIGURATIONS.html)

@@ -1,5 +1,5 @@
-To view the HTML files
-----------------------
+To view the rendered HTML
+-------------------------
 
 * [cli.list.rename/00_MASS-RENAME.html]
   (http://jakobi.github.com/script-archive-doc/cli.list.rename/00_MASS-RENAME.html)

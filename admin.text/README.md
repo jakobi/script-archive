@@ -1,5 +1,5 @@
-To view the HTML files
-----------------------
+To view the rendered HTML
+-------------------------
 
 * [admin.text/00_ADMIN_TEXT.html]
   (http://jakobi.github.com/script-archive-doc/admin.text/00_ADMIN_TEXT.html)

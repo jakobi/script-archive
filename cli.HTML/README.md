@@ -1,5 +1,5 @@
-To view the HTML files
-----------------------
+To view the rendered HTML
+-------------------------
 
 * [cli.HTML/00_HTML-PROCESSING.html]
   (http://jakobi.github.com/script-archive-doc/cli.HTML/00_HTML-PROCESSING.html)

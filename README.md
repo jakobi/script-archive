@@ -1,5 +1,5 @@
-To view the HTML files
-----------------------
+To view the rendered HTML
+-------------------------
 
 * [TEMPLATE.html]
   (http://jakobi.github.com/script-archive-doc/TEMPLATE.html)

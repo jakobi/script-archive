@@ -1,5 +1,5 @@
-To view the HTML files
-----------------------
+To view the rendered HTML
+-------------------------
 
 * [cli.firefox/00_FIREFOX.html]
   (http://jakobi.github.com/script-archive-doc/cli.firefox/00_FIREFOX.html)

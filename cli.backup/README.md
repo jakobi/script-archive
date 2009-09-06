@@ -1,5 +1,5 @@
-To view the HTML files
-----------------------
+To view the rendered HTML
+-------------------------
 
 * [cli.backup/00_BACKUP.html]
   (http://jakobi.github.com/script-archive-doc/cli.backup/00_BACKUP.html)

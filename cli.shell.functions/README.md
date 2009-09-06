@@ -1,5 +1,5 @@
-To view the HTML files
-----------------------
+To view the rendered HTML
+-------------------------
 
 * [cli.shell.functions/00_SHELL_SETUP.html]
   (http://jakobi.github.com/script-archive-doc/cli.shell.functions/00_SHELL_SETUP.html)
