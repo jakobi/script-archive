@@ -10,7 +10,7 @@ To view the HTML files
 See also
 --------
 
-* [the archive's documentation / filelist page]
+* [the archive's documentation overview / filelist page]
   (http://jakobi.github.com/script-archive-doc/
   "Peter's Script-Archive Overview and Filelist")
 
