@@ -16,13 +16,17 @@ pipeline 'line'-based text processing.</p>
 
 
 <ul>
-   <li><B>cat0</B> converts from and to \0-terminated lines. Additional wrappers 
-      implementing support for this format: nl0. The GNU tools, grep, sort, 
-      xargs already support this format, thus I've not yet needed/created a
-      sort0; and xargs0 is still just a glorified exec to reduce typos. 
-      As for grep, I'd prefer Grep.pm -0 below.
+   <li><B>cat0</B> converts from and to \0-terminated lines. Depending on
+      invocation it's either a glorified but faster to type
+      <tt>perl -ne 'chomp; print "$_\0"'</tt> or a <tt>perl -0ne 's/\0\z//; print "$_\n"'</tt>.
+      The GNU tools grep [-z|-Z], sort -z, xargs -0 already provide support. nl0 
+      reimplements a primitive nl with support, and xargs0 merely
+      exists to allow faster typing of <tt>...| cat0|xargs0</tt>: This allows
+      me to forget about IFS, quoting and whitespace in filenames and still have a
+      well-behaved xargs doing the 'right thing' (provided you don't insist 
+      on using  file names with embedded '\n').
    <li><B>cat0par</B> converts paragraphs into \0 lines and also allows for 
-      arbitrary regex-based splitting. An overgrep perl --0ne/perl -0777ne.
+      arbitrary regex-based splitting. An overgrown <tt>perl --0ne/perl -0777ne</tt>.
    <li><B>Grep.pm</B> is a fork of tcgrep, which nowadays has learned about context,
        matching from start or end of file (line count or byte count), size limits,
        and highlighting. It extends matching to boolean expressions structuring 
