@@ -17,8 +17,8 @@
 [-
     $d=$ENV{PATH_TRANSLATED};
     $d=~s!/?[^/]+$!!;
-warn "$d";
-    @f=grep {s/\.phtml/.html/} <$d/*.(p|)htm(l|)>;
+    $d.='/';
+    @f=grep {s/\.phtml/.html/} <${d}*.(p|)htm(l|)>;
 warn "@f";
     %f=(); foreach(@f){$f{$_}++}; @f=sort keys %f;
     $f=""; foreach(@f){$f.="* $_\n"};
