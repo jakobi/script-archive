@@ -16,9 +16,7 @@
     $d=$ENV{PATH_TRANSLATED};
     $d=~s!/?[^/]+$!!;
     $d.='/' if $d;
-warn "d: $d ($ENV{PWD})";
     @f=grep {s/\.phtml/.html/;1} <${d}*.{p,}htm{l,}>;
-warn "F: @f";
     %f=(); foreach(@f){$f{$_}++}; @f=sort keys %f;
     $f=""; foreach(@f){$f.="* [$_]\n  ($_)\n"};
     if ($f) {
@@ -27,9 +25,7 @@ Use these links for viewing the rendered HTML files in this directory
 ---------------------------------------------------------------------
 
 $f
-
 EOF
-warn "f: $f";
     }
 -]
 
