@@ -20,6 +20,25 @@ while  editing  and  changing whole groups of files, use  emv  instead
 (when  using  vim, do read up on g//p, sort, regex and visual  blocks;
 emv thrives and wilts with the capability of the editor invoked).</P>
 
+<p>For  an  interesting  German article on the  gestation  of  Torsten
+Scheck's  original emv shell version (starting indeed with the initial
+pre-emv  recipe of <tt>ls ...; paste -d ...; source ...</tt>), see  <a
+href="http://www.pro-linux.de/berichte/appfokus/emv/emv.html">his
+Pro-Linux          article         from         2006.</a>          (<a
+href="http://translate.google.com/translate?tl=en&sl=de&u=http%3A%2F%2Fwww.pro-linux.de%2Fberichte%2Fappfokus%2Femv%2Femv.html">Google's
+quite  readable attempt at machine translation</a>). The perl  version
+should  be  strictly a superset of the 1.95 shell version, so  all  of
+Torsten's  points are still valid, with the sole exception that during
+editing  you need to allow for the line number column, thus increasing
+emv's  dependency on a suitably powerful editor. Torsten also includes
+an  overview  of other options including native shell, perl's  prename
+and  mmv.  The  only  additions I can think  of  would  be  bash/ksh93
+variable  content  editing <tt>${VAR##...}</tt>, which  increases  the
+power  of  plain  shell renames (upto  including  regular  expressions
+without  requiring a single external program other than a final mv per
+rename;  in  bash you may need to turn regular expression  support  on
+with <tt>shopt -s extglob</tt>) and on the GUI side e.g. krename.</p>
+
 <p>See also GREP.xchange, which is somewhat similar:</p>
 <ul>
    <LI>file list -&gt; grep output

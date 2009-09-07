@@ -4,6 +4,8 @@
 
 # fork/rewrite from the shell version of emv v1.95 20060928
 # [v1.95 2006-02-17 torsten.scheck@gmx.de, www.i0i0.de/toolchest/emv]
+# [http://www.pro-linux.de/berichte/appfokus/emv/emv.html, English version:
+#  http://translate.google.com/translate?tl=en&sl=de&u=http%3A%2F%2Fwww.pro-linux.de%2Fberichte%2Fappfokus%2Femv%2Femv.html]
 
 # last changes:
 # 2007XXXX PJ       jakobi@acm.org changed to include line numbers in the editor,
