@@ -33,11 +33,9 @@ editing  you need to allow for the line number column, thus increasing
 emv's  dependency on a suitably powerful editor. Torsten also includes
 an  overview  of other options including native shell, perl's  prename
 and  mmv.  The  only  additions I can think  of  would  be  bash/ksh93
-variable  content  editing <tt>${VAR##...}</tt>, which  increases  the
-power  of  plain  shell renames (upto  including  regular  expressions
-without  requiring a single external program other than a final mv per
-rename;  in  bash you may need to turn regular expression  support  on
-with <tt>shopt -s extglob</tt>) and on the GUI side e.g. krename.</p>
+variable  content editing <tt>${VAR##...}</tt> (bash: use <tt>shopt -s
+extglob</tt>  to  turn on regex support in globs) and on the GUI  side
+some of the less restricting/less-crippled tools e.g. krename.</p>
 
 <p>See also GREP.xchange, which is somewhat similar:</p>
 <ul>
