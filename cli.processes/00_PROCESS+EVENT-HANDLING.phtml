@@ -45,7 +45,9 @@ events.</p>
        timelimit specification allows using a command such as waitcond.
    <li><b>zap</b> (perl) has come a long way from the its old incarnation in the camel book. 
        Nowadays it lists, nices or kills processes or process trees 
-       matching a regex with or without user interaction.
+       matching a regex with or without user interaction. Includes ionice support 
+       and also tries to cpulimit for higher nice values (if a cpulimit or ionice
+       command is available and zap's nice-personality is active).
 </ul>
 
 

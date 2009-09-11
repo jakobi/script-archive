@@ -13,8 +13,9 @@ eval 'exec perl -Sx $0 ${1:+"$@"}'
 # 02.09.09 pj         added non-zero rc for -l -y, --nl anchoring,
 #                     -u + more intelligent PID/PPID/USER/UID detection
 #                     (-^ --> --nl: using explicit \\n instead of mangling ^)
+# 11.09.09 pj         added cpulimit for higher nice values
 # (c) perl artistic licence
-my $version="0.5.2";
+my $version="0.5.3";
 
 
 #========================================================= Variables 1
@@ -75,12 +76,16 @@ ACTION <-  NAME CONTAINS    -or-    SWITCHES          DEFAULT  / NOTES
 
 So  to renice processes, invoke zap by using a symlink like 'prenice'.
 NICE  goes from +1 to +19, and you're unable to reduce a process  NICE
-value  (root: -19 to +19, anything goes). For nice <1 and >7, zap also
-tries  to  run  ionice  if available to set high/low  values  for  the
-process  [linux,  requires  >2.6.13 and CFQ IO  scheduler].  For  nice
-values > 12, ionice c3 [idle] is used instead of class 2 [best effort,
-with  ionice values of 0 or 7]. To interactively select processes  and
-print their list of PIDs, use a symlink like plist.
+value  (root:  -19  to +19, anything goes).  To  interactively  select
+processes and print their list of PIDs, use a symlink like plist.
+
+For  nice <1 and >7, zap also tries to run ionice if available to  set
+high/low  values  for  the process. For nice values >  12,  ionice  c3
+[idle]  is used instead of class 2 [best effort, with ionice values of
+0  or 7]. For nice > 9, zap attempts to background cpulimit -l 20, for
+>12,  cpulimit -l 5. To undo an ionice, rerun with a nice value of  0;
+to selectively end cpulimit, run zap 'cpulimit -z -l'.
+
 
 Zap was invoked as "$me" with personality "$action" 
 and patterns: >>$pattern<<.
@@ -201,7 +206,10 @@ $uididx =              1-1;
 $pididx = $BSD ? 3-1 : 2-1;
 $ppididx= $BSD ? 4-1 : 3-1; # on BSD, this may go against ps -alx instead
 
-chomp($ionice=`which ionice 2>/dev/null`);
+if ($is_nice) {
+   chomp($ionice=`which ionice 2>/dev/null`);
+   chomp($cpulimit=`which cpulimit 2>/dev/null`);
+}
 
 
 
@@ -347,9 +355,12 @@ foreach $cand (@PS) {
 
 
 &cleanup2;
-print STDERR "selected pids are:\n" if @selected_pids and (not $yes or $is_list);
+print STDERR "# you might wish to run zap cpulimit if you previously\n# used zap with nicevalues of 10 or higher\n"
+   if $is_nice and $cpulimitreminder;
+print STDERR "# selected pids are:\n" if @selected_pids and (not $yes or $is_list);
 @set=(); foreach(sort {$a<=>$b} @selected_pids) { next if $last==$_; push @set, $_; $last=$_ }; # sort -u -n
 @selected_pids ? print join(" ", @set), "\n" : print "\n";
+
 
 exit 1 if $yes and $is_list and not @selected_pids;
 exit 0;
@@ -389,6 +400,16 @@ sub action {
             system("$ionice -c2 -n7 -p $_") foreach (@_);  # best effort low
          } elsif ($nice<1) {
             system("$ionice -c2 -n0 -p $_") foreach (@_);  # best effort hi
+         } 
+     }
+      if (-x $cpulimit) { # some ionice actions may require root privs?
+         if      ($nice>12) {
+            system("nohup $cpulimit -z -l 5  -p $_ </dev/null >/dev/null 2>&1 &")     foreach (@_);
+         } elsif ($nice>9) {
+            system("nohup $cpulimit -z -l 20 -p $_ </dev/null >/dev/null 2>&1 &") foreach (@_);
+         } elsif ($nice<1) {
+            $cpulimitreminder=1;
+            # way too slow :) -- system("zap --nl -y '\\n$cpulimit -z -l \d+ -p $_$'") foreach (@_);
          } 
      }
    } elsif ($is_kill and $sig) {
