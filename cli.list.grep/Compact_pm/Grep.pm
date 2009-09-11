@@ -11,10 +11,11 @@
 #                    (retaining package vars to allow for simple user-provided
 #                    evals (no $self->... on the command line))
 # 12.08.09 PJ        allow context mode to "> "-flag matching records, --show-files
+# 08.09.09 PJ        added GNUGrep aliases for -H: -color.*/--colour.*/...
 
 # (c) 2007-2009 PJ, placed under GPL v3
 # archive:   http://jakobi.github.com/script-archive-doc/
-my $version="0.4";
+my $version="0.4.1";
 
 # Bugs:
 # - utf?
@@ -196,6 +197,7 @@ sub init {
            lineoffset=>0,
            show1=>0,
            shown=>0,
+           H=>0,
           );
 
     %Compress = (                 # file extensions and program names for uncompressing
@@ -336,7 +338,7 @@ Options:
            use -C 0   to print separators with 0 context lines
            use -C 00  to also add a line end after file:line:
            if negative, flag matches (similar to diff -u)
-  -H       highlight matches 
+  -H       highlight matches (also --colou?r.*)
   -h       hide filenames 
   -l       just list matching filenames
   -n       include record numbers (records are lines by default)
@@ -596,6 +598,7 @@ sub parse_args {
        /^-?-examples?$/         and do { &examples; mydie("\n")};
        /^-?-or$/                and do { $opt{implicit_and}="or"; next}; 
        /^-?-binary$/            and do { $opt{binary}=1; next}; 
+       /^-H$|^-?-colou?r(=.*)?$/ and do { $opt{H}=1; next}; 
        /^-?-count$/             and do { $opt{count}=1; next}; 
        /^-?-count[-_]?sum$/     and do { $opt{countsum}=1; next}; 
        /^-?-show[-_]?files?$/   and do { $opt{mult}=1; next}; 
@@ -645,7 +648,7 @@ sub parse_args {
     # pass2 - getopts
     my($optstring,$zeros,$empties,$undefs,@opt);
     $optstring = '012AacFHhilnopqRrstuVvwxC:f:M:N:P:';
-    $zeros     = '012AacHhilnopqRrstuVvwxbf';
+    $zeros     = '012AachilnopqRrstuVvwxbf';
     $empties   = 'FpfMN';            
     $undefs    = 'CP';
     @opt{ split //, $zeros   } = ( 0 )     x length($zeros);

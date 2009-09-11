@@ -81,6 +81,11 @@ perl -i.bak -pe 'BEGIN{system "stty cbreak";$|=1;undef $/;warn "press y to run s
                  ' "${A[@]}"
 !}
 #  grep -l -i compact *.c | while read l;do a[i]="$l";i=i+1;done # ksh 
+#  NOTES: sed changed to have the same behaviour as perl wrt symlinks/hardlinks 
+#         (but AFAIR there's now a --follow-symlinks option(sp?), unless
+#          distros cook their own patches)
+#         with vim something corresponding would be e.g. 
+#            :set backupcopy=auto,breakhardlink
 
 
 
