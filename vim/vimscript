@@ -173,7 +173,9 @@ Intrinsic VIMISSUES:
   - as long as vim doesn't gain proper support to be run headless in 
     a subshell, we've nonsensical screen flashing and need to run in a
     tty. This can be somewhat reduced, but NOT eliminated. Use
-    pure perl instead for proper stream editing. 
+    pure perl instead for proper stream editing.  [Update: much to
+    my surprise, it DID run in a cronjob inspite the lack of a tty,
+    so vim's screen flashing seems to be optional]
   
 EOF
 }

@@ -123,7 +123,8 @@ echo "#START  $f -no-remote ${1:+$@}"
       if _ping $f || { _sleep 2; _ping $f ;} ; then # or use mozilla remote?
          # restart the command in case of some strange async X problem 
 echo "#TRY    $f --sync -noraise -remote 'openURL($1,new-tab)'"
-         $f --sync -noraise -remote "openURL($1,new-tab)" ||\
+         # and another thank-you to NVIDIA
+         $f --sync -noraise -remote "openURL($1,new-tab)" 2> >(grep -v 'Xlib:  extension "RANDR" missing on display') ||\
          { _sleep 2;_ping $f && $f --sync -noraise -remote "openURL($1,new-tab)" ;}||\
          echo "#FAILED"
          _sleep 1
@@ -165,10 +166,15 @@ function _ping {
    i=10; 
    [ "$pingcnt" -eq "0" ] && i=20 # allow longer startup time?
    let pingcnt=pingcnt+1
-   while ! { $1 --sync -remote "ping()" && $1 --sync -remote "ping()"; } ; do
+   while ! { _ping2 "$1"  && _ping2 "$1" ; } ; do
       sleep 1; let i=i-1
       [ "$i" = "0" ] && echo "cannot ping $1 instance" && exit 1;
    done
+}
+function _ping2 {
+   # gee thanx, for nice and uptodate regular driver updates,  NVIDIA. NOT.
+                                                # set -o pipefail
+   "$1" --sync -remote "ping()" >/dev/null 2>&1 # 2>&1 | grep -v 'Xlib: *extension "RANDR" missing'
 }
 
 function _decode {
