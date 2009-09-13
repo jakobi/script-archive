@@ -6,9 +6,11 @@
 # 20071228 PJ added netidle, diskidle, cpuidle 
 # 20090722 PJ 
 # 20090824 PJ changed iostat, modified grep for 'command|', switched to strict
+# 20090913 PJ fixed my($_) for older perls
+#
 # copyright:  (c)2007-2009, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
-my $version="0.2.1";
+my $version="0.2.2";
 
 use warnings;
 use vars;
@@ -132,7 +134,9 @@ exit( $rc ? 0 : 1 ); # switch to shell return code semantics
 #-----------------------------------------------------------------------------------------------------------
 
 sub newfile { # compile time: side effects: $_, $and, @file
-   my ($_,$flags)=@_;
+   local($_);
+   my ($flags);
+   ($_,$flags)=@_;
    # allow user to omit the /dev/ prefix when just pasting
    # a tty name from say top or ps -edalf
    $_="/dev/$_" if /^pts\/\d+$/ and $flags=~/\bdev\b/ and not -e $_;
@@ -410,6 +414,11 @@ Notes:
   - fwait is a similar tool to waitcond with a somewhat simpler 
     syntax. It implements a subset of waitcond, but lacks the idle*
     functionality.
+  - use something like script or pty3.p as a man-in-the-middle to allow 
+    greping in a logfile of pty output for situations when normal 
+    redirection or tee fail (xterm _might_ also be able to turn on logging;
+    screen offers logging (log on; logfile FILE); screen can also be asked
+    remotely to 'hardcopy' a snapshot of its scrollback buffer).
 
 Examples: 
   - regularly run a command and wait for a zero shell return code (=success)

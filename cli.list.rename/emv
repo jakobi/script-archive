@@ -19,9 +19,10 @@
 # 20090826 PJ       added pr to messages to protect the terminal, single pass mode
 #                   when unsetting $mv2, --nopathtrack, --todir/--nodir, --perlpostedit
 # 20090826 PJ       fixed emvx bug - when did appending $deltaorg @orgfile change to @newfile!?                  
+# 20090913 PJ       fixed my($_) for older perls       
 # Copyright (c) 2006-2009 jakobi@acm.org placed under GPL v3 and newer
 # archive:  http://jakobi.github.com/script-archive-doc/
-my $version="2.00pj.3"; 
+my $version="2.00pj.4"; 
 
 
 # emv consists of: emv  
@@ -1106,7 +1107,7 @@ sub renaming {
 
 sub tracked {
    # for now, do NOT care about canonical names, not even a leading ./
-   my($_)=@_;
+   local($_)=@_;
    my($o, $n, $in, $out, $i, $l, $c);
    $in=$out=$_;
    warn "# WRN pathtracking - please try to avoid pathes with /../ or /./ in input\n" if $in=~m@/\.?\./|^\.?\./|/\.?\.$@ and not $dotwarned++;

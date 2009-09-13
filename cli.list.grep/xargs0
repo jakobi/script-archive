@@ -9,6 +9,13 @@
 #
 # note that find -exec ... \+ should substitute for some xargs uses
 # (if available that is)
+#
+# SMP:     use xargs -P <fan-out> -n <number-of-jobs-per-forked-child>
+# cluster: dsh,
+#          pdsh (can be used for interactive n-node-shell commands tip style), 
+#          pssh (parallel-ssh), and the like
+# xargs -P 1 -n 5 fan-out-script-running-5-instances-local/remote-in-parallel
+#                 but that will need to wait for the slowest forked instance
 
 cat0 | exec xargs -0 ${1:+"$@"}
 
