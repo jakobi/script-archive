@@ -3,10 +3,12 @@
 # 20071228 PJ   0.1  jakobi@acm.org initial version
 # 20080115 PJ        added +NUM*
 # 20090729 PJ   0.2  added synonyms, highlighting, relevance sorting, -cmdX
+# 20090913 PJ        fixed split() bug in parsestring affecting -b 'X not ( Y' 
+#                    (anything with even 'token' sequences)
 #
 # copyright:  (c)2007-2009 PJ GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
-my $version="0.2";
+my $version="0.2.1";
 
 
 # Dependencies: 
@@ -426,7 +428,8 @@ sub parsestring {
    # boolean operators and keywords like grep/key. The user
    # is responsible to to disambiguate between keywords and
    # normal occurance as part of a string
-   @args=split /(?:\A|\s+)(\(|\)|and|or|not|grep|key)(?:\s+|\z)/, $_[1];
+   @args=split /(?:\A|\s+)(\(|\)|and|or|not|grep|key)(?=\s+|\z)/o, $_[1];
+   @args=grep {s/\A\s+//; /./} @args;
    return parsearray($_[0],@args);
 }
 sub parsearray { 

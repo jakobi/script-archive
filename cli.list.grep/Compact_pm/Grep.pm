@@ -1,21 +1,22 @@
 #!/usr/bin/perl
 
-# 30.09.93 TC        tom christiansen's rewrite of grep / grep.pl / tcgrep / tcgrep.pl
+#   930930 TC        tom christiansen's rewrite of grep / grep.pl / tcgrep / tcgrep.pl
 # ...                (forked off around 1997, I think)
-# 00.05.07 PJ        replaced $* by modifier m 
-# 10.07.08 PJ  0.2   added boolean regex (-b / -B), context (-C)
-# 25.07.09 PJ  0.3   added -f / -F / --include / --exclude / --perl / eval_.* hooks
+# 20000705 PJ        replaced $* by modifier m 
+# 20080710 PJ  0.2   added boolean regex (-b / -B), context (-C)
+# 20090725 PJ  0.3   added -f / -F / --include / --exclude / --perl / eval_.* hooks
 #                    added synonyms and basic stemming for english: -X
-# 06.08.09 PJ        added -o, --count-sum, --split, --binary, use strict
-# 08.08.09 PJ  0.4   restructure as perl module and renaming to Grep.pm / Compact_pm::Grep
+# 20090806 PJ        added -o, --count-sum, --split, --binary, use strict
+# 20090808 PJ  0.4   restructure as perl module and renaming to Grep.pm / Compact_pm::Grep
 #                    (retaining package vars to allow for simple user-provided
 #                    evals (no $self->... on the command line))
-# 12.08.09 PJ        allow context mode to "> "-flag matching records, --show-files
-# 08.09.09 PJ        added GNUGrep aliases for -H: -color.*/--colour.*/...
+# 20090812 PJ        allow context mode to "> "-flag matching records, --show-files
+# 20090908 PJ        added GNUGrep aliases for -H: -color.*/--colour.*/...
+# 20090913 PJ        fixed split() bug in parsestring affecting -b 'X not (' style sequences
 
 # (c) 2007-2009 PJ, placed under GPL v3
 # archive:   http://jakobi.github.com/script-archive-doc/
-my $version="0.4.1";
+my $version="0.4.2";
 
 # Bugs:
 # - utf?
@@ -289,7 +290,7 @@ Options:
   --       last argument
   -q       quiet about failed file and dir opens
   -s       silent mode
-  -V       verbose
+  -V       verbose (also --verbose)
   --help   usage and help; too much help: try --examples
   --cmd  S run command S to filter input
   --perl S eval file or string S
@@ -618,6 +619,7 @@ sub parse_args {
                                          $opt{include}=$_; next};
        /^-?-exclude(?:=(.+))?$/ and do { $_= (defined $1 and $1 ne "") ? $1 : shift @ARGV; $_="" if not defined $_;
                                          $opt{exclude}=$_; next};
+       /^-?-verbose$/           and do { unshift @ARGV, "-V"; next};
        /^-e(.*)$/               and do { $_= (defined $1 and $1 ne "") ? $1 : shift @ARGV; $_="" if not defined $_;
                                          push @ARGVPOST, "-e", "$_"; next};
        /^-b(.*)$/               and do { $_= (defined $1 and $1 ne "") ? $1 : shift @ARGV; $_="" if not defined $_;
@@ -706,13 +708,13 @@ sub parse_args {
     eval '$matchpattern=sub{'.  $EXPR  .'}; 
           $matchhlexprg=sub{m{$HLEXPR}mgo};
           $substhlexprg=sub{s{$HLEXPR}{${SO}$&${SE}}mgo}'; 
-    mydie("# $Me matcher: ".$@) if $@;
-
-
     mywarn("# $Me exclude: $opt{exclude}\n") if $opt{V} and $opt{exclude};
     mywarn("# $Me include: $opt{include}\n") if $opt{V} and $opt{include};
-    mywarn("# $Me matcher: $EXPR\n") if $opt{V};
     mywarn("# $Me hlexpr:  $HLEXPR\n") if $opt{V} and $opt{H};
+    mywarn("# $Me matcher: $EXPR\n") if $opt{V};
+    mydie ("# $Me matcher: ".$@) if $@;
+
+
 
 
     if ($opt{H} || $opt{u}) {
@@ -1327,7 +1329,14 @@ sub sq{ # escape hack for single-quoting
 
 sub parsestring {
    my @args;
-   @args=split /(?:\A|\s+)(\(|\)|and|or|not)(?:\s+|\z)/o, $_[2];
+   # /(?:\A|\s+)(TOKENLIST(?:\s+|\z)/ fails for 'TOKEN TOKEN x' 
+   # but succeeds for 'TOKEN x' which would be ok depending on its implementation.
+   # However it illogically succeeds for 'TOKEN TOKEN TOKEN x' as well??
+   # that's an interesting optimization effect NOT done by using standard \G or /m
+   # pattern matching
+    
+   @args=split /(?:\A|\s+)([\(\)]|and|or|not)(?=\s+|\z)/o, $_[2]; 
+   @args=grep {s/\A\s+//; /./} @args;
    return parsearray($_[0],$_[1],@args);
 }
 
