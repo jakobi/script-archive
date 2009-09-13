@@ -18,6 +18,7 @@
 # archive:   http://jakobi.github.com/script-archive-doc/
 my $version="0.4.2";
 
+
 # Bugs:
 # - utf?
 # - utf! expansyn/stemming does allow for umlauts/... in words/stems
