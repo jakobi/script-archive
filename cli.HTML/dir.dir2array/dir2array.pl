@@ -23,6 +23,12 @@ my (@array,%skipdir,%leafdir);
 $new=32*24*3600; # new files are less than 1 month old
 $start=time;
 
+@version=`cat versions` if -f "versions";
+for(@version) {
+   /(.*?):(.*)/ or next;
+   $version{$1}=$2;
+}
+
 file: while(<>) {
    $file={};
    chomp;
@@ -62,6 +68,8 @@ file: while(<>) {
       $file->{sizek}.="K" 
    };
    $file->{sizek}=~s/\.\d*//;
+   
+   $file->{version}= $version{$file} ? $version{$file} : ""; 
 
    $file->{desc}="";
    $ENV{namefile}=$namefile;
