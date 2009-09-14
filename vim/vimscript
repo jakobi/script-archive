@@ -12,19 +12,12 @@ version="1.2pj";
 
 # pj 200907
 
-# originally named vimsh
-#
-# Vim script command line interpreter for UNIX
-# Language:    vim script
-# Maintainer:  Dave Silvia <dsilvia@mchsi.com>
-# Date:        8/27/2004
-#
-# Version 1.1
-#   Added:
-#     -  Command line arguments
-#
-#
-# To use, place vimsh in a directory in your path, e.g.: ~/bin
+# originally named vimsh, original header was:
+   # Vim script command line interpreter for UNIX
+   # Language:    vim script
+   # Maintainer:  Dave Silvia <dsilvia@mchsi.com>
+   # Date:        8/27/2004
+   # Version 1.1
 
 function help {
 cat <<EOF

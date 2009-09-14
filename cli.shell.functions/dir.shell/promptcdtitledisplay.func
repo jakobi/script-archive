@@ -24,6 +24,13 @@ if [ "$PS1" != "" ]; then
       # after each command check LINES/COLUMNS
       if [ "$VIM_ACTIVE" = "" ]; then
          shopt -s checkwinsize 
+            
+         # % for users, # for system, "## ... ##" for root
+         # q: maybe also color/bold it?
+         PROMPTCHAR="%";
+         PROMPTPREFIX="#";
+         [ "$UID" -lt "${MAXSYSTEMUSERUID:-1000}" ] && PROMPTCHAR="#";
+         [ "$UID" = "0" ] && PROMPTCHAR="##" && PROMPTPREFIX="## ";
 
          # PS1 tricks: \[ ... \] to embed non-printing chars in the prompt, 
          #             might fix the length counting problem, but don't put 
@@ -31,7 +38,9 @@ if [ "$PS1" != "" ]; then
          # consider a trick like '[0...0m' to normalize attribs AND 
          # pad the string to a correct multiple of 8 for using tab on non-printable 
          # easily confused shells like csh
-         PS1="#(\$?) ${debian_chroot:+($debian_chroot) }\\t \\u@\\h:\\w\n#\\s$SHNEST > "
+
+         # q: $? - maybe also color / beep?
+         PS1="$PROMPTPREFIX(\$?) ${debian_chroot:+($debian_chroot) }\\t \\u@\\h \\w\n$PROMPTPREFIX\\s$SHNEST $PROMPTCHAR "
 
          # If this is an xterm set the title to user@host:dir
          _TERM=$TERM
@@ -47,7 +56,7 @@ if [ "$PS1" != "" ]; then
                # or to set it manually: ^a-A
                PROMPT_COMMAND='echo -ne "\033]0;${USER}@${HOSTNAME}: ${PWD/$HOME/~}\007\033k\033\134"'
                # \134 is backslash; double \ when used in PS1: \\033k\\033\\134
-               #PS1="#(\$?) ${debian_chroot:+($debian_chroot) }\\t \\u@\\h:\\w\\n#\\s$SHNEST > "
+               #PS1="#(\$?) ${debian_chroot:+($debian_chroot) }\\t \\u@\\h:\\w\\n#\\s$SHNEST $PROMPTCHAR "
                ;;
             *) ;;
          esac

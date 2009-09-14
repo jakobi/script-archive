@@ -13,6 +13,7 @@
 # 20090812 PJ        allow context mode to "> "-flag matching records, --show-files
 # 20090908 PJ        added GNUGrep aliases for -H: -color.*/--colour.*/...
 # 20090913 PJ        fixed split() bug in parsestring affecting -b 'X not (' style sequences
+#                    + stupid bug on -1, sigh
 
 # (c) 2007-2009 PJ, placed under GPL v3
 # archive:   http://jakobi.github.com/script-archive-doc/
@@ -353,7 +354,6 @@ Options:
            Use -N 5 -B do{\$buf=~/MULTILINEREGEX.*\\Z/m} to report the 
            containing line of the end of a multi-line match. 
            See --examples
-  -N N:M   similar but also the future M lines or bytes; implies -2.
   -o       only matches: report stretch from first to end of last match.
            In case of no match: print whole record
   -u       underline matches
@@ -1165,7 +1165,7 @@ LINE:  while (1) {
                $dash_printed=1;
             }
 
-            last FILE if $opt{1} and $matches;
+            next FILE if $opt{1} and $matches;
         }  
     } continue { # FILE
         if ($active eq $file and $active ne "") {
