@@ -17,7 +17,7 @@ use Data::Dumper;
 
 my($new,$start);
 my($file,$namefile,@time);
-my (@array,%skipdir,%leafdir);
+my (@array,%skipdir,%leafdir,@version,%version);
 
 # config
 $new=32*24*3600; # new files are less than 1 month old
