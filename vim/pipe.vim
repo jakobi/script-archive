@@ -9,11 +9,11 @@
 # if used with file arguments (xargs), help and (empty)
 #  contents of stdin can be found in the last buffer.
 
+my $version="0.1.1";
 # created     PJ 20090803 jakobi@acm.org
 # last change PJ 20090806
 # copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
-my $version="0.1.1";
 
 
 # editor requirements: 

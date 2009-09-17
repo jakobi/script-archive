@@ -3,13 +3,13 @@
 eval 'exec perl -Sx $0 ${1:+"$@"}'
    if 0;
 
+$version = "1.5pj";
 # changes jakobi@acm.org (fork 199x?)
 # - noise (comment/help)
 # - error report / avoid clobbering in case of collision
 # - error report of rename return code
 # - globbing of initial arg
 # 20090808 PJ added version string
-$version = "1.5pj";
 
 # From: ilya@math.ohio-state.edu (Ilya Zakharevich)
 # So if you do not want to

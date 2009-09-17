@@ -2,13 +2,13 @@
 
 # known bugs: UTF8: miscounts multibyte chars
 
+my $version="v1.3.0-2pj";
 # Julius C. Duque
 # v1.1.1      2003 November 12 Wednesday   JD
 # v1.2.0      2003 November 14 Friday      JD added hyphenation
 # v1.3.0      2003 November 16 Sunday      JD added hyphenation of overfull lines
 #             2005                         PJ made TeX::Hyphen optional
 # v1.3.0-2pj  2009 July     26             PJ added ignbackslash option (perl quoting semantics)
-my $version="v1.3.0-2pj";
 
 use diagnostics;
 use strict;

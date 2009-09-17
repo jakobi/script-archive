@@ -8,12 +8,12 @@ use strict; use vars;
 # NOTE: mind the use of useless cat NOT being useless: depending on the
 #       shell implementation of | vs > for multi-process fan-in
 
+my $version="0.3";
 # 2007XXXX pj   0.1  jakobi@acm.org
 # 200907xx pj        added -disk, compiled matcher
 # 20090808 pj        added -reduce == -v filelist reduction
 # copyright:  (c) 2007-2009 jakobi@acm.org, placed under GPL v3 or later 
 # archive:    http://jakobi.github.com/script-archive-doc/
-my $version="0.3";
 
 # default usage scenario: 
 # part of my backup set, rpm/dpkg-messups + manually modified config scripts

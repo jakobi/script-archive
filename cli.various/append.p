@@ -1,12 +1,12 @@
 #!/usr/bin/perl -w
 use strict "vars";
 
+my $version="0.2";
 # a rather brute force append command
 # 199XXXXX PJ        jakobi@acm.org --initial version
 # 20071220 PJ   0.2  
 # copyright:  (c) PJ 2007-2009, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
-my $version="0.2";
 
 # compress stuff if compressed target exists with additional suffix gz?
 my($gz,$compressionsfx,$find,$dir,$err,$success,$ignore,$verbose,$sep);

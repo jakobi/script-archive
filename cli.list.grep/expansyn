@@ -12,12 +12,14 @@
 # some directory tree containing documents, images, ...
 # ("dot- or directory-name-tagged filenames")
 
+
+my $version="0.2";
 # created:     20071227 jakobi@acm.org
 # copyleft:    (c) PJ 2008-2009, GPL v3 or later
 # archive:     http://jakobi.github.com/script-archive-doc/
 # 200812xx PJ  0.1  jakobi@acm.org -- initial version
 # 20090727 PJ  0.2  tagls/pcre presets
-my $version="0.2";
+
 
 # output modes
 # - $0 -settagls ...

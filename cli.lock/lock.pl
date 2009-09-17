@@ -4,12 +4,14 @@
 # lock.pl [options] lockpath ... -- command ... # lock/command/unlock
 # lock.pl [options] lockpath ...                # lock; unlock with rmdir/rm -rf
 
+
+my $version="0.2";
 # 2002XXXX PJ   0.1  jakobi@acm.org initial version
 # 20090729 PJ   0.2  added flock and command
 #
 # copyright: (c) 2002-2009 PJ, GPL v3 or later
 # archive:   http://jakobi.github.com/script-archive-doc/
-my $version="0.2";
+
 
 use strict;
 use warnings;

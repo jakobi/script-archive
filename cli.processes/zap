@@ -3,6 +3,8 @@
 eval 'exec perl -Sx $0 ${1:+"$@"}'
    if 0;
 
+
+my $version="0.5.3";
 # --.--.94 <user> <latest change>
 # 05.09.94 domke      (From "Programming Perl", L.Wall, R.Schwartz)
 # ........ pj   0.2   various small changes to make it work on hpux,aix,bsd,linux,sunos and solaris
@@ -15,7 +17,6 @@ eval 'exec perl -Sx $0 ${1:+"$@"}'
 #                     (-^ --> --nl: using explicit \\n instead of mangling ^)
 # 11.09.09 pj         added cpulimit for higher nice values
 # (c) perl artistic licence
-my $version="0.5.3";
 
 
 #========================================================= Variables 1

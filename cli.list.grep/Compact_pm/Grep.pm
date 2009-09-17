@@ -1,5 +1,7 @@
 #!/usr/bin/perl
 
+
+my $version="0.4.2";
 #   930930 TC        tom christiansen's rewrite of grep / grep.pl / tcgrep / tcgrep.pl
 # ...                (forked off around 1997, I think)
 # 20000705 PJ        replaced $* by modifier m 
@@ -14,10 +16,9 @@
 # 20090908 PJ        added GNUGrep aliases for -H: -color.*/--colour.*/...
 # 20090913 PJ        fixed split() bug in parsestring affecting -b 'X not (' style sequences
 #                    + stupid bug on -1, sigh
-
+#
 # (c) 2007-2009 PJ, placed under GPL v3
 # archive:   http://jakobi.github.com/script-archive-doc/
-my $version="0.4.2";
 
 
 # Bugs:

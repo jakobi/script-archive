@@ -3,6 +3,8 @@
 eval 'exec perl -Sx $0 ${1:+"$@"}'
    if 0;
 
+
+my $version="0.21";
 # extracts links e.g. in preparation for spidering
 # (note that this is unrelated to the CPAN script XLINKS :))
 # 
@@ -10,7 +12,6 @@ eval 'exec perl -Sx $0 ${1:+"$@"}'
 # 20071120 PJ   0.21
 # copyright:  (c) 1996-2009 jakobi@acm.org, GPL v2 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
-my $version="0.21";
 
 
 $skip='^$';

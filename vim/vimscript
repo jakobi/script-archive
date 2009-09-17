@@ -3,14 +3,11 @@
 # Vim script command line interpreter for UNIX
 # http://www.vim.org/scripts/script.php?script_id=2768
 
+version="1.2pj";
 # 20040827 DS dsilvia@mchsi.com v1.1
 # 20090615 PJ forked, fixed and rewritten
 # copyright:  (c)2004 DS, (c)2009 PJ, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
-version="1.2pj";
-
-
-# pj 200907
 
 # originally named vimsh, original header was:
    # Vim script command line interpreter for UNIX

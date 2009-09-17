@@ -1,11 +1,11 @@
 #!/usr/bin/perl
 
+my $version="0.2";
 # 1999XXXX PJ   0.1  jakobi@acm.org initial version
 # 20090729 PJ   0.2  
 #
 # copyright:  (c) 1999-2009 jakobi@acm.org, placed under GPL v3 or later 
 # archive:    http://jakobi.github.com/script-archive-doc/
-my $version="0.2";
 
 # just a quick hack to select lines acc. to argument settings, 
 # e.g. for extracting a specific configuration from a multi

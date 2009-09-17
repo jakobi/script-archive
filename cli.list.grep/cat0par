@@ -4,11 +4,11 @@
 #
 # stanza/generic record splitting <--> \0-lines 
 
+my $version="0.1";
 # created     jakobi@acm.org 2007XXXX - when you do not want to write a real parser...
 # last change jakobi@acm.org 20090615
 # copyright: (c) 2007-2009 jakobi@acm.org, GPL v3 or later
 # archive:   http://jakobi.github.com/script-archive-doc/
-my $version="0.1";
 
 
 

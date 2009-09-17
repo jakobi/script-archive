@@ -2,6 +2,7 @@
 
 # wait for event using a boolean expression and multitute of event sources
 
+my $version="0.2.2";
 # 20071107 PJ jakobi@acm.org created - wait for processes, tty idle, files, grep in file
 # 20071228 PJ added netidle, diskidle, cpuidle 
 # 20090722 PJ 
@@ -10,7 +11,6 @@
 #
 # copyright:  (c)2007-2009, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
-my $version="0.2.2";
 
 use warnings;
 use vars;

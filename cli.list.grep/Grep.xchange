@@ -9,13 +9,15 @@
 # featuring a little improbility: perl -i.bak interactive one-liner,
 # and a small impossibility: a perl variable-length zero-width lookbehind regex.
 
+
+my $version="0.1.2";  
 # 2009.08.08 PJ        jakobi@acm.org -- initial version
 # 2009.08.13 PJ  0.1   added diff -u style undo log to allow undo by patch, -flock, -p
 # 2009.08.25 PJ        switch diff order on stdout for consistency
 # 2009.08.27 PJ        updated doc on patch -u use, -relative option for easier patching
 # copyright:  (c) 2009 jakobi@acm.org, placed under GPL v3 or later 
 # archive:    http://jakobi.github.com/script-archive-doc/
-my $version="0.1.2";  
+
 
 use strict;
 use vars;

@@ -6,13 +6,15 @@ eval 'exec perl -Sx $0 ${1:+"$@"}'
 # collect html pages of a html document tree and 
 # return a browsable/printable single-file version
 
+
+my $version="0.2";
 # 199XXXXX PJ   0.1  jakobi@acm.org initial version
 # 19970713 PJ   0.2  
 # 20090803 PJ        copyright update; since 1997: only small fixes/examples added
 #
 # copyright:  (c) 1997-2009 jakobi@acm.org, placed under GPL v3 or later 
 # archive:    http://jakobi.github.com/script-archive-doc/
-my $version="0.2";
+
  
 # example invocations
 # COLLECT -v -auto wiki/TitleIndex -toc `find . -type f | grep -v -i -e 'BOOK.HTML\$' -e 'X\$' -e '\.png\$' -e '\.jpg\$' -e '\.css\$' -e '\.gif\$' ` > BOOK.HTML

@@ -7,6 +7,8 @@
 # [http://www.pro-linux.de/berichte/appfokus/emv/emv.html, English version:
 #  http://translate.google.com/translate?tl=en&sl=de&u=http%3A%2F%2Fwww.pro-linux.de%2Fberichte%2Fappfokus%2Femv%2Femv.html]
 
+
+my $version="2.00pj.4"; 
 # last changes:
 # 2007XXXX PJ       jakobi@acm.org changed to include line numbers in the editor,
 #                   allowing arbitrary editor commands and reordering (perl scraps)
@@ -22,7 +24,6 @@
 # 20090913 PJ       fixed my($_) for older perls       
 # Copyright (c) 2006-2009 jakobi@acm.org placed under GPL v3 and newer
 # archive:  http://jakobi.github.com/script-archive-doc/
-my $version="2.00pj.4"; 
 
 
 # emv consists of: emv  

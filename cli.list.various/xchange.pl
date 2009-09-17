@@ -3,6 +3,7 @@
 # perl script to replace text strings using std perl wildcards
 # -s / -sf use quotemeta and thus require perl 5. You may want to comment out this statement
 
+my $version="2.2";
 # 1993XXXX PJ   0.1  jakobi@acm.org initial version, perl4 HPUX / Amiga / SunOS
 # 19960830 PJ   2.1  
 # 200XXXXX PJ        backup only changed files, fixed symlink handling
@@ -10,7 +11,6 @@
 #
 # copyright:  (c)1993-2009 PJ, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
-my $version="2.2";
 
 # pj2000: could stand a number of speedups: 
 # - using pos to avoid $`, et al
