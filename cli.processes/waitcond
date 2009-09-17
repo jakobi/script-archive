@@ -2,15 +2,18 @@
 
 # wait for event using a boolean expression and multitute of event sources
 
-my $version="0.2.2";
+our $VERSION="0.2.2";
 # 20071107 PJ jakobi@acm.org created - wait for processes, tty idle, files, grep in file
 # 20071228 PJ added netidle, diskidle, cpuidle 
 # 20090722 PJ 
 # 20090824 PJ changed iostat, modified grep for 'command|', switched to strict
 # 20090913 PJ fixed my($_) for older perls
+# 20090917 PJ changes for cpan.org/scripts
 #
 # copyright:  (c)2007-2009, GPL v3 or later
-# archive:    http://jakobi.github.com/script-archive-doc/
+# archive:    http://jakobi.github.com/script-archive-doc/ 
+#             [check github.com/jakobi/script-archive/cli.processes 
+#              for some ideas on using waitcond with dbus events]
 
 use warnings;
 use vars;
@@ -320,7 +323,7 @@ sub usage {
 
 waitcond [OPTIONS] EXPR
 
-version: $version
+version: $VERSION
 
 Wait  for  a  boolean condition expression to evaluate to true  for  a
 minimum number of iterations (-c N; default $countinit).
@@ -473,7 +476,7 @@ Examples:
     waitcond netidle eth0 # set threshold with -n
 
   - to wait until a process' tty is more than 5min idle 
-    [-r RECENTTHRESHHOLD / -s SLEEPINTERVAL, both in seconds
+    [-r RECENTTHRESHOLD / -s SLEEPINTERVAL, both in seconds
      uses: e.g. notification on install finished, or early notification of
      a job waiting for input in the middle of a lengthy compile...]
     [use who / who am i / or ps -ef to get the associated tty / or this one:]
@@ -502,9 +505,45 @@ Examples:
     start-stop-daemon --start --exec /bin/sleep 3600
     # the famed upstart is worse (init/initctl) for non-init.d usage
 
+  - dbus: have a look at the dbus-monitor-tail hack and waitcond.dbus.README
+    on github.com/jakobi/script-archive/cli.processes/
+
 EOF
 }
 
+=head1 waitcond
+
+Test  or  wait  for  an event using boolean expressions on  top  of  a
+language of tests.
+
+=head1 DESCRIPTION
+
+Like  tagls/Grep.pm,  this one also offers boolean  expressions,  this
+time  on top of a language of tests likes grepping in ps-output, files
+and  logs, running shell commands, pinging hosts, testing existance of
+files,  threshold-based  file  mtime,  threshold-based  cpu,  net   or
+disk-idle.
+
+See  github.com/jakobi/script-archive/cli.processes/ for some examples
+on using waitcond with dbus events.
+
+=head1 README
+
+Test  or  wait  for  an event using boolean expressions on  top  of  a
+language  of tests like grepping in ps-output and logs, pinging  hosts
+or   waiting  for  events  like  'not-recently-changed'  or   'network
+interface N is idle'.
+
+=pod OSNAMES
+
+linux solaris aix freebsd
+
+=pod SCRIPT CATEGORIES
+
+UNIX/System_administration
+Networking
+
+=cut
 
 
 
