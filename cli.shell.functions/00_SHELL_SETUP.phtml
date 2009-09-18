@@ -6,7 +6,22 @@
    } else {
 *]
 
-<p>Shell support functions and setup.</p>
+<p>This section is home of shell support functions and shell setup.</p>
+
+<p>Note  that  the  korn shell ksh 93s+ suffers  from  various  memory
+management  issues  on  64bit  incl.  eating  return  codes  (possibly
+restricted  to x86_64, Linux and the January08 AST release) for Ubuntu
+intrepid,  jaunty and Centos 5.3. Karmic will be the May09 AST release
+and    has    a    ksh93t+   that   plays   nice    on    64bit    (<a
+HREF="http://bazaar.launchpad.net/~ubuntu-branches/ubuntu/karmic/ksh"><tt>bzr
+branch lp:ubuntu/karmic/ksh</tt></a>, there doesn't seem to be a PPA).
+If  you're affected, the quickest fix is probably placing the official
+standalone ksh binary early in your PATH (this one doesn't require the
+remainder         of         the        AST         stuff):         <a
+href="http://www.research.att.com/~gsf/cgi-bin/download.cgi?action=list&name=ksh">
+http://www.research.att.com/~gsf/cgi-bin/download.cgi?action=list&name=ksh</a>)</p>
+
+
 
 <H3>Some of the more interesting functions</H3>
 

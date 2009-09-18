@@ -15,8 +15,14 @@ typeset +x PROMPT_COMMAND PS1
 if [ "$PS1" != "" ]; then 
 
    # default prompt for all shells
-   PS1='($?) ${debian_chroot:+($debian_chroot) }`date +%H:%M:%S` $LOGNAME@$HOSTNAME:$PWD
-#$SHELL$SHNEST !> '
+   PROMPTCHAR="%";
+   PROMPTPREFIX="#";
+   # % for users, # for system, "## ... ##" for root
+   # q: maybe also color/bold it?
+   [ "$UID" -lt "${MAXSYSTEMUSERUID:-1000}" ] && PROMPTCHAR="#";
+   [ "$UID" = "0" ] && PROMPTCHAR="##" && PROMPTPREFIX="## ";
+   PS1=$PROMPTPREFIX'($?) ${debian_chroot:+($debian_chroot) }`date +%H:%M:%S` $LOGNAME@$HOSTNAME $PWD
+'$PROMPTPREFIX'$SHELL$SHNEST !'$PROMPTCHAR' '
 
    # PUT CD OVERRIDE FOR INTERACTIVE USE HERE
 
@@ -24,13 +30,6 @@ if [ "$PS1" != "" ]; then
       # after each command check LINES/COLUMNS
       if [ "$VIM_ACTIVE" = "" ]; then
          shopt -s checkwinsize 
-            
-         # % for users, # for system, "## ... ##" for root
-         # q: maybe also color/bold it?
-         PROMPTCHAR="%";
-         PROMPTPREFIX="#";
-         [ "$UID" -lt "${MAXSYSTEMUSERUID:-1000}" ] && PROMPTCHAR="#";
-         [ "$UID" = "0" ] && PROMPTCHAR="##" && PROMPTPREFIX="## ";
 
          # PS1 tricks: \[ ... \] to embed non-printing chars in the prompt, 
          #             might fix the length counting problem, but don't put 

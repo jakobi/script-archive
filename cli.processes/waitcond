@@ -536,7 +536,10 @@ interface N is idle'.
 
 =pod OSNAMES
 
-linux solaris aix freebsd
+linux
+solaris
+aix
+freebsd
 
 =pod SCRIPT CATEGORIES
 
