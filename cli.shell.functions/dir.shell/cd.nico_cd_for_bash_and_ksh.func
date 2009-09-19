@@ -52,7 +52,7 @@ typeset|grep -e '^typeset -a cdsx$'        -e '^integer cdsx$'        > /dev/nul
 #   turn a previously indexed array into a compound variable when
 #   no assigments are found. Also note that for normal assignments,
 #   a typeset -a is required as it default to creating a hash instead]
-#   a=(b=44 c=45) degenerated to a scalaer string assignment in contrast
+#   a=(b=44 c=45) degenerated to a scalar string assignment in contrast
 #   a=([b]=44) finally associative, silently changing the type (typeset -a
 #   must be inside the parens). a=(.b=44) compount, access with ${a.x},
 #   while it isn't accessible as a hash, typeset says the compound
@@ -364,7 +364,7 @@ function cdrf
 
     unset cdlist_copy
     typeset -a cdlist_copy
-    cdlist_copy=() 
+    cdsetA cdlist_copy
     cdx_copy=0
 
     # Options

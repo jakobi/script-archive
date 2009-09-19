@@ -33,17 +33,22 @@ _IS_BASH=""
 [ "$_SHELL" = "ksh" ]        && _IS_KSH=ksh
 [ "$_SHELL" = "pd-ksh" ]     && _IS_KSH=pd-ksh
 [ "$_SHELL" = "pdksh" ]      && _IS_KSH=pd-ksh
-# [ ! -z "$_AST_FEATURES" ]  && _IS_KSH=ksh # cannot unexport from within profile
+# [ -n "$_AST_FEATURES" ]  && _IS_KSH=ksh # cannot unexport from within profile
 [ "$_SHELL" = "bash" ]       && _IS_BASH=bash
-[ ! -z "$BASH_VERSION" ]     && _IS_BASH=bash
+
+# override only if we can safely guarantee a specific shell
+[ -n "$BASH_ARGV" ]       && _IS_BASH=bash && _IS_KSH="" && _SHELL=bash && SHELL=/bin/bash
+
+if [ -n "${SHELL##*$_SHELL}" ]; then
+   echo "# SHELL=$_SHELL FROM $SHELL (\$0=$0)" 1>&2
+   SHELL=$_SHELL
+fi
 
 # shell switching and nesting
 [ -n "$_OLDSHELL" -a "$_OLDSHELL" != "Xsession" -a "$_OLDSHELL" != "$_SHELL" ] && SHNEST=$SHNEST-0
 
 # interactive - ensure we have a prompt [no exporting PS1!]
 [ "${-##*i}" != "$-" ] && PS1=${PS1:-'$'}
-
-
 
 # only for bash and ksh   
 # ksh sourcing requires at least ./ instead of just the filename
