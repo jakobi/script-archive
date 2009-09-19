@@ -26,7 +26,7 @@
 ./cli.lock/lock.pl:0.2
 ./cli.mail/mygrepmail:5.30.33pj
 ./cli.processes/fwait:0.1
-./cli.processes/waitcond:0.2.2
+./cli.processes/waitcond:0.32
 ./cli.processes/zap:0.5.3
 ./cli.various/append.p:0.2
 ./cli.various/mt_dir:0.1

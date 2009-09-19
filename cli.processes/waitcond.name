@@ -1,1 +1,2 @@
-waitcond - generic condition waiter: boolean expression over regexes, pids, files, idleness
+waitcond - generic condition waiter: boolean expression over regexes, pids, files, idleness 
+(Note: 0.32 := 0.2.2 + cpan-related sugar-coating)

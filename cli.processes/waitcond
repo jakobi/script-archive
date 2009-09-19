@@ -2,7 +2,14 @@
 
 # wait for event using a boolean expression and multitute of event sources
 
-our $VERSION="0.2.2";
+=head1 VERSION
+
+Version 0.32
+
+=cut
+
+our $VERSION="0.32";
+
 # 20071107 PJ jakobi@acm.org created - wait for processes, tty idle, files, grep in file
 # 20071228 PJ added netidle, diskidle, cpuidle 
 # 20090722 PJ 
@@ -511,21 +518,40 @@ Examples:
 EOF
 }
 
-=head1 waitcond
+=head1 NAME
 
-Test  or  wait  for  an event using boolean expressions on  top  of  a
-language of tests.
+waitcond  - Test or wait for event combinations like idleness, file or
+process creation/termination.
+
+=head1 SYNOPSIS
+
+waitcond [OPTIONS]
 
 =head1 DESCRIPTION
 
-Like  tagls/Grep.pm,  this one also offers boolean  expressions,  this
+Like  tagls/Grep.pm, this script also offers boolean expressions, this
 time  on top of a language of tests likes grepping in ps-output, files
 and  logs, running shell commands, pinging hosts, testing existance of
-files,  threshold-based  file  mtime,  threshold-based  cpu,  net   or
-disk-idle.
+files, threshold-based file mtime, as well as threshold-based cpu, net
+or disk-idle.
 
 See  github.com/jakobi/script-archive/cli.processes/ for some examples
-on using waitcond with dbus events.
+on using waitcond with dbus events. More information is available with
+the --help option.
+
+=head1 AUTHOR
+
+Peter Jakobi, C<< <jakobi at acm.org> >>
+
+=head1 SUPPORT
+
+For more information and the bug-tracker,  L<http://jakobi.github.com/script-archive-doc/>
+
+=head1 COPYRIGHT & LICENSE
+
+Copyright 2009 Peter Jakobi, all rights reserved. Made available under the GPL, version 3.
+
+=begin comment
 
 =head1 README
 
@@ -545,6 +571,8 @@ freebsd
 
 UNIX/System_administration
 Networking
+
+=end comment
 
 =cut
 
