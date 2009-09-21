@@ -8,18 +8,40 @@
 
 <p>This section is home of shell support functions and shell setup.</p>
 
-<p>Note  that  the  korn shell ksh 93s+ suffers  from  various  memory
-management  issues  on  64bit  incl.  eating  return  codes  (possibly
-restricted  to x86_64, Linux and the January08 AST release) for Ubuntu
-intrepid,  jaunty and Centos 5.3. Karmic will be the May09 AST release
-and    has    a    ksh93t+   that   plays   nice    on    64bit    (<a
+<p><b>ksh93</b>:  Note  that  the  korn shell ksh  93s+  suffers  from
+various  memory  management issues on 64bit incl. eating return  codes
+(possibly  restricted to x86_64, Linux and the January08 AST  release)
+for  Ubuntu intrepid, jaunty and Centos 5.3. Karmic will be the  May09
+AST  release  and  has  a  ksh93t+  that  plays  nice  on  64bit   (<a
 HREF="http://bazaar.launchpad.net/~ubuntu-branches/ubuntu/karmic/ksh"><tt>bzr
 branch lp:ubuntu/karmic/ksh</tt></a>, there doesn't seem to be a PPA).
-If  you're affected, the quickest fix is probably placing the official
-standalone ksh binary early in your PATH (this one doesn't require the
-remainder         of         the        AST         stuff):         <a
+If  you're  affected,  just place the official standalone  ksh  binary
+early in your PATH (if you're evil, you might also consider /bin/ksh93
+for  replacement). It doesn't require the remainder of the AST  stuff:
+<a
 href="http://www.research.att.com/~gsf/cgi-bin/download.cgi?action=list&name=ksh">
 http://www.research.att.com/~gsf/cgi-bin/download.cgi?action=list&name=ksh</a>)</p>
+
+
+<p><b>set  -o pipefail - Workaround</b>: Some of the scripts in  other
+sections  use  <tt>set -o pipefail</tt> and thus require a proper  ksh
+(ksh93!)  or  bash  (e.g. emv, sfre). If you don't mind  changing  the
+scripts  and  efficiency,  you can change the invocations  to  instead
+source                                                              <a
+href="http://freshmeat.net/projects/pipestatus">pipestatus</a>,  which
+works for <i>all</i> POSIX shells.<p>
+
+<p  class=anno>Check  that you're using at least the version  0.6,  as
+this  release  added  support for pathological  and  unsafe  filenames
+containing  blanks, quotes and worse (including embedded newlines)  as
+part   of  filenames.  <tt>cat  |  nl</tt>  thus  becomes   <tt>source
+PATH-TO-PIPESTATUS;  runpipe_base  cat '|' nl</tt>. I  tried  breaking
+Aleksey's changes, only to report to him my utter lack of success - so
+it's  looking  good  now :). A note on nesting pipes:  Define  complex
+commands  (like nested runpipe-invocations, pipes, lists) as functions
+and  invoke  the functions as <i>simple commands</i> in  the  pipeline
+stages of the outer runpipe statement.</p>
+
 
 
 
