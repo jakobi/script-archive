@@ -296,7 +296,8 @@ Options:
   -V       verbose (also --verbose)
   --help   usage and help; too much help: try --examples
   --cmd  S run command S to filter input
-  --perl S eval file or string S
+  --perl S eval file or string S (e.g. for configuring hooks to format
+           output, skip certain files by default; c.f. \$ENV{TCGREP})
 
   # file selection
   -        last argument and STDIN as first file
