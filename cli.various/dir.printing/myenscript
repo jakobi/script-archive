@@ -7,9 +7,9 @@ PATH="$PATH:/usr/bin:/usr/local/bin:$HOME/bin:$HOME/bin-shared:/home/jakobi/bin:
 MYENSCRIPTPRT=${MYENSCRIPTPRT:-$MYPSNUPPRT}
 MYENSCRIPTPRT=${MYENSCRIPTPRT:-$PRINTER}
 [ "$MYENSCRIPTPRT" = "" ]   && MYENSCRIPTPRT=lj
-[ "$MYENSCRIPTFMT" = "" ]   && MYENSCRIPTFMT="-1 --nup 4 --portrait -L 72 -fCourier9"
-[ "$MYENSCRIPTOPT" = "" ]   && MYENSCRIPTOPT="" # -l
-[ "$MYA2PSOPT"     = "" ]   && MYA2PSOPT="" # -l
+[ "$MYENSCRIPTFMT" = "" ]   && MYENSCRIPTFMT="-1 --nup 4 --portrait -L 72 -fCourier9" # these get passed to both a2ps and enscript
+[ "$MYENSCRIPTOPT" = "" ]   && MYENSCRIPTOPT="" # -l # specific to enscript
+[ "$MYA2PSOPT"     = "" ]   && MYA2PSOPT="--medium=A4" # -l # specific to a2ps
 [ "$MYLPROPT"      = "" ]   && MYLPROPT="" # -l
 MYENSCRIPT=enscript
 MYA2PS=a2ps
@@ -61,6 +61,7 @@ done
 
 # to use e.g. highlight: enscript --filter="rcsdiff %s | diffpp %s" -e *.c
 
+# also /etc/paper*
 # /etc/enscript.cfg - A4dj is offical media
 #    Media:  A4              595     842     24      24      571     81
 #    Media:  A4dj            595     842     24      50      571     818

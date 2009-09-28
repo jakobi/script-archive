@@ -23,6 +23,7 @@ close FH;
 delete $ENV{MOZ_LAUNCHED_CHILD};
 delete $ENV{ADDON_PATH};
 
+$MYPSNUPOPT="-pA4";
 $MYPSNUPPRT=$ENV{MYPSNUPPRT};
 $MYPSNUPPRT=$ENV{PRINTER}     if not $MYPSNUPPRT; 
 $MYPSNUPPRT="oj"              if not $MYPSNUPPRT and $0=~/oj/;
