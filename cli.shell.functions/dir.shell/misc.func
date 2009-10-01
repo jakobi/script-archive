@@ -12,6 +12,7 @@ if [ -n "_IS_BASH" ]; then
 fi
 
 export EMVSHELL=/bin/bash
+[ "$PERL5LIB" = "" -a "$PERLLIB" = "" ] && export PERL5LIB=~/.perl5lib 
 
 
 # vim:filetype=sh

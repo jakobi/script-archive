@@ -322,7 +322,7 @@ foreach $tagged (sort keys %taggedstem) {
    }
 }
 
-warn scalar(keys %tagged), " ", scalar(@files);
+#warn scalar(keys %tagged), " ", scalar(@files);
 
 if (not $o_reduce) {
    foreach $tagged (sort keys %tagged) {
