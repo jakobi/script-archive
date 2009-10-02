@@ -10,6 +10,72 @@
 <p>This  toolbox compartment contains the heavy lifting tools for generic
 pipeline 'line'-based text processing.</p>
 
+
+<H3>About Stream and Mass-Editing</H3>
+
+<p>I think extending the range of grep usability to allow mass-editing
+files  makes for a nice and powerful concept. This is demonstrated  in
+Grep.xchange  below, provided the editing is more or less contained in
+the  grepped lines. But there are also other very useful  mass-editing
+(=non-interactive   aka  stream-editing)  methods  to  add   to   your
+toolbox:</p>
+
+<p>From  perl  -i.bak -lne ... and sed -i.bak -e ... to a more  mature
+implementation       of      stream-editing      such      as       <a
+href="http://cpan.org/authors/id/L/LE/LEAKIN/">Lee   Eakin's  ped</a>,
+which  is  somewhat like a sed-done-right rewrite in perl, with  flock
+and  everything. Then there are more generic apps, that in a  specific
+domain  are <b>very</b> suitable for mass-edits. Let me give just some
+examples from the field of system-administration, more specific system
+and         network        configuration        management:         <A
+HREf="http://cfengine.org">cfengine</a>,                            <a
+href="http://freshmeat.net/projects/puppet">puppet</a>,  or the  'tool
+cluster'                             of                             <a
+href="http://augeas.net">augeas</a>/pad/boomerang
+(PEGs and lenses!).</p>
+
+<p>Don't  forget  about  patch (and check out the way it  is  used  by
+Grep.xchange  :) and a true classic programmable editor that  provided
+the       first       base       format      for       patch:       <a
+href="http://en.wikipedia.org/wiki/Ed_%28text_editor%29">ed</a>;   its
+ex  successor embedded within e.g. <a href="http://vim.org">vim</a> is
+still  quite  similar. And the <a href="../vim/">vimscript  script</a>
+from  this very archive extends the usable stream-editing  command-set
+to most of vim's commands including normal mode! Just be a bit careful
+and   turn  off  unnecessary  niceties  like  syntax-highlighting   or
+unlimited undo while editing log files in the 100MB region and beyond.
+Combined  with an external language - vim's embedded Python  interface
+is probably the most stable - things get truly interesting. That's not
+to  say that vim's builtin language is slouch, but still, vimscript is
+not  quite like Python, Perl or Lisp for elegancy, speed of writing or
+community support and available modules.</p>
+
+<p>Let's  conclude  this tiny and very subjective overview with a  little
+gem                    of                    an                     <a
+href="http://www.perl.com/pub/a/2004/10/14/file_editing.html">OR-article
+about perl mass-editing techniques</a>.</p>
+
+<p><b>Newer  developments to watch</b>: The more recent PEGs (e.g.  in
+perl6/Rakudo),  tree parsers+transformations, and lenses are also very
+fun  stuff  and  do  extend  the <i>Reach  Of  The  GREP</i>  and  its
+expressiveness, while reducing the -ahem- line-noise aspect.</p>
+
+<p><b>A Challenge:</b> Any one up to implementing a prolog interpreter
+and using an extended regex/peg engine itself as the implementation of
+the backtracking code (mail me if you did!) :)?</p>
+
+<p  class=anno>If  you  want  to  go to the  real  basics  of  regular
+expressions  and think about the way PCREs (and worse, Perl5.10's  own
+regex  implementation)  defy and bend the classics, do check  out  the
+computer   science   terms  of  EBNF,   recursive   descent   parsing,
+deterministic  finite  automatons, the Chomsky hierarchy  of  grammars
+(esp.  Chomsky-3),  and the Turing-Machine. Probably best  start  from
+back  to  front and choose wikipedia as the starting point, but  don't
+forget to look at the seminal papers listed as references.</p>
+
+
+
+
 <H3>Commands</H3>
 
 <p><a href="http://github.com/jakobi/script-archive/tree/master/cli.list.grep/">Git
