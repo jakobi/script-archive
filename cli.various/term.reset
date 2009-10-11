@@ -1,6 +1,11 @@
 #!/usr/bin/perl
-system 'tput rmacs; setterm reset;stty sane';
-system 'setterm reset';
+
+# still an issue with loosing reverse, but for now that's
+# enough to cope for a while and exit things sanely to avoid
+# more mischivious missettings.
+
+system 'tput rmacs;';
+system 'setterm -reset; setterm -initialize';
 system 'stty sane';
 print "\x1bc";
 # fix the fg  colors for my green on black urxvt terminal,

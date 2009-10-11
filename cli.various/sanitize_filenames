@@ -1,15 +1,14 @@
-#!/bin/sh
-#!perl
-eval 'exec perl -Sx $0 ${1:+"$@"}'
-   if 0;
+#!/usr/bin/perl
 
-# sanitize a dir tree to use SANE 8bit names compatible to unix/windows without umlauts,
-# breaks links (which aren't supported sanely in windows anyway)
+# sanitize a dir tree to use SANE ascii names compatible to unix/windows while smashing 
+# common umlauts to their normal form.
+# breaks symlinks (which aren't supported sanely in windows anyway)
 # $0 [-n|-x] PATH ... 
 
 while($_=$ARGV[0]) {
    /^-n$/ and do {$test=1; shift; next}; 
-   /^-x$/ and do {$pack=1; shift; next}
+   /^-x$/ and do {$pack=1; shift; next};
+   last;
 }
 
 use File::Find;
@@ -21,39 +20,39 @@ sub wanted {
    local $_=$_;
    my($tmp);
    s@\s@ @go; # no bloody linefeeds on my watch; and no spurious %0D or ? either...
-   s@Þ|Ú@e@go;
-   s@¨@u@go;
-   s@Ä|\x8e@Ae@go;
-   s@Ö|\x99@Oe@go;
-   s@Ü|\x9a@Ue@go;
-   s@ä|õ|\x84@ae@go;
-   s@ö|÷|\x94@oe@go;
-   s@ü|³|\x81@ue@go;
-   s@ß|\xe1@ss@go;
-   # other European chars, considering only latin1 charset 
-   s/Á/A/go;
-   s/â/a/go;
-   s/á/a/go;
-   s/Ç/C/go;
-   s/ç/c/go;
-   s/É/E/go;
-   s/é/e/go;
-   s/È/E/go;
-   s/è/e/go;
-   s/Ë/e/go;
-   s/ë/e/go;
-   s/Í/I/go;
-   s/í/i/go;
-   s/Î/i/go;
-   s/î/i/go;
-   s/ñ/n/go;
-   s/Ó/O/go;
-   s/ó/o/go;
-   s/Ø/O/go;
-   s/ø/o/go;
-   s/Ú/U/go;
-   s/ú/u/go; # see above, charset clash
-   s@´@'@go; # allow apostrophes here, for the time being
+   s@Þ|\xc3\x9e|Ú@e@go;
+   s@¨|\xc2\xa8@u@go;
+   s@Ä|\xc3\x84|\x8e@Ae@go;
+   s@Ö|\xc3\x96|\x99@Oe@go;
+   s@Ü|\xc3\x9c|\x9a@Ue@go;
+   s@ä|\xc3\xa4|õ|\x84@ae@go;
+   s@ö|\xc3\xb6|÷|\x94@oe@go;
+   s@ü|\xc3\xbc|³|\x81@ue@go;
+   s@ß|\xc3\x9f|\xe1@ss@go;
+   # other European chars, considering only latin1 + utf8 charset 
+   s/Á|\xc3\x81\x41/A/go;
+   s/â|\xc3\xa2\x61/a/go;
+   s/á|\xc3\xa1\x61/a/go;
+   s/Ç|\xc3\x87\x43/C/go;
+   s/ç|\xc3\xa7\x63/c/go;
+   s/É|\xc3\x89\x45/E/go;
+   s/é|\xc3\xa9\x65/e/go;
+   s/È|\xc3\x88\x45/E/go;
+   s/è|\xc3\xa8\x65/e/go;
+   s/Ë|\xc3\x8b\x65/e/go;
+   s/ë|\xc3\xab\x65/e/go;
+   s/Í|\xc3\x8d\x49/I/go;
+   s/í|\xc3\xad\x69/i/go;
+   s/Î|\xc3\x8e\x69/i/go;
+   s/î|\xc3\xae\x69/i/go;
+   s/ñ|\xc3\xb1\x6e/n/go;
+   s/Ó|\xc3\x93\x4f/O/go;
+   s/ó|\xc3\xb3\x6f/o/go;
+   s/Ø|\xc3\x98\x4f/O/go;
+   s/ø|\xc3\xb8\x6f/o/go;
+   s/Ú|\xc3\x9a\x55/U/go;
+   s/ú|\xc3\xba\x75/u/go; # see above, charset clash
+   s@´|\xc2\xb4@'@go; # allow apostrophes here, for the time being
    s@:@;@go;
    s@\xa0@ @go;
    $file=$_;

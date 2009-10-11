@@ -1,5 +1,6 @@
 #!/usr/bin/perl -00
-while(<>){
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
+while(<>){ # SECURE:OK
    $limit=4;
    /^(\d*) bytes? each:\n/m or next;
    $size{$1}.=$_;

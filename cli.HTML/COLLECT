@@ -63,9 +63,9 @@ jakobi@acm.org</font> ';
 #   get an ordered list of all files for the htmltree,
 #   possibly with some naming magic... perl -lpe 's/HTTP:\/\/.*//goi' to 
 #   get the local filename, remove absolute names, ...
-# perl -e 'undef $/; $_=<>; s/HREF\s*=\s*["\x27]?([^"\x27#>\s]+)/do{ print "$1\n"; }/geoi;' CONTENTFILEs | perl -lpe 's/^\.\///gi' | uniq > tocfiles 
+# perl -e 'undef $/; foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; $_=<>; s/HREF\s*=\s*["\x27]?([^"\x27#>\s]+)/do{ print "$1\n"; }/geoi;' CONTENTFILEs | perl -lpe 's/^\.\///gi' | uniq > tocfiles #<> possibly unsafe
 #   get all html files NOT mentioned in CONTENTFILE, too
-# sort tocfiles > stocfiles ; diff allfiles stocfiles | grep '<' | perl -lpe 's/< //g' > missedfiles
+# sort tocfiles > stocfiles ; diff allfiles stocfiles | grep '<' | perl -lpe 's/< //g' > missedfiles # safe as stdin
 #   and now dump the collection in the derived file ordering
 # COLLECT `cat tocfiles missedfiles` > book.html
 
@@ -223,7 +223,7 @@ if ($auto) {
    $toc=""; 
    while($files=~/(\S+)/gio) {
       $tocfile=$1; $basedir=$tocfile; $basedir=~s/[^\/]*$//;
-      open(TOC, "<$tocfile"); $tocdata=<TOC>; close TOC;
+      open(TOC, "<", $tocfile); $tocdata=<TOC>; close TOC;
       $tocdata=&db_cgi::changeurls($h0, $tocdata, $tocfile, "", "");
       $toc.=$tocdata;
    }
@@ -301,7 +301,7 @@ $book.=" - <A HREF=\"#top\">top</A> - \n";
 
 ## 1. get document parts from $0.dat or the command line
 @files=();
-if ($dat and open(Fh,  "$dat")) {
+if ($dat and open(Fh,  "<", $dat)) {
 # if there's a hyperbuch-style config file, read the available information
 while($dat and $_=<Fh>) {
    $i++;
@@ -347,7 +347,7 @@ undef $/;
 #</TD>
 #</TR>
 # assumes toc in current dir...
-if ($dat and open(Fh,  "inhalt.html")) {
+if ($dat and open(Fh,  "<", inhalt.html)) {
     $_=<Fh>; close(Fh);
     while(/<TR[^>]*>[\s\S]*?<TD[^>]*>\s*(?:<B[^>]*>)?\s*(\d+\.?(?:\.\d)?)\s*(?:<\/B[^>]*>)?\s*<\/TD[^>]*>\s*<TD[^>]*>\s*(?:<B[^>]*>)?\s*<A[^>]*?HREF\s*=\s*["']?([A-Z\._\-]+)["']?/igo) {
 #print STDERR "$1 - $2\n";
@@ -369,7 +369,7 @@ foreach $file (@files) {
    next if $skip and /$skip/;
    next if $skip and $listskip=~/ \Q$_\E /;
    s/^\.\///go;
-   $data=""; $data=<Fh> if open(Fh, $_); close Fh;
+   $data=""; $data=<Fh> if open(Fh, "<", $_); close Fh;
    next if not $data=~/\S/;
    $name=$_;
    

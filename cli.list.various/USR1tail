@@ -71,14 +71,14 @@ prints  file  contents  (by  default,  tail -f is used), restarting on
 signal USR1.
 
 Options:
-   -B 		bell on restart
-   -C		clear on restart
-   -D		date output
+   -B           bell on restart
+   -C           clear on restart
+   -D           date output
    -M file      restart if mtime of file has changed
    -T term      TERM-variable
    
-   -c		use cat
-   -g		use gtail
+   -c           use cat
+   -g           use gtail
 
 Notes:
 

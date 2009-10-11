@@ -2,7 +2,7 @@
 use strict "vars";
 
 my $version="0.2";
-# a rather brute force append command
+# a rather brute force append command (will not delete input even on success)
 # 199XXXXX PJ        jakobi@acm.org --initial version
 # 20071220 PJ   0.2  
 # copyright:  (c) PJ 2007-2009, GPL v3 or later
@@ -16,7 +16,7 @@ $err=$success=0;
 $find="";
 $sep="~"x72;
 
-args: while (1) {
+args: while (@ARGV) {
    if ($ARGV[0]=~/^-?-$/)            {shift; last}
    elsif ($ARGV[0] eq '-f')        {shift; $find = $ARGV[0]; shift}
    elsif ($ARGV[0] eq '-d')        {shift; $dir=shift}
@@ -67,9 +67,9 @@ my $arg; foreach $arg ( @ARGV ) {
 		  }
 	       }
                $format="";
-               $tmp=""; open(FH,"<$_")        and sysread(FH,$tmp,100,0); close FH; $format.=" srccompressed "   if $tmp=~/\A\037\213/; $format.=" nosrc "   if 0==length($tmp);
-               $tmp=""; open(FH,"<$dfile")    and sysread(FH,$tmp,100,0); close FH; $format.=" dstcompressed "   if $tmp=~/\A\037\213/; $format.=" nodst "   if 0==length($tmp);
-               $tmp=""; open(FH,"<$dfile.gz") and sysread(FH,$tmp,100,0); close FH; $format.=" dstgzcompressed " if $tmp=~/\A\037\213/; $format.=" nodstgz " if 0==length($tmp);
+               $tmp=""; open(FH,"<",$_)        and sysread(FH,$tmp,100,0); close FH; $format.=" srccompressed "   if $tmp=~/\A\037\213/; $format.=" nosrc "   if 0==length($tmp);
+               $tmp=""; open(FH,"<",$dfile)    and sysread(FH,$tmp,100,0); close FH; $format.=" dstcompressed "   if $tmp=~/\A\037\213/; $format.=" nodst "   if 0==length($tmp);
+               $tmp=""; open(FH,"<","$dfile.gz") and sysread(FH,$tmp,100,0); close FH; $format.=" dstgzcompressed " if $tmp=~/\A\037\213/; $format.=" nodstgz " if 0==length($tmp);
                @stat=stat($_);
                verbose("Format: $format");
                if      (-f "$dfile" and -f "$dfile.gz") {

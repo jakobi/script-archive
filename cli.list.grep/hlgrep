@@ -76,9 +76,10 @@ $opt_w && do { $pattern = "\\b($pattern)\\b"; };
 # number ($.) (see eof in the perl manpage).
 #------------------------------------------------------------------------------
 
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
 $cmd = <<"AMEN";
 \$exit_status = 1;
-while (<>) {
+while (<>) { # SECURE:OK
 	if (s/$pattern/$so\$&$se/g$sflags) {
 		\$exit_status = 0;
 	}

@@ -346,7 +346,7 @@ sub mail {
       $ident = $main::ENV{'REMOTE_IDENT'} || "<Someone>";
       $host = $main::ENV{'REMOTE_HOST'} || "<Somewhere>";
 
-      open(MAIL, "| /usr/lib/sendmail -t -i");
+      open(MAIL, "|-", "/usr/lib/sendmail -t -i");
       print MAIL <<EOF;
 To:     $maintainer
 Subject: $subject $args{LOCALSESSIONID}
@@ -802,7 +802,7 @@ sub rwdb {
    local  ($fu)  = shift; # optional: callback for writing
 
    # read data
-   $err = "db_cgi: cannot open $DB" if not open(FH, "+>>$DB");
+   $err = "db_cgi: cannot open $DB" if not open(FH, "+>>",$DB);
    if (not $err) {
       flock FH, 2; seek FH, 0, 0;
       local($/); undef $/; $tmp=<FH>;

@@ -42,7 +42,8 @@ function keyman { man -k "$@" | sort -u | egrep -v '\([5372]|lvm|^[A-Z]' ; }
 # solution: fix posixly broken lang types by:
 LANG=en_US.utf8
 LC_CTYPE=de_DE.utf8 # honor umlauts in a-z, please, at least with grep
-LC_COLLATE=C
+
+LC_COLLATE=C        # this is a prime candidate for /etc/bash.bashrc
 
 
 

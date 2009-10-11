@@ -36,8 +36,8 @@ file: foreach (@files) {
    $dfile=$file;    $sqdfile=sq($dfile);
    $file=~s/\Q$suffix\E//; $sqfile=sq($file);
    next if not -f $file;
-   $tmp=""; open(FH,"<$dfile")    and sysread(FH,$tmp,1000,0); close FH; $format.=" dstcompressed "   if $tmp=~/$magic/; $format.=" nodst "   if 0==length($tmp);
-   $tmp=""; open(FH,"<$file")     and sysread(FH,$tmp,1000,0); close FH; $format.=" srccompressed "   if $tmp=~/$magic/; $format.=" nosrc "   if 0==length($tmp);
+   $tmp=""; open(FH,"<",$dfile)    and sysread(FH,$tmp,1000,0); close FH; $format.=" dstcompressed "   if $tmp=~/$magic/; $format.=" nodst "   if 0==length($tmp);
+   $tmp=""; open(FH,"<",$file)     and sysread(FH,$tmp,1000,0); close FH; $format.=" srccompressed "   if $tmp=~/$magic/; $format.=" nosrc "   if 0==length($tmp);
    $rc=0;
    if (      $format=~/nosrc|nodst/ ) {
       warn "#skp empty file or arcfile for $file\n\n";

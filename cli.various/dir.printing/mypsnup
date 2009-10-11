@@ -5,7 +5,7 @@
 
 $ENV{PATH}.=":/usr/bin:/usr/local/bin:$ENV{HOME}/bin:$ENV{HOME}/bin-shared:/root/bin:/root/bin-shared";
 
-open(main::STDOUT,">/home/jakobi/.mypsnup.debug");
+open(main::STDOUT,">","/home/jakobi/.mypsnup.debug");
 foreach(sort keys %ENV) {
    print FH "$_=$ENV{$_}\n";
 }
@@ -70,8 +70,9 @@ foreach (@ARGV) {
    next if not /\S/;
    print "mypsnup: printing $_\n";
    s/'/\\'/g;
-   print "mypsnup: ". "cat /dev/null '$_' | $psnup | $psselect | $gs | $lpr -P$MYPSNUPPRT $MYLPROPT $RAW". "\n";
-   system             "cat /dev/null '$_' | $psnup | $psselect | $gs | $lpr -P$MYPSNUPPRT $MYLPROPT $RAW";
+   $ENV{file}=$_;
+   print "mypsnup: ". "cat /dev/null \"$_\" | $psnup | $psselect | $gs | $lpr -P$MYPSNUPPRT $MYLPROPT $RAW". "\n";
+   system             "cat /dev/null \"\$file\" | $psnup | $psselect | $gs | $lpr -P$MYPSNUPPRT $MYLPROPT $RAW";
    if ($?) {
       print "# lpr err -- in case of wrong printer name, use eg: export MYPSNUPPRT=lj\@kefk.compact\n"
    }

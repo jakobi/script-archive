@@ -41,7 +41,8 @@ else
    #     while|read constructs to protect leading/trailing ws
    OIFS=$IFS 
    
-   perl -e 'while(<>){chomp;s/^(\s*$|#.*|\s*\d+\t(\#\[[^\]]*?\]\#\t)?)//g;print "$_\n" if /./}' | \
+   perl -e 'BEGIN {s!^(\s)!./$1!,s/^/</,s/$/\0/ for @ARGV};
+            while(<>){chomp;s/^(\s*$|#.*|\s*\d+\t(\#\[[^\]]*?\]\#\t)?)//g;print "$_\n" if /./};"SECURE:OK"' | \
       while IFS="\n" read i; do find "$i" $maxdepth -depth | sort; done | \
       "$emv" -delta $orgfile $linfile $long -
    

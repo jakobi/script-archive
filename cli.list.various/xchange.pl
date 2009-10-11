@@ -49,7 +49,7 @@ file: while($#ARGV>-1) {
    $filetype0=`file '$sqfilename'`;
 
    # 1.2   check for binary files (occurence of 0x00)
-   if (open(infh, "$filename") == 0) {
+   if (open(infh, "<",$filename) == 0) {
       print stderr "* !!! Cannot open file for input. Skipping $filename.\n";
       next file;
    }
@@ -79,7 +79,7 @@ file: while($#ARGV>-1) {
    }
 
    # 1.4   process file
-   if (open(infh ,"$filename")  == 0) {
+   if (open(infh ,"<",$filename)  == 0) {
       print stderr "*** !!! Cannot open file for input. Skipping $filename.\n";
       next file;
    }
@@ -100,7 +100,7 @@ file: while($#ARGV>-1) {
          print stderr "*** !!! Cannot backup file for processing. Skipping $filename.\n";
          next file;
       }
-      if (open(outfh,">$filename") == 0) {
+      if (open(outfh,">",$filename) == 0) {
          print stderr "*** !!! Cannot open file for output. Skipping $filename.\n";
          close(infh);
          next file;
@@ -258,7 +258,7 @@ sub GetSubstitutions {
    $m=shift(@_);
 
    if ($f ne "") {
-      open(fh,$f) || die "Cannot open expression file $f for input.\n";
+      open(fh,"<",$f) || die "Cannot open expression file $f for input.\n";
       while(<fh>) {
          chop;
          $substitution[$#substitution+1]=$_;

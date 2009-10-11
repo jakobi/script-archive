@@ -21,7 +21,7 @@ arg: while (@ARGV) {
 $tmp="/tmp/$0.$LOGNAME.$$";
 
 while (1) {
-  open(FH, ( "( " . join(" ", @ARGV) . " ) | fold -w $c |" )) or die; @_=<FH>; close FH;
+  open(FH, "-|", ( "( " . join(" ", @ARGV) . " ) | fold -w $c" )) or die; @_=<FH>; close FH;
   system("clear");
   print @_[0 .. $l-2];
   sleep $s;

@@ -32,7 +32,8 @@ $magic="\x1f\x8b";
 shift if ($from)=$ARGV[0]=~/^-(\d+)$/;
 $file=$ARGV[0];
 undef $/;
-$gzip=<>;
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
+$gzip=<>; # SECURE:OK
 die "not a gzip file" if not $gzip=~/\A$magic/;
 
 $i=1; @pos=(0);

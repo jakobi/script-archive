@@ -1,11 +1,12 @@
 #!/usr/bin/perl -lp
 # emvp [-p] op - edited mv helper, applying (predefined) perl expr to the region on stdin
+#                (requires input to have emv-style line numbers)
 
 # copyleft, etc: see emv proper.
 
 BEGIN {
    if ($ARGV[0] eq "-p"){$o_fullpath=1; shift};
-   $op=shift or die;
+   $op=shift or die "lack of opt argument";
    do "$0.cfg" if -f "$0.cfg"; do "$0.$ENV{LOGNAME}.cfg" if -f "$0.$ENV{LOGNAME}.cfg";
    $op=$operation{$op} if $operation{$op};
    # builtins
@@ -13,9 +14,11 @@ BEGIN {
    $op   ='s/[\(\)\[\]\{\};]/--/gi; s/[^\\0-9-A-Z,;_\.\-\+]/_/gi' if $op eq "uclean";
    $op   ='s/(\A|\/)\[[^\[\]]*\][\. _]?/$1/' if $op eq "sq";       # bracket stripping
    $op   ="\$_=$op"                          if $op=~/\A[a-z]+\Z/; # e.g. perl uc, lc
+   foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # SECURE:OK
+   warn "# using $op\n";
 }
 
-if(/^ *["#]/ or not /^ *(\d+\t)(.*)/){print;next};
+if(/^ *["#]/ or not /^ *(\d+\t)(.*)/){next};
 ($l,$_,$o)=($1,$2,$_); 
 
 if ($_) {

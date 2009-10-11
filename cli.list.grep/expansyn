@@ -149,7 +149,7 @@ foreach(@SYNPATH) {
          warn "cfgfile $_ not found\n";
      }
    } else {
-      open(FH, "<$_") or next;
+      open(FH, "<",$_) or next;
       push @SYN,<FH>;
    }
 }

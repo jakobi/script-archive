@@ -11,7 +11,8 @@
 #   thus truly suitable only in trust settings or 
 #   on backups that only root can access
 
-while(<>) {
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
+while(<>) { # SECURE:OK
    s/^\d* bytes? each:\n//m;
    if (s/^(\S.+)\n//m and $l=$1 and @s=split(/\n+/,$_)){
       print "\n";

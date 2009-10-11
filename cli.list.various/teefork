@@ -4,6 +4,8 @@
 # last change PJ 20090615
 # perl artistic licence
 
+# WARNING -- intentionally unsafe uses of <> and open2, NOTSECURE 
+
 # PJ added check for trailing '|' -
 #
 #    ( echo aa; cat /var/log/messages; sleep 1; echo bb; sleep 1; echo cc) | 

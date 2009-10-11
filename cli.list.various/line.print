@@ -11,7 +11,7 @@ my $version="0.1";
 # kept in sync to line.replace
 
 
-# line.print [-c|-C *][-ungrep *] [--grep] LINENO ... FILE ...
+# line.print [-c|-C*][-ungrep*] [--grep] LINENO ... FILE ...
 #
 # print lines from files.
 #
@@ -81,7 +81,7 @@ BEGIN{
 #print main::STDERR "match= ";for(sort keys %match){print main::STDERR " $_:$match{$_} "};print main::STDERR "\n";
 #print main::STDERR "flags= ";for(sort keys %flags){print main::STDERR " $_:$flags{$_} "};print main::STDERR "\n";
 #print main::STDERR "n    = ";for(sort keys %n    ){print main::STDERR " $_:$n{$_} "    };print main::STDERR "\n";
-
+   foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
 };
 
 

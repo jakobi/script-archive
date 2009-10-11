@@ -15,7 +15,7 @@
 ./cli.list.rename/emv:2.00pj.4
 ./cli.list.rename/myrename:0.2
 ./cli.list.rename/myrename.mangle:0.1
-./cli.list.tagls/tagls:0.2.1
+./cli.list.tagls/tagls:0.2.2
 ./cli.list.tagls/taglsc:0.1
 ./cli.list.various/line.print:0.1
 ./cli.list.various/line.replace:0.1
@@ -32,5 +32,5 @@
 ./cli.various/mt_dir:0.1
 ./cli.various/sleepuntil:0.1
 ./cli.various/watchfloat:0.1
-./vim/pipe.vim:0.1.1
+./vim/pipe.vim:0.1.2
 ./vim/vimscript:1.2pj

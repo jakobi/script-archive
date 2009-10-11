@@ -107,7 +107,7 @@ sub wrapper {
   local \$_ = \$_;
   s|^(\\s)|./\$1|;
   s/(\\s+)\$/\$1\\0/;
-  open FILE, \$_ or die "cannot open \$_: \$!";
+  open FILE, "<", \$_ or die "cannot open \$_: \$!";
  LINE: while (defined (\$line = <FILE>)) {
     \$found = 1, last if \$line =~ $regexp;
   }
@@ -124,7 +124,7 @@ EOF
     local \$_ = \$_;
     s|^(\\s)|./\$1|;
     s/(\\s+)\$/\$1\\0/;
-    open FILE, $_ or die "cannot open $_: $!";
+    open FILE, "<", $_ or die "cannot open $_: $!";
     $line = <FILE>;
     close FILE or die "cannot close $_: $!";
 EOF

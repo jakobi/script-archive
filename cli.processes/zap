@@ -216,7 +216,7 @@ if ($is_nice) {
 
 #========================================================= Script Body
 
-open (PS,"$pscmd |") || die "Can't run $pscmd\n";
+open (PS,"-|","$pscmd") || die "Can't run $pscmd\n";
 $title=<PS>; 
 &parsetitle($title);
 $title=~s/^ // or $title=~s/ //;
@@ -272,8 +272,8 @@ if (not $yes) {
          $TTYin="&STDIN"; $TTYout="&STDOUT"; $TTY="";
       }
    }
-   open (TTYIN,  "<$TTYin")  || "Can't read  $TTYin: $!\n";
-   open (TTYOUT, ">$TTYout") || "Can't write $TTYout: $!\n";
+   open (TTYIN,  "<",$TTYin)  || "Can't read  $TTYin: $!\n";
+   open (TTYOUT, ">",$TTYout) || "Can't write $TTYout: $!\n";
    select (TTYOUT);
    $| = 1;
    select(STDOUT);

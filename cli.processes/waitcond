@@ -241,7 +241,7 @@ sub grep_file {
       # allow use of perl idiomatic 'command |' filenames 
       # this block temporarily uses shell rc semantics
       $rc=0; # shell.true
-      open(FH,$file) and defined read(FH,$tmp,$grepmaxsize,0) and close FH or $rc=256;
+      open(FH,$file) and defined read(FH,$tmp,$grepmaxsize,0) and close FH or $rc=256; # INTIONALLY INSECURE OPEN2
       $rc=$?>>8 if $?;
       warn "# $Me: failed open/read for pipe grep $expr $file\n" if $rc and $rc==256;
       warn "# $Me: rc for pipe grep $expr $file: $rc\n"          if $rc and $rc!=256 and $verbose;
@@ -429,6 +429,10 @@ Notes:
     redirection or tee fail (xterm _might_ also be able to turn on logging;
     screen offers logging (log on; logfile FILE); screen can also be asked
     remotely to 'hardcopy' a snapshot of its scrollback buffer).
+  - for opening files, waitcond uses intentionally the magic two argument
+    form of open, allowing e.g. to provide pipes as 'filenames'. This is
+    a security issue with e.g. waitcond grep string "$(ls -1 log*|head -1)".
+    Please consider symlinking to safe name to grep against.
 
 Examples: 
   - regularly run a command and wait for a zero shell return code (=success)

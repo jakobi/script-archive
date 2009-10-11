@@ -4,7 +4,8 @@
 
 $/=$\="\x0";
 do{$pre="       ";shift} if $ARGV[0]=~/-?-col$/;
-while(<>) {
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
+while(<>) { # SECURE:OK
    $n++;
    s/\n([\t ]*[^\0\Z\s])/\n$pre$1/g if $pre;
    printf "%6d %s", $n, $_

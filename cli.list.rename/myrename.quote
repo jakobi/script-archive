@@ -49,7 +49,8 @@ while($_=shift,defined $_) {
    /()/         and unshift @ARGV,$_ and last;
 }
 
-while(($o_inputfromarg and ($_=shift @ARGV, 1) or $_=<>), defined $_) {
+$o_inputfromarg or do{foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}}; # MAGIC <> INSECURE MESS
+while(($o_inputfromarg and ($_=shift @ARGV, 1) or $_=<>), defined $_) { # SECURE:OK
    chomp; # strip $/ aka IRS
    if ($o_verbose) {
       warn "ERR vertical $_\n"  if /[\r\n]/o;

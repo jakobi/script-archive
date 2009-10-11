@@ -41,7 +41,7 @@ system("trcstop");
 system("echo; trcrpt $REPORT_FLAGS -O $REPORT_OPTS > $TMP");
 
 system("head -12 $TMP");
-open(FH, "<$TMP") or die "no trace file";
+open(FH, "<",$TMP) or die "no trace file";
 while(<FH>) {
    next if /^trace/o;
    next if /^trcstop/o;

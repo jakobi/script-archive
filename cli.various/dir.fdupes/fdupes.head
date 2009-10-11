@@ -13,11 +13,14 @@ if      (/^-(\d+)$/) {
 }
 $limit=10 if not $limit;
 
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
 if ($limit>0) {
-   while(<>) {
+   while(<>) { # SECURE:OK
       $i++; print if $i<=$limit
    }
 } else {
-   while(<>) { push @list, $_ };
+   while(<>) { # SECURE:OK
+      push @list, $_;
+   }
    print foreach (@list[$limit..-1]);
 }

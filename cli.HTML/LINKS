@@ -41,11 +41,11 @@ args: while (@ARGV) {
 }
 
 @files=@ARGV; @ARGV=();
-@tmp=<> if $stdin; 
+@tmp=<STDIN> if $stdin; 
 push @files, @tmp;
 
 if (not @files) {
-   @files=('-'); $dest=0;
+   @files=('/dev/stdin'); $dest=0;
 }
 
 $0=~/(.*)\/[^\/]+$/;
@@ -68,7 +68,7 @@ foreach(@files) {
    # open input
    next if -d $_; # skip dirs
 
-   open(fh, $_) || warn "Cannot open file to read $_\n";
+   open(fh, "<",$_) || warn "Cannot open file to read $_\n";
    undef $/; 
    $lines=<fh>; 
    $/="\n"; 

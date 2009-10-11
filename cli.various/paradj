@@ -51,6 +51,8 @@ $indent = 0 if (!$indent);
 local $/ = "";
 
 my $tmp=0;
+
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
 while (<>) {
   my @linein = split;
   $tmp++;

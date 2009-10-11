@@ -366,7 +366,7 @@ quoted command output.
 
 To  search  the journal get a report by date, use the  --grep  option;
 however that is also just
-   perl -00ne 'print if /REGEX/' JOURNALFILE
+   perl -00ne 'use ARGV::readonly; print if /REGEX/' JOURNALFILE
 
 Do  lengthy  journal edits outside of the locking: -jedit and  save  a
 copy, clear the file, save and quit), edit at leisure, then -jedit and
@@ -933,7 +933,7 @@ sub journal {
    my($ok)=(0);
    $ENV{journal}=$journal;
    ( $lockcmd ? 
-         open(FH,"|  $lockcmd --flock $lockoptjournal \$journal -- cat >> \$journal") :
+         open(FH,"|-", "$lockcmd --flock $lockoptjournal \$journal -- cat >> \$journal") :
          open(FH,">>", $journal) 
       )  and 
       ++$ok or 
@@ -983,12 +983,12 @@ sub getanswer {
    } elsif (-t main::STDERR) {
       $OUT=\*main::STDERR;
    } else {
-      open($OUT,">/dev/tty"); $OUTclose=1;
+      open($OUT,">","/dev/tty"); $OUTclose=1;
    }
    if (-t main::STDIN){
       $IN=\*main::STDIN;
    } else {
-      open($IN,"</dev/tty"); $INclose=1;
+      open($IN,"<","/dev/tty"); $INclose=1;
    }
 
    my($missing,$i,@prompt,@current);

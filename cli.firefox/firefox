@@ -188,7 +188,7 @@ function _encode {
    # to avoid this, encode = by using %3D (need to try both urls instead?
    # -> change to return 1 word or multiple words,
    # then invoke action for each of the possible encoding we&encode_semantics return?)
-   perl -e '$_=shift;
+   perl -e '$_=shift; "SECURE:OK";
          s/([^A-Z0-9\/:\-_+\.;=\?\&\%\#])/do{sprintf "%%%02X",ord($1)}/gei; # for now, no ',' here
          print' "$1"
 }
@@ -294,7 +294,7 @@ for opt in "$@"; do
    # hint: to avoid this duplication of tabs in case of a valid =3D, etc:
    #       replace = by %3D 
 #   tmp=$(perl -e '
-#         $_=shift;
+#         $_=shift; "SECURE:OK";
 #         if (/=2E|=3D/i) {
 #            s/=([0-9A-F]{2})/pack(C,hex($1))/gei; 
 #            s/([\x60\x22\x27\x21])/do{sprintf "%%%02X",ord($1)}/gei; 

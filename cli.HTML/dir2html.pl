@@ -142,7 +142,8 @@ $index.="$head\n<A NAME=\"list\"></A>\n<!-- BEGINOFLISTING -->\n" if $file_head 
 # loop over input
 # prepare one entry per file in directory tree
 $i=0;
-file: while(<>) {
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
+file: while(<>) { # SECURE:OK
   
    # verbatim html inclusion
    if (s/^-(html)\s//i) {
@@ -460,7 +461,7 @@ sub read {
 
    if ($tmp) {
       @stat=stat($tmp);
-      open(TMP, "<$tmp"); $tmp=<TMP>; close TMP;
+      open(TMP, "<",$tmp); $tmp=<TMP>; close TMP;
    } 
 
    if ($tmp) {
@@ -475,7 +476,7 @@ sub read {
    }
 
 print main::STDERR "$inline - $tmp - $base \n";
-   if ($inline and not $tmp and -f $base and -r $base and open(TMP,"<$base")) {
+   if ($inline and not $tmp and -f $base and -r $base and open(TMP,"<",$base)) {
       $tmp=<TMP>; close TMP;
       if ($tmp=~/<H1>([\s\S]*?)<\/H1>/i or $tmp=~/<H2>([\s\S]*?)<\/H2>/i or $tmp=~/<TITLE>([\s\S]*?)<\/TITLE>/i) {
          $tmp="$1";

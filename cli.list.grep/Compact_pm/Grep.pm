@@ -569,8 +569,9 @@ Alternative perl greps:
   - peg: similar to ack and $Me, more extensive (available as cpan script)
     coloring, more modern perl incl. using the IO layer.
   - perl   -lne  'print "\$ARGV: \$_\\n" if EXPR' FILE ...   
-  - perl   -00ne 'print "\$ARGV\\n"     if EXPR' FILE ... | sort -u 
-  - perl -0777ne 'print "\$ARGV\\n"     if EXPR' FILE ...   
+  - perl   -00ne 'print "\$ARGV\\n"      if EXPR' FILE ... | sort -u 
+  - perl -0777ne 'print "\$ARGV\\n"      if EXPR' FILE ...   
+    (for the previous 3 please note that the implied <> is NOT secure)
   - tcgrep: simple grep from which this one is forked
 
 EOF
@@ -730,7 +731,7 @@ sub parse_args {
        # $/ = '';          # this eats excess newlines from \n\n+ stretches, thus use
        $/=undef;           # a zerowidth -2 --split '(?<=\n\n)(?=[^\n])' instead
        $opt{p}=0;          # 22 lines, 2*1 empty lines, 1*2 empty lines:
-       $opt{2}=1;          # with perl -ne 'BEGIN{$/ = ""}; print;' /etc/hosts
+       $opt{2}=1;          # with perl -ne 'BEGIN{$/ = ""}; print;' /etc/hosts # INSECURE EXAMPLE
                            # $/='':      21 # detects records correctly, eats excess nl
                            # $/="\n\n":  22 # but also detects 'empty records and may 
                            #                  start a record with a newline
@@ -864,7 +865,7 @@ FILE: while (@_)  {
             $name = $file;
             mywarn("# $Me: checking type 1 $file\n") if $opt{V};
             $tmp=$file; $tmp="$opt{filter} $file |" if $opt{filter};
-            if (!open(FILEH, $tmp)) {
+            if (!open(FILEH, $tmp)) { # SECURE:OK, stdin only
                 unless ($opt{q}) { mywarn("$Me: $file: $!\n"); $Errors++; }
                 next FILE;
             } 
@@ -883,10 +884,10 @@ FILE: while (@_)  {
             ($ext) = $file =~ /\.([^.]+)$/;
             if (defined $ext and $Compress{$ext}) {
                 $ENV{file}=$file;
-                $file = $Compress{$ext}; $file=~s/\%\%/\$file/g;
+                $file = $Compress{$ext}; $file=~s/\%\%/"\$file"/g;
                 mywarn("# $Me: checking type 2 $file\n") if $opt{V};
                 $tmp="$file |"; $tmp.="$opt{filter} |" if $opt{filter};
-                if (!open(FILEH, $tmp)) {
+                if (!open(FILEH, $tmp)) { # SECURE:OK using ENV
                     unless ($opt{q}) { mywarn("$Me: $file: $!\n"); $Errors++; }
                     next FILE;
                 } 
@@ -897,7 +898,7 @@ FILE: while (@_)  {
                 mywarn("# $Me: checking type 3 $file\n") if $opt{V};
                 if ($opt{filter}) {
                    $ENV{file}=$file;
-                   if (!open(FILEH, "$opt{filter} \$file |")) {
+                   if (!open(FILEH, "$opt{filter} \"\$file\" |")) { # SECURE:OK using ENV
                       unless ($opt{q}) { mywarn("$Me: $file: $!\n"); $Errors++}
                       next FILE;
                    } 

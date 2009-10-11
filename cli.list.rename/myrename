@@ -115,8 +115,8 @@ operation modi (see -examples for its restrictions).
 
 All  changes  are logged in the UNDO log, which is basically  a  shell
 script  with  mv and ln statements; use a command like tac or perl  -e
-'\@l=<>;  print  reverse \@l' to reverse it before use. Logs older  than
-one day are removed automatically.
+'use ARGV::readonly;\@l=<>; print reverse \@l' to reverse it before use.
+Logs older than one day are removed automatically.
 
 Some examples:
 
@@ -550,7 +550,7 @@ if ($op_log) {
    system q@find "@ . $dir . q@" $logmaxage -name "???.*"  -exec rm {} 2>/dev/null \; ;@ .
           q@find "@ . $dir . q@" $logmaxage -name "????.*" -exec rm {} 2>/dev/null \;  @ ;
    $logname="$dir/undo.$date.$$";
-   open(LOGFH,">$logname") or die "cannot open log $logname";
+   open(LOGFH,">",$logname) or die "cannot open log $logname";
    print LOGFH "# you may need to edit and reverse the commands" if $o_noexec;
    print LOGFH "# WARNING -- output was created by myrename -n (o_noexec)\n" if $o_noexec;
 }
@@ -1100,8 +1100,8 @@ sub setup {
          $TTYin="&STDIN"; $TTYout="&STDOUT"; $TTY="";
       }
    }
-   open (TTYIN,  "<$TTYin")  || die "Can't read  $TTYin: $!\n";
-   open (TTYOUT, ">$TTYout") || die "Can't write $TTYout: $!\n";
+   open (TTYIN,  "<",$TTYin)  || die "Can't read  $TTYin: $!\n";
+   open (TTYOUT, ">",$TTYout) || die "Can't write $TTYout: $!\n";
    select (TTYOUT);
    $| = 1;
    select(STDOUT);

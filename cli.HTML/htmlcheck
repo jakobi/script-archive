@@ -10,7 +10,8 @@ HTMLCHEK=${HTMLCHEK:-/usr/local/dist/DIR/htmlchek}
 
 # sugar=1: adds filenames to output
 $HTMLCHEK/htmlchek.pl configfile=$HTMLCHEK/htmlcheck.tum.cfg $* | \
-perl -e 'while(<>) {
+perl -e 'BEGIN {s!^(\s)!./$1!,s/^/</,s/$/\0/ for @ARGV};
+      while(<>) { # SECURE:OK
            # ignore common bugs and abuse from defective editors
            $old=$_;
            s/.*?unquoted non-alphanumeric option value "([-+]\d+|[a-z0-9]*)".*//i;

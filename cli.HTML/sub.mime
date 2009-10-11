@@ -235,7 +235,7 @@ sub mime {
          if ($mime_dump_html) {
             $tmp="/tmp/mlnnprintfilter.$$";
             system "rm -f $tmp 2>/dev/null";
-            open(L, ">$tmp"); print L $body; close L;
+            open(L, ">",$tmp); print L $body; close L;
             $body=`lynx -force_html -dump $tmp; rm -f $tmp 2>/dev/null`;
          }
       } elsif ($ct=~/multipart[\s\S]*boundary *= *["']?([^\n"']+)["']?/io) {
@@ -249,7 +249,7 @@ sub mime {
          if ($#longlines > 50 or $#verylonglines > 10) {
             $tmp="/tmp/mlnnprintfilter.$$";
             system "rm -f $tmp 2>/dev/null";
-            open(L, ">$tmp"); print L $body; close L;
+            open(L, ">",$tmp); print L $body; close L;
             $body="*** FMT long lines: $#longlines/$#verylonglines " .
                   "Len" . length($body) .
                   "\n\n" .

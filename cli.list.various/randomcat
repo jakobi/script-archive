@@ -52,7 +52,7 @@ if ($o_echo) {
    while(@ARGV){
       $_=shift;
       @l=();
-      open(FH, "< $_") and @l=<FH>;
+      open(FH, "<", $_) and @l=<FH>;
       print(@{&randomize(\@l)}) if @l;
    }
 }

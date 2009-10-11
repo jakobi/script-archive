@@ -9,9 +9,9 @@
 # if used with file arguments (xargs), help and (empty)
 #  contents of stdin can be found in the last buffer.
 
-my $version="0.1.1";
+my $version="0.1.2";
 # created     PJ 20090803 jakobi@acm.org
-# last change PJ 20090806
+# last change PJ 20091011 (fixed <> issue)
 # copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
 
@@ -77,7 +77,8 @@ $msg=<<EOF;
 
 EOF
 # $time=time;
-undef $/; $_=<>;
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
+undef $/; $_=<>; # SECURE:OK
 open(FH,">",$tmpname) and print FH $msg, $_ and close FH or 
    do{unlink $tmpname; die "# ERR $Me: cannot write tmpfile\n" };
 

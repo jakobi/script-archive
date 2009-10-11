@@ -39,8 +39,8 @@ args: while (1) {
 }
 $select=shift;
 die "$0: no pattern??" if not $select=~/\S/;
-
-while(<>) {
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
+while(<>) { # SECURE:OK
    # expand variables outside of the tags themselves.
    while(s@##SELECTVAR:(\$$VARCHAR+)##@$1@gmee){;}
    # expand any variables in SELECT TAGS
@@ -65,7 +65,7 @@ if ($outputfile) {
    if ($output!~/\S/) {
       die "$0: no output??"
    } else {
-      open(FH, ">$outputfile") || die "$0: cannot open $outputfile";
+      open(FH, ">",$outputfile) || die "$0: cannot open $outputfile";
       print FH $output;  
    }
    exit 0;

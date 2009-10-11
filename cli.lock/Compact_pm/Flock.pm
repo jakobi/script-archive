@@ -70,14 +70,17 @@ our @ISA    = qw(Exporter);
 # a mkdir-based example is in lock.p
 
 
-
+# open a bunch of files. Requires explicit assigment/test for (0,@FH)
+# args    mode (! to allow per name overrides), name, ...
+# returns (number-of-errors, FH-array)
 sub openFH {
-   my($m,$err,$tmp,@FH)=("<","");
+   my($m,$err,$m_override,$tmp,@FH)=("<",0,0,"");
    for(@_){
-      do{$m=$_; next} if /  ^(    \+?[<>]>?  |  -\|  |  \|-)$  /xo; # new default open mode
+      do{$m=$_; $m_override++ if $m=~s/^!//; next} if m/  ^\!?(    \+?[<>]>?  |  -\|  |  \|-)$  /xo; # new default open mode
       my $FH;
-      if (/  ^\s*\+[<>]>?  |  ^\s*-?\|  |  \|\s*$  /xo) {
-         open($FH, $_)     or ++$err and next;
+      if ( $m_override and m/  ^\s*\+[<>]>?  |  ^\s*-?\|  |  \|\s*$  /xo) {
+         # IFF mode starts with '!', then use insecure magic open2 if file has mode prefix override
+         open($FH, $_)     or ++$err and next; 
       } else {
          open($FH, $m, $_) or ++$err and next;
       }
@@ -99,27 +102,36 @@ sub closeFH {
 
 sub flockFH {  # 1 flockFH('ex',  fh, ...)   to lock nonblocking or fail
                # 2 flockFH('-ex', fh, ...)   to lock nonblocking and immediately unlock
-               # 3 flockFH('-=',  fh, ...)   to unlock (#2 will fail, but still unlock)
+               # 3 flockFH('-=',  fh, ...)   to unlock owned locks (ignore errors if any)
+               #                             (NOTE: use closeFH instead!)
+               # 4 flockFH('',    fh, ...)   to shared-non-blocking lock or fail
+               # mode: ex(clusive), sh(ared;default), un(lock-before-return)
+               #       bl(locking), nb(locking;default)
+               #       - unlock before returning (NOTE: use close or closeFH() instead)
+               #       = don't add defaults of sh,nb
    my ($err,$m,$op);
    $op=$err=0;
 
-   # mode: ex(clusive), sh(ared;default), un(lock-before-return)
-   # bl(locking), nb(locking;default)
    $m=shift; $m="" if not defined $m; 
-   $op|=4 if $m=~/\bnb/;
-   $op|=2 if $m=~/\bex/;
-   $op|=1 if $m=~/\bsh/; # can be upgrade for the process itself to ex
-   # add defaults to op?
+   $err=1 if not @_;
+
+   #    8        /-/     # unlock, see below
+   $op|=4 if $m=~/\bnb/; # nonblock
+   $op|=2 if $m=~/\bex/; # exclusive
+   $op|=1 if $m=~/\bsh/; # shared     -- can be upgraded for the calling process to ex
+
+   # add defaults to op: shared nonblocking UNLESS exact mode requested '=' 
    $op|=4 if $m!~/\bbl/ and $m!~/=/o;
    $op|=1 if $m!~/\bex/ and $m!~/=/o; 
 
+   $op and do{                   # non-zero op
+      for(@_) { flock $_,$op or $err++ }
+   };
 
-   $op and do{for(@_) {
-      flock $_,$op or $err++;
-   }};
-   $op=8; if ($err or $m=~/-/) {
+   $op=8; if ($err or $m=~/-/) { # unlock if requested or error
       for(@_) { flock $_,$op };
-   }
+   };
+
    return $err ? 0 : 1;
 }
 

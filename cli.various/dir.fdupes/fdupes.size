@@ -7,7 +7,9 @@ if ($ARGV[0] = ~/^[-\+]?(\d+)$/) {
    shift @ARGV;
    $limit=$1;  
 }
-while(<>){
+
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
+while(<>){ # SECURE:OK
    $size=undef;
    /^(\d*) bytes? each:\n/o and $size=$1;
    do {print;next} if not defined $size;

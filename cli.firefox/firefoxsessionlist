@@ -78,11 +78,12 @@ if (not -f $file) {
    # allows for migration from firefox to a hopefully more current firefox-<...>
    my    $firefoxhome=`ls -dr1 ~/.mozilla/firefox{,-*}| head -1`; 
    $firefoxhome=~s/\n//g;
-   chomp($file=`ls -dt1 $firefoxhome/*default/sessionstore.js 2>/dev/null | head -1`);
+   $file=`ls -dt1 $firefoxhome/*default/sessionstore.js 2>/dev/null | head -1`;
+   $file=~s/\n//g;
 }
 if($file) {
-   warn "# opening $file\n";
-   open(FH,"< $file") and $contents=<FH>; close FH;
+   warn "# opening '$file'\n";
+   open(FH,"<", $file) and $contents=<FH>; close FH;
 }
 die "no input.\n" if not $contents;
 

@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 
-# description: threading example: tail with blocking threads
+# description: threading example: tail with blocking threads 
+# WARNING - intentionally left-in unfiltered insecure 2-arg-open
 # last change 20090602 jakobi@acm.org
 
 # allowing to use tail with non-select-able "files" like the
@@ -74,7 +75,7 @@ sub reader {
 #     IT DEFINITELY DOES _NOT_ for both perl open "...|" and bash 
 #     <() cases. Sigh.)
 
-   open(FH, "$file") or warn "cannot open $file";
+   open(FH, "$file") or warn "cannot open $file"; # INTENTIONALLY LEFT INSECURE
    # sysopen(FH, $file, 2) or warn "cannot open $file";
 
 # a small problem, sysread returns at eof and does not want

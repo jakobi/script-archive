@@ -30,7 +30,8 @@ sub revdate {
    }
 }
 
-@_=<>;
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
+@_=<>; # SECURE:OK
 @_=sort revdate @_;
 print @_;
 exit;

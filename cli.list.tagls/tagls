@@ -1,11 +1,12 @@
 #!/usr/bin/perl
 
-my $version="0.2.1";
+my $version="0.2.2";
 # 20071228 PJ   0.1  jakobi@acm.org initial version
 # 20080115 PJ        added +NUM*
 # 20090729 PJ   0.2  added synonyms, highlighting, relevance sorting, -cmdX
 # 20090913 PJ        fixed split() bug in parsestring affecting -b 'X not ( Y' 
 #                    (anything with even 'token' sequences)
+# 20091011 PJ        <>/open cleanup, missing pattern now implies '=~.'
 #
 # copyright:  (c)2007-2009 PJ GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
@@ -145,7 +146,7 @@ while($_=$ARGV[0]){ # actually OK
 
 # what to do for no args and no expr -> for now: tagls .
 #do{die "no tags to look for..."} if not @ARGV;
-@ARGV=(".") if not @ARGV and not $expr; # i.e. return input
+@ARGV=("=~.") if not @ARGV and not $expr; # i.e. return input
 
 $expr=&parsearray($expr,@ARGV);
 $expr="not ( $expr )" if $negate; # -v global negation of expr
@@ -176,7 +177,8 @@ foreach $src(split /:/, $TAGLSPATH) {
 foreach $src (@src) {
    my $sqsrc=&sq($src);
    -d $src and do{$suggestdir=$src if not $suggestdir; push @files, `find '$sqsrc' -type f`; next};
-   if (open(FH, "<$src")) {
+   $src eq "-" and $src="/dev/stdin";
+   if (open(FH, "<",$src)) {
       my($lines,@lines);
       local($/);
       $lines=<FH>;
@@ -284,7 +286,7 @@ if ($unsorted) {
 if ($menu>1 or $menu and @files>1) {
    my $tmpfile="/tmp/$ENV{LOGNAME}.tagls.$$.".time;
    system "find /tmp/$ENV{LOGNAME}.tagls.* -type f -mtime +1 -exec rm {}\\; 2>/dev/null";
-   open(FH,">$tmpfile") or $tmpfile="";
+   open(FH,">",$tmpfile) or $tmpfile="";
    print FH <<EOF;
 # select the files to report
 # 
@@ -565,7 +567,7 @@ sub grep_file {
    my($expr,$mode)=@_;
    my($file, $sqfile,$tmp, $rc)=($_, sq($_), "", 0);
    local($_);
-   open(FH, "<$file"); 
+   open(FH, "<",$file); 
    read(FH,$_,512,0); 
    if      (/\A\037\213/) {
       # skip large compressed files

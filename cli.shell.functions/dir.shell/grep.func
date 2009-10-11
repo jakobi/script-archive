@@ -22,7 +22,7 @@ function gr_x {
                                fi
                                ;;
        esac
-   done | egrep -v -i -e '^/[^/]*/SYSTEM-BACKUPS' -e '^/[^/]*/automated-backup' | mytcgrep -h -i -B "$@" | sort -u
+   done | egrep -v -i -e '^/[^/]*/SYSTEM-BACKUPS' -e '^/[^/]*/automated-backup' | Grep.pm -h -i -B "$@" | sort -u
 }
 
 
@@ -36,14 +36,17 @@ function gr_d {
 function gr_d0 { 
    # shorten to the final dir/filename with a twist:
    # go further left while dir is numbered, i.e. \d* c\d* v\d* 
-   perl -lne 's@.*?(((/|^)(?!\d|[vc]\d)[^/]+)(/(?=\d|.\d)[^/]+)*/[^/]+)$@...$1@i; print' | sort -u
+   perl -lne '"SECURE:OK";BEGIN {s!^(\s)!./$1!,s/^/</,s/$/\0/ for @ARGV}; s@.*?(((/|^)(?!\d|[vc]\d)[^/]+)(/(?=\d|.\d)[^/]+)*/[^/]+)$@...$1@i; print' | sort -u
 }
 function gr_ds { 
    # shorten by paren+ removal to a single ~~, then if there's still a monstrous name
    # in the path, truncate it in the middle. Use $1 to change 'longness'.
    # tries to allow for the highlighting codes as used on xterm by tput rmso/smso
    # and e.g. grep.p / hlgrep (3-5bytes). Does NOT add ESC when line is ESC-clean.
-   N=${1:-60} perl -lne 'BEGIN{use POSIX;$n=$ENV{N}||60; $p=q![^/\(\)\[\]\{\}]!; chomp($se=qx(tput rmso)); $m=floor($n/2)};
+   N=${1:-60} perl -lne 'BEGIN{s!^(\s)!./$1!,s/^/</,s/$/\0/ for @ARGV; # fix <> mess
+                               use POSIX;$n=$ENV{N}||60; 
+                               $p=q![^/\(\)\[\]\{\}]!; chomp($se=qx(tput rmso)); $m=floor($n/2)
+                              };
       do{ local ($se)=$se;  $se="" if not /x1b/o;
           s@\($p+\)|\[$p+\]|\{$p+]\}[\. -_]?@~~@go; s@(~~[^~/]?)+~~@~~@go; 
           ##  s@/([^/]{2}[^/]{$n,})(?=/|$)@do{$2.substr($$1,0,$n/2)."~~".substr($1,-$n/2)}@ge; 

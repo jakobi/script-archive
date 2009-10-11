@@ -134,7 +134,7 @@ undef $/;
 if (@ARGV or not $urls) { 
    if (not @ARGV and not $urls) {
       print main::STDERR "# GREP EXPR / GREP -k ::EXPR:: EXPR; shell-quotes\n\n";
-      $urls.=&argv2url("-");
+      $urls.=&argv2url("/dev/stdin");
       print main::STDERR "\n# processing list\n"
    } else {
       $urls.=&argv2url(@ARGV);
@@ -148,7 +148,7 @@ sub argv2url {
    my($urls);
    foreach(@_){
       my($tmp);
-      if (open(FH, "<$_")) {
+      if (open(FH, "<",$_)) {
          while(read FH, $tmp, 10) {
             $urls.=$tmp;
          }

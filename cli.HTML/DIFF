@@ -22,7 +22,7 @@ undef $/;
 $lynxargs="-width=1000 -dump -force_html -nolist";
 $linenoprefix="DIFFLINENO";
 $lynx=1;
-$diffcmd="gdiff --text -0 -b -B -I '$linenoprefix'"; # skip whitespace changes
+$diffcmd="diff --text -b -B -I '$linenoprefix'"; # skip whitespace changes
 chop($h=`hostname`); # $lynxargs.=" -nolist" if $h eq "kefk";
 chop($date=`date +%y%m%d%H%M%S`);
 $tmp="/tmp/htmldiff.$date";
@@ -50,8 +50,8 @@ args: while(1) {
 }
 
 
-$filename1=$ARGV[0]; open (FH, $filename1); $file1=<FH>; shift @ARGV;
-$filename2=$ARGV[0]; open (FH, $filename2); $file2=<FH>; shift @ARGV;
+$filename1=$ARGV[0]; open (FH, "<",$filename1); $file1=<FH>; shift @ARGV;
+$filename2=$ARGV[0]; open (FH, "<",$filename2); $file2=<FH>; shift @ARGV;
 
 # transform line ends, maybe transform/unify umlauts?
 $file1=~s/\n\x0d/\n/go;
@@ -90,10 +90,10 @@ if (not $brief) {
 
 # get the text dump
 if ($lynx and not $brief) {
-   open(FH, ">$tmp.a1"); print FH $file1; close FH;
-   open(FH, ">$tmp.a2"); print FH $file2; close FH;
-   open(FH, "lynx $lynxargs $tmp.a1 |"); $file1=<FH>; 
-   open(FH, "lynx $lynxargs $tmp.a2 |"); $file2=<FH>; 
+   open(FH, ">","$tmp.a1"); print FH $file1; close FH;
+   open(FH, ">","$tmp.a2"); print FH $file2; close FH;
+   open(FH, "-|","lynx $lynxargs $tmp.a1"); $file1=<FH>; 
+   open(FH, "-|","lynx $lynxargs $tmp.a2"); $file2=<FH>; 
 #print main::STDERR "text dump finished\n";
 }
  
@@ -187,9 +187,9 @@ if ( $file1=~/\S/ and $file2!~/\S/ or
 }
 
 # diff the line-paragraph files
-open(FH, ">$tmp.b1"); print FH $file1; close FH;
-open(FH, ">$tmp.b2"); print FH $file2; close FH;
-open(FH, "$diffcmd $tmp.b1 $tmp.b2 |"); $file=<FH>; close FH;
+open(FH, ">","$tmp.b1"); print FH $file1; close FH;
+open(FH, ">","$tmp.b2"); print FH $file2; close FH;
+open(FH, "-|","$diffcmd $tmp.b1 $tmp.b2"); $file=<FH>; close FH;
 $rc=$?>>8; # save the return code of diff for our parent!
 #print main::STDERR "$rc\n";
 

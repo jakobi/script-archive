@@ -6,8 +6,10 @@
 
 use Glib qw(TRUE);
 use Gtk2 -init;
+use Data::Dumper;
 
 use constant STRING_COLUMN => 0;
+$|=1;
 
 sub fill_store {
    my $store = Gtk2::ListStore->new ('Glib::String');
@@ -17,15 +19,15 @@ sub fill_store {
          $store->set ($iter, 0 => "$i");
       }
    }
-   $store->set ($store->append, 0 => "SELECT TO FINISH WHEN DONE");
+   $store->set ($store->append, 0 => "CTRL-SELECT TO FINISH WHEN DONE");
    push @line,"#dummy";
-   while(<>) {
+   foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
+   while(<>) { # SECURE:OK
       chomp;
       push @line,$_;
       $store->set ($store->append, 0 => "$_");
    }
-
-return $store;
+   return $store;
 }
 
 

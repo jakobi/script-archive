@@ -893,7 +893,7 @@ sub conveniencecommands {
                               and do{$l=$ENV{N}?$ENV{N}:$1; mkdir $l;              push @sh, $_};
       /^(?:touch|create?)[ \t](.*)/  
                               and do{$l=$ENV{N}?$ENV{N}:$1; utime(time, time, $l) or 
-                                     open(FH,">> $l") and close(FH); push @sh, $_};
+                                     open(FH,">>",$l) and close(FH); push @sh, $_};
       # two address commands
       /^(?:ln)(-s)?[ \t](.*)/ and do{$l=$ENV{N}?$ENV{N}:$2; next if $ENV{O} eq ""; 
                                      if($1){symlink $ENV{O},$l}else{link $ENV{O},$l}; push @sh, $_};
@@ -1018,7 +1018,7 @@ sub editorsession {
       # really want to rename all files using the meta information...
       if (not $o_long and grep {/^((?:[a-z]\S*)?\s*\d+\t)#\[[^\]]{10,80}?\]#\t/} @newfile) {
          print "\n? emv detected possible meta info - do you wish to activate -l long mode ?\n" .
-                 "[ skip if you never used emvx -l, otherwise one of [yYjJ] to activate ]\n";
+                 "[ skip if you never used emvx -l, otherwise enter [yYjJ] + CR to activate ]\n";
          open(FH, "<", "/dev/tty") and $_=<FH>; close FH;
          if (/^[YyjJ]$/) {
             $o_long=1;

@@ -16,7 +16,8 @@ while($_=shift) {
    /()/              and do {unshift @ARGV,$_; last};
 }
 
-while(<>) {
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
+while(<>) { # SECURE:OK
 $i++;
    s@$/\z@@g; 
    while(s@/\./@/@g){;} s@/+@/@g; # cleanup spurious /

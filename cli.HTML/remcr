@@ -14,9 +14,9 @@
 #     e.g. | umlaut | recode -f utf8..flat # flat, retaining Ae-Umlaut
 do "$ENV{HOME}/bin/sub.mime";
 undef $/;
-@ARGV=("-") if not @ARGV;
+@ARGV=("/dev/stdin") if not @ARGV;
 foreach $f (@ARGV) {
-   open(FH, "< $f"); $_=<FH>; close FH;
+   open(FH, "<", $f); $_=<FH>; close FH;
    while(1){
       $0=~/fold/        and do{$_=&foldlf3(&addfinallf(&remcr($_)));last};
       $0=~/remcr/       and do{$_=&addfinallf(&remcr($_));          last};
@@ -25,5 +25,5 @@ foreach $f (@ARGV) {
       1                 and die;
    }
    rename $f, "$f.bak" if not $f=~/^\/dev\// and not $f eq "-";
-   open(FH, ">$f"); print FH $_; close FH;
+   open(FH, ">",$f); print FH $_; close FH;
 }

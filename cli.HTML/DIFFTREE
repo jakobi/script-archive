@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 
 # usage: $0 [opts] tree1 [tree2]
+#        $0 -v -v DIFF '' tree1 tree2
 # diff or otherwise process two directory trees, e.g. to obtain changes 
 # of a remote sites you mirror.
 
@@ -94,6 +95,8 @@ file: foreach $file (@files) {
       next;
    }
       
+   $ENV{file1}="$path1/$file";
+   $ENV{file2}="$path2/$file";
    @stat1=stat "$path1/$file";
    @stat2=stat "$path2/$file";
    
@@ -139,14 +142,14 @@ file: foreach $file (@files) {
       
       } elsif ($op eq "cmp") {
          if (@stat1 and @stat2) {
-	    $tmp=`cmp $opargs '$path1/$file' '$path2/$file'`;
+	         $tmp=`cmp $opargs "\$file1" "\$file2"`;
             last op if not $?;
             $out.=&enc($tmp);
          }
       
       } elsif ($op eq "diff") {
          if (@stat1 and @stat2) {
-            $tmp=`diff $opargs '$path1/$file' '$path2/$file'`;
+            $tmp=`diff $opargs "\$file1" "\$file2"`;
             last op  if not $?;
             print STDERR "diff returns ", $?>>8 if $? and $verbose;
             $out.=&enc($tmp);
@@ -157,7 +160,7 @@ file: foreach $file (@files) {
          last op if /\0/;
          if (@stat1 and @stat2) {
 	    my($tmp,$a,$b);
-	    $tmp=`DIFF $opargs '$path1/$file' '$path2/$file'`;
+	    $tmp=`DIFF $opargs "\$file1" "\$file2"`;
 	    $tmp=~s/^([><])[\t ]*(.*\n)/do{($a,$b)=($1,$2);$b=~s@(.{1,70}\S*[\t ]*)@$a $1\n@g; $b=~s@\n+$@@g; "$b\n"}/mge;
             last op if not $?;
             print STDERR "DIFF returns ", $?>>8 if $? and $verbose;
@@ -218,7 +221,7 @@ warn "$op: error in $opargs: $@" if $@;
 
 # cpio?
 if (@copylist) {
-   open(FH, "|( ( cd $path1 && cpio -o ) | ( cd $path2 && cpio -imdu ) ) 1>&2");
+   open(FH, "|-","( ( cd $path1 && cpio -o ) | ( cd $path2 && cpio -imdu ) ) 1>&2");
    print FH join("\n", @copylist); print FH "\n";
    close FH;
    print STDERR "\nCopying:\n" . join("\n", @copylist) . "\n\n" # if $verbose;
@@ -255,7 +258,7 @@ sub openfile {
    if (not $_) {
       local ($/); 
       undef $/;
-      open(FH,"<$path1/$file");
+      open(FH,"<","$path1/$file");
       $_=<FH>;
       close FH;
    }

@@ -73,7 +73,7 @@ for($j=0; $j<=$#f; $j++) {
    /ps/   and $f=~s@ $j @ ( \$PS=~/\$f[$j]/ ) @g;
    /pid/  and $f=~s@ $j @ ( -d "/proc/\$f[$j]" ) @g;
    # Q: use grep -p instead / may be awfully wasteful of memory / cache contents F$j?
-   /grep/ and $f=~s@ $j @ ( open(FH, "<\$f[$j]") and do{ \$F=<FH>; close FH; \$F=~/\$g[$j]/} ) @g; 
+   /grep/ and $f=~s@ $j @ ( open(FH, "<","\$f[$j]") and do{ \$F=<FH>; close FH; \$F=~/\$g[$j]/} ) @g; 
 }
 
 print "compiled expression is:\n$f\n\n" if $verbose>1;

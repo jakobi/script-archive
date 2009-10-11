@@ -1,11 +1,11 @@
 #!/bin/sh
 # just a memory hint
-# alternatives: 'perl -0pe :' # modulo the final newline
+# alternatives: 
+# - 'perl -0pe "use ARGV::readonly"' # module final NL
+# - gnu dd ibs=201M bs=200M          # bs and one of ibs/obs required
+#                                    # as it ignores buffering otherwise
 sponge ${1:+"$@"}
 
-# actually, NO: gnu dd requires both bs and one of ibs/obs 
-#               to do this trick...
-# # dd bs=200M would also do nicely in most cases 
 # # e.g. like find DIR1 | sponge | cpio pmd DIR1/x 
 # # were you want later actions not mess up earlier
 # # ones in the pipe (redirects would trivially

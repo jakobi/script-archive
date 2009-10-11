@@ -216,7 +216,7 @@ vprint("\n",1);
 my (@files, @tmp, $file, $rel, $tagged, @tagged, %tagged, %taggedstem);
 
 if (0) {                                                                    # some profiling results, from way too inefficient to actually acceptable:
-   while($file=<>) {                                                        # 1:10  - 2Mio Evals in use   == 1 CPU minute extra                  (1st block)
+   while($file=<STDIN>) {                                                        # 1:10  - 2Mio Evals in use   == 1 CPU minute extra                  (1st block)
                                                                             # 0:07.9  compiled loop with expended evals                          (2nd block)
                                                                             #                               2Mio if statements  << 1 sec extra (e.g. pipe thru Grep.pm)
                                                                             # 0:10    .66M function calls    2 sec extra (by value, copied)      (3rd block)
@@ -234,7 +234,7 @@ if (0) {                                                                    # so
 } elsif (1) {                                                                   # *** the fastest :) ****
 ### USE THIS ONE ###
    eval 'sub matcher { 
-      while($file=<>) {                                                             
+      while($file=<STDIN>) {                                                             
          chomp($file);
          $_=$file;
          '.$e_skip.' and next;
@@ -261,7 +261,7 @@ if (0) {                                                                    # so
          }
          return $file; 
    }'; die $@ if $@;
-   while ($file=<>) { push @files,&matcher($file);}
+   while ($file=<STDIN>) { push @files,&matcher($file);}
 } elsif (0) {
    eval 'sub matcher { 
          chomp($file);
@@ -274,7 +274,7 @@ if (0) {                                                                    # so
          }
          return 0;
    }'; die $@ if $@;
-   while ($file=<>) { &matcher; push @files,$_}
+   while ($file=<STDIN>) { &matcher; push @files,$_}
 }
 
 sub sq{ # escape hack for single-quoting

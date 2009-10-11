@@ -13,15 +13,22 @@ use Flock; # Compact_pm::Flock
 
 my($err,@FH);
 
-($err,@FH)=Compact_pm::Flock::openFH("abc","y");
+# this is a test driver rather than a proper module test
+# manually vary these to test some cases of interest and check the returns for these cases
+system("touch abc y; ln abc def");
+($err,@FH)=Compact_pm::Flock::openFH("abc","y"); # "abc", "def",
+
 warn "open err $err, FHs @FH for files abc, y\n";
 
 warn "get shared lock: ". Compact_pm::Flock::flockFH('sh', @FH), "\n";
 
-sleep 300 if @ARGV; # so one will block the locking of other runs of this test
+sleep 300 if @ARGV; # so above shared lock will block locking of other runs of this test
 
-warn "get excl   lock: ". Compact_pm::Flock::flockFH('ex', @FH), "\n";
-warn "get excl  -lock: ". Compact_pm::Flock::flockFH('-ex',@FH), "\n";
-warn "get excl   lock: ". Compact_pm::Flock::flockFH('ex', @FH), "\n";
-warn "unlock         : ". Compact_pm::Flock::flockFH('ex', @FH), "\n";
+warn "success? excl   lock: ". Compact_pm::Flock::flockFH('ex', @FH), "\n";
+warn "success? ex bl -lock: ". Compact_pm::Flock::flockFH('-ex bl',@FH), "\n"; # blocking lock and immediately unlock
+warn "success? excl   lock: ". Compact_pm::Flock::flockFH('ex', @FH), "\n"; # I can lock my own locked FH
+warn "success? excl   lock: ". Compact_pm::Flock::flockFH('sh', @FH), "\n"; # I can lock my own locked FH
+                                                                            # (but only shared when using e.g. a 2nd FH
+                                                                            #  with a symlink or even the very same file)
+warn "unlock              : ". Compact_pm::Flock::flockFH('-=', @FH), "\n";
 

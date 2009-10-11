@@ -5,7 +5,10 @@ eval 'exec perl -Sx $0 ${1:+"$@"}'
 
 
 my $version="0.21";
-# extracts links e.g. in preparation for spidering
+# extracts links e.g. in preparation for spidering 
+# usage: $0 -ref FILE
+#        $0 -def FILE  
+# (use LINKS instead to just list links)
 # (note that this is unrelated to the CPAN script XLINKS :))
 # 
 # 1996XXXX PJ   0.1  jakobi@acm.org initial version
@@ -70,7 +73,7 @@ foreach $file (@files) {
    $name=$_; $qname=quotemeta($name);
    next if $name=~/$skip/o;
 print main::STDERR "Processing file $file - $absname\n" if $verbose;
-   $data=<Fh> if open(Fh, $_); close Fh;
+   $data=<Fh> if open(Fh, "<",$_); close Fh;
    next if not $data=~/\S/;
    $basename=$name; $basename=~s!^.*?([^/]*)$!$1!;
    $absname=&db_cgi::changeurl($h0, $basename, $name,  $rold, $mode);
@@ -171,7 +174,7 @@ Can be used as input for spidering.
   -s                shortcut for -skipmiss ftp/http urls
   -parse   "files"  parse files matching regexp
   -noparse "files"  do not parse files matching regexp
-                    (by default, all files without html suffix are not 
+                    (by default, all files without html suffix are not
                     parsed, unless they begin with <html>/... very early)
 
 Examples: XLINKS -v -skip book.html  -def -ref -miss -s `find . -type f`

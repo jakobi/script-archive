@@ -115,7 +115,7 @@ BEGIN{
 #print main::STDERR "flags= ";for(sort keys %flags){print main::STDERR " $_:$flags{$_} "};print main::STDERR "\n";
 #print main::STDERR "n    = ";for(sort keys %n    ){print main::STDERR " $_:$n{$_} "    };print main::STDERR "\n";
 #print main::STDERR "l    = ";for(sort keys %l    ){print main::STDERR " $_:$l{$_} "    };print main::STDERR "\n";
-
+   # MAGIC <> INSECURE MESS - AFAICS safe as i.bak for both -| and |- types 
 };
 
 

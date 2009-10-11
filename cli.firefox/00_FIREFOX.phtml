@@ -23,6 +23,9 @@ bookmarks and interacting with firefox from the the command line.</p>
 
 <p>Some remarks:</p>
 <ul>
+  <li>X11 and pixmap caching: Looks like export MOZ_DISABLE_IMAGE_OPTIMIZE=1 is
+      still required to avoid firefox placing pixmaps into an ever growing
+      X11 when e.g. using multiple tabs and autopager. 
   <li>sqlite3 FILE.SQLIST vacuum can be used to clean a sqlite file when firefox is not running.
   <li>a cheap trick to get sqlite content (read-only): ask the user to leave the browser 
      idle for a few seconds, then just cp the sqlite file of interest. The data should have

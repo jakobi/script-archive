@@ -19,7 +19,8 @@ while($_=shift,defined $_) {
    /()/         and unshift @ARGV,$_ and last;
 }
 
-while(($o_inputfromarg and ($_=shift @ARGV, 1) or $_=<>), defined $_) {
+$o_inputfromarg or do{foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}}; # MAGIC <> INSECURE MESS
+while(($o_inputfromarg and ($_=shift @ARGV, 1) or $_=<>), defined $_) { # SECURE:OK
    push @lines,$_
 }
 
@@ -35,3 +36,16 @@ while(($o_inputfromarg and ($_=shift @ARGV, 1) or $_=<>), defined $_) {
 $lines[$#lines] eq "\n"      and delete $lines[$#lines];
 $lines[$#lines] eq "$p\n"    and delete $lines[$#lines];
 print @lines;
+
+
+########### 
+# nice:    Perlmonks [id://799779], perf test: see 799604
+#  sub by_ip
+#{
+#    return
+#        map substr($_, 4),
+#        sort
+#        map inet_aton( (split /\s/, $_, 2)[0] ) . $_,
+#        @_
+#}
+#

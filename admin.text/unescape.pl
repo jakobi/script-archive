@@ -115,7 +115,8 @@ $prefixre='(?:\A|\n)[>= ]   '; # regex for skipping above
 
 
 $text="";
-while(<>) {
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
+while(<>) { # SECURE:OK
    $text.=line($_);
 }
 $_=$text;

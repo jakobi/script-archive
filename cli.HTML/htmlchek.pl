@@ -209,7 +209,7 @@ if ($lf) {
         $listfile = $lf;}}
 if ($listfile) {
     $args = 0;
-    if (!(open(LSF,('<'.$listfile)))) {
+    if (!(open(LSF,'<',$listfile))) {
         die 'Error opening list file!';}
     while (<LSF>) {
         if ($_ =~ /$stuperlRS$/o) {chop;}
@@ -231,7 +231,7 @@ if ($cf) {
     else {
 	$configfile = $cf;}}
 if ($configfile) {
-    if (!(open(CFG,('<'.$configfile)))) {
+    if (!(open(CFG,'<',$configfile))) {
         die 'Error opening configuration file!';}
     while (<CFG>) {
          if ($_ =~ /$stuperlRS$/o) {chop;}
@@ -401,10 +401,10 @@ if ($refsfile) {
         $openstr = '>>';}
     else {
         $openstr = '>';}
-    if (!(open(SRC,($openstr . $refsfile . '.SRC')) &&
-      open(NAM,($openstr . $refsfile . '.NAME')) &&
-      open(HRF,($openstr . $refsfile . '.HREF')) &&
-      ((!(($xref) && ($map))) || open(MAP,($openstr . $refsfile . '.MAP'))))) {
+    if (!(open(SRC,$openstr, $refsfile . '.SRC') &&
+        open(NAM,$openstr , $refsfile . '.NAME') &&
+        open(HRF,$openstr , $refsfile . '.HREF') &&
+      ((!(($xref) && ($map))) || open(MAP,$openstr, $refsfile . '.MAP')))) {
         die "Error opening output files!";}
     else {
         print SRC ''; print NAM ''; print HRF '';
@@ -417,7 +417,8 @@ foreach $X (keys %unpair) {
 #
 # Main
 #
-while (<>) {
+foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
+while (<>) { # SECURE:OK
     if ($_ =~ /$stuperlRS$/o) { # strip record separator, allow for last line to
         chop;}                  # be unterminated.  I love that /$/$/ syntax,
     #@Fld is unneeded           # but perl doesn't.
@@ -441,7 +442,7 @@ while (<>) {
         else {
             $fromroot = '';}
         $fromroot=($dirprefix . $fromroot);
-        if ($fn ne '-') {
+        if ($fn ne '-' and $fn ne '/dev/stdin') {
             if ($inline) {printf 'HTMLCHEK:';}
             print ("Diagnostics for file \"" . $fn . "\":");}}
     if ($inline) {
@@ -1120,14 +1121,14 @@ sub parsetag {
 #
 # Current location:
 sub crl {
-    if (($fn)&&($fn ne '-')) {
+    if (($fn)&&($fn ne '-' and $fn ne '/dev/stdin')) {
         return ('at line ' . ($.-$FNRbase) . " of file \042" . $fn . "\042");}
     else {
         return ('at line ' . $.);}}
 #
 # End of file location:
 sub ndl {
-    if (($fn)&&($fn ne '-')) {
+    if (($fn)&&($fn ne '-' and $fn ne '/dev/stdin')) {
         return ("at END of file \042" . $fn . "\042");}
     else {
         return 'at END';}}

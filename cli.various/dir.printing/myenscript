@@ -53,7 +53,9 @@ for i in $default "$@"; do
             # $MYA2PS $MYENSCRIPTFMT $MYENSCRIPTOPT "$i" -b -P $MYENSCRIPTPRT ;;
 	    # -o - : output ps to stdout (instead of -nP)
 	    # enscript does this automatically - possibly also handle BS-embolding and underlining; see a4print4 for deskjets
-            perl -e 'while(<>){s/([^\x8\x9\xA\xC\x20-\x7E\xA0-\xFF])/"&#0x".unpack(H2,$1).";"/ge; print}' "$i" | \
+            # protect perl against insecure magic <> idiocy
+            cat "$i" | \
+            perl -e 'while(<>){s/([^\x8\x9\xA\xC\x20-\x7E\xA0-\xFF])/"&#0x".unpack(H2,$1).";"/ge; print}' | \
             $MYA2PS "--center-title=$i" $MYENSCRIPTFMT $MYA2PSOPT -b -o - | mypsnup -1 -P$MYENSCRIPTPRT ;;
      *) $CMD ;;
    esac
