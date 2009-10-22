@@ -48,6 +48,9 @@ our $changetrackcmd='changetrack';
 #
 # To be implemented/changed:
 #
+# - changetrack file size limits and exclusion (long logs, etc)
+#   or optional parent proc based exclusion (e.g. invocations from
+#   emv, crontab -e or similar shouldn't be changetracked)
 # - do I already log the RC of the executed command??? - ADD IT
 # - do keep @files in order, but strip dupes (currently lock.pl
 #   does this for us)

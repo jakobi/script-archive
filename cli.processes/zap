@@ -25,6 +25,7 @@ my $version="0.5.3";
 $BSD = -f '/vmunix' || -f "/boot/vmunix";
 $psopt  = $BSD ? "-auxww" : "-ef";
 $user=$ENV{LOGNAME} if $> > 0; # default to own user for non-root
+# or ps -eo user,pid,ppid,c,sz,rss,stime,tty,time,command
 $anchorpsopt='-eo user,pid,ppid,c,stime,tty,time -o " ^%a"'; # gnu ps only
 $anchortest='(?:\A|[^\\\\])(\\\\*)\1\\\\n';
 $ignorecase='';
@@ -117,7 +118,7 @@ Options:
 
 Examples: 
   # mix and match
-  zap -o '-eo ppid,user,pid,comm'      # customize ps listing
+  zap -o '-eo ppid,user,pid,command'   # customize ps listing
   zap / zap .                          # matches all processes
   zap -^ ^bash.--login                 # match only start of command
   zap -p PID -c PATTERN                # match only descendants of pid

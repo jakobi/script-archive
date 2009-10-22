@@ -19,6 +19,14 @@ my $version="0.1";
 #                 "* ) a:b c:c:a"
 #      illogical, but avoids some extra quotes
 # to use: use (?x) modifier; re_line requires stripping IRS and \n
+#
+# BUG  this cannot really parse things like j="$(echo "$i")", nor
+#      does it handle ` at all. both of which seem to add a level of 
+#      nesting for  at least ", and with recursion in case of
+#      $($())... 
+#
+#      (NOTE: &recode encodes ` later on, so there's neither 
+#             real harm nor a security issue)
 
 # add semicolon here to have it end a word 
 $re_bwordAlsoEnd=';'; 
@@ -33,6 +41,8 @@ $re_bwordsq='(?:(?:(?!\').)+)'; # shell single quoting guarantees no embedded \'
 #$re_qword ='(?:(?<start>  ["\'] )    
 #                      (?: '.$re_bword.'     |   (?!\k<start>).)*
 #                \k<start>)';
+#
+# BUG: lack of magic special case ``/ $() handling
 $re_qword  ='(?: 
                   "    (?: '.$re_bword.'     |   (?!"). )*    "   |
                   \'   (?: '.$re_bwordsq.'   |          )     \'

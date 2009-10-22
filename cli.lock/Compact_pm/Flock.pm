@@ -57,6 +57,9 @@ our @ISA    = qw(Exporter);
 # note another race: upgrading a lock from shared to exclusive transiently
 # releases the lock.
 #
+# note: don't flock inherited or duplicated FDs - it probably won't work,
+# as it's the same open-file-table-entry in the kernel in the end, and
+# flock between parent and child becomes idempotent.
 #
 # fcntl example, ancient:
 #  open(LOCKFILE, ">>/usr/sysop/etc/menulock") || die "cant open lockfile";

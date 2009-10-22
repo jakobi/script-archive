@@ -9,7 +9,7 @@
 if echo "$ADDON_PATH" | grep -i firefox >/dev/null || 
  set | grep -e MOZ_LAUNCHED_CHILD -e 'MYPSNUPREROUTEALL' >/dev/null ||
  test -f $HOME/.mypsnuprerouteall && [ "$MYSPNUPSKIPREROUTEALL" = "" ] ; then
-   opt=${MYPSNUPREROUTEOPT:--2}
+   opt=${MYPSNUPREROUTEOPT:--4}
    # avoid looping
    export MYPSNUPSKIPREROUTEALL=1
    ADDON_PATH=""                  

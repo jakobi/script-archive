@@ -76,7 +76,7 @@ editor_backup_extension=~
 
 [Layout]
 equal_split=1
-first_panel_size=59
+first_panel_size=65
 message_visible=1
 keybar_visible=1
 xterm_title=1
@@ -88,7 +88,7 @@ permission_mode=0
 filetype_mode=1
 
 [Dirs]
-other_dir=/disk-CLS/IN/EBOOKS/TO_ARC/anime
+other_dir=/home/jakobi/Desktop
 current_is_left=1
 
 [New Left Panel]

@@ -20,15 +20,15 @@ $0       [options]  FILES
 cat | $0 [options] 
 $0       [options] -args NAMES 
 
-make input safe for bourne shell use within quotes.
+make input safe for bourne shell use _within_ quotes.
 Note that the output mixes both single and double
 quotes freely.
 
 Options:
  -0         line end for input and output is \\0
  -o         also add outer quotes around string
- -s         use single quotes
- -d         use double quotes (default)
+ -s         to be used in single quotes
+ -d         to be used in double quotes (default)
  -args      use remaining arguments as input lines
 
 EOF
