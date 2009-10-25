@@ -3,7 +3,7 @@
 my $version="0.1";
 # mt_dir [list|help|LOCATION]
 # created     PJ 2007XXXX jakobi@acm.org
-# last change PJ 20090617
+# last change PJ 20091023 (cosmetical)
 # copyright:  (c)2007-2009 PJ, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
 
@@ -90,13 +90,20 @@ if (not $skipdefaultconfig) {
    }
 }
 
+#use Data::Dumper;
+#warn Dumper(\%loc);
 
 # if provided, the target to cd to and possible view
-if (not defined $loc{$_}) {
-   warn "# mt_dir configuration: \$loc{default} is not defined\n"; sleep 3;
+if (not defined $loc{default}) {
+   warn "# mt_dir configuration: \$loc{default} is not defined\n"; 
+   sleep 3 if defined $loc{$_};
 } 
-$_="default" if not defined $loc{$_};
+if (not defined $loc{$_}) {
+   warn "# miss  : $_\n" if $verbose;
+   $_="default";
+}
 die "# mt_dir undefined location\n" if not defined $loc{$_};
+warn "# loc   : $_\n" if $verbose;
 $ENV{STARTDIR}=$ENV{PWD};
 
 

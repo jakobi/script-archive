@@ -1,0 +1,43 @@
+This archive's purpose is just to provide some demo data to
+illustrate what kind of dirtrees exportscript operates on.
+
+./LINKLAYER: 
+- HTML         html tree going to jakobi.github.com
+- REPO.(.*)    repo tree going to $1, with html and READMEs
+               going to HTML/$1-doc/. Place the symlinks for the
+               real files here (to be replaced by their contents
+               via exportscript, when being copied to the local
+               'OUTPUT' git repositories below)
+
+and the output files (should probably have chosen something like OUTPUT/ :):
+./HTML         git: the combined doc files from LINKLAYER, for 
+               github.com/jakobi/jakobi.github.com
+./REPO.(.*)    git: for github.com/jakobi/$1 
+
+and exportscript -commit finally refreshes everything and also does
+the push to the remote github repos.
+
+NOTES:
+
+Note  that some of the automatic symlinks created by exportscript  are
+ABSOLUTE.  An  example of this are the automatically created links  in
+case of directories without an README.md of their own.
+
+Note that exportscript is a bit overzealous and also places any *html,
+*txt  and README files into the user-page / HTML tree as well, just in
+the rare case that it MIGHT be linked (and the generated README.md for
+both  the  user  page  dir and the repo dir may or  may  not  actually
+collect those files and provide links to them; this e.g. is the reason
+of  the  unnecessary copy of the cli.HTML/domaincodes.txt in the  user
+page tree).
+
+Also note that exportscript currently does regenerate all the html and
+md  files instead of make-style depending on actual existing diffs  or
+timestamps.  This  leads to some excess growth esp. on the  user  page
+repo  (jakobi.github.com),  which isn't much of a problem, as you  can
+just  delete  the files, push the deletes (NOT with exportscript)  and
+the  push  the current version with exportscript. Note  that  github's
+user  pages  do NOT propagate deletes from the repo, thus TRY  NOT  TO
+RENAME  user  pages (cleaning requires manual removal of all files  by
+github  stuff with subsequent run by exportscript quite possibly  with
+all generated files being slightly changed).
