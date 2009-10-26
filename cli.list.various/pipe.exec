@@ -1,0 +1,25 @@
+#!/usr/bin/perl
+
+# for use in pipes / conditional execution
+# 1) $0 command...  -- slurp stdin AND pipe-execute command (w/o intervening shell)
+# 2) $0             -- cat   stdin  OR false
+#
+# usage examples:
+# 1) grep foo LOG |   pipe.exec         mutt -s "ALERT - log contains matching terms" $LOGNAME  # mail on match
+# 2) grep foo LOG | { pipe.exec || echo "no matches"; } | mutt -s "daily log summary" $LOGNAME  # mail always
+
+undef $/; 
+$_=<STDIN>;
+
+if      (not @ARGV and $_ eq "" ) { # 2, no data: false
+   exit 1;
+} elsif (not @ARGV) {               # 2, data:    true
+   print $_;
+   exit 0;
+} elsif ($_ eq "") {                # 1, no data: true
+   exit 0;
+} else {                            # 1, data:    pipe and forward rc
+   open(FH,"|-",@ARGV) and print FH $_; exit $?>>8 if $?;
+   close FH;                            exit $?>>8 if $?;
+   exit 0;
+}

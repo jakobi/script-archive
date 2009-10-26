@@ -1,0 +1,1 @@
+slurp input and exec command if input exists; w/o command print or return false
