@@ -35,6 +35,7 @@ use warnings;
 
 package Grep; 
 our @ISA=qw(Compact_pm::Grep);
+our @EXPORT_OK = qw(grep_p grep_np);
 sub import {
    shift;
    local($Exporter::ExportLevel)=1;
@@ -43,6 +44,8 @@ sub import {
 
 
 package Compact_pm::Grep;
+use Exporter 'import';
+our @EXPORT_OK = qw(grep_p grep_np);
 
  
 # use main:: variables: $/, $|, $., @ARGV

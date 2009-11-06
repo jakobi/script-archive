@@ -2,6 +2,8 @@
 # copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
 
+# changed 20091106 changed rd
+
 # export CDPATH # do NOT export it, CDPATH is not really suitable for noninteractive use.
 
 # cd functions (uniqpath is in 00_lib*)
@@ -44,7 +46,7 @@ function mtdir {
     #_mt_tmp="$(mt_dir -echo "$@")"; 
     #cd "$_mt_tmp" # 2>/dev/null; 
 
-    # eval
+    # eval output of mt_dir w/o having mt_dir fork mc and subshell
     _mt_tmp="$(mt_dir -eval "$@")"
     eval "$_mt_tmp";
 }
@@ -56,21 +58,21 @@ function tdir { # multi argument cd
 function md { _p=""; [ "$1" = "-p" ] && _p=-p && shift; mkdir $_p "$@"; cd "$1"; }
 function mdkir { mkdir "$@"; }
 function rd {
-   typeset o_p olddir rc
+   typeset o_p olddir rc pwddir
    [ "$1" = "-p" ] && o_p="-p" && shift
+
    if [ "$1" = "" -o "$1" = "." ]; then
-	 olddir="$PWD"
-      rmdir $o_p "$olddir"
-	 rc=$?
-	 # semantics of "rd . some_dir" is confusing
-	 while ! ls -a "$olddir" 2>/dev/null | tail +2 | grep . >/dev/null; do 
-	    olddir=`dirname "$olddir"`
-	 done
-	 cd "$olddir"
-   else 
-	 rmdir "$1"
-	 rc=$?
+      curdir="$PWD"
+      pardir=`dirname "$PWD"`
+      cd "$pardir"
+      # semantics of "rd . some_dir" kills sane relative semantics, so unset further args
+      [ "$2" != "" ] && echo "warn: ignoring further args: $2, ..." 1>&2
+      set -- "$curdir"
    fi
+
+   rmdir $o_p "$1"
+   rc=$?
+
    shift
    if [ "$1" != "" ]; then
       rd $o_p "${1:-$@}"

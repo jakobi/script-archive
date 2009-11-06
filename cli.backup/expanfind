@@ -23,7 +23,7 @@ my $version="0.3";
 # to be included.
 # [note to self: 0907: this is correct on e.g. anuurn outside of /home]
 # [anuurn: /FIND: 638968 files; cat0 -nl /FIND | expanfind | wc -l: 124 files]
-my $USERTAGLISTDEFAULT="PJ COMPACT rpmsave rpmnew rpmorig rpmbak dpkg-old dpkg-new dpkg-bak";
+my $USERTAGLISTDEFAULT="PJ COMPACT rpmsave rpmnew rpmorig rpmbak dpkg-old dpkg-new dpkg-bak dist-update dist-upgrade ucf ucf-old";
 # default negated usage scenario: strip anything related with a suffix '\.SKIP$'
 #  from the file list. '/SKIP$' and /SKIP/ would be matched, but are skipped by default.
 my $USERTAGLISTDEFAULTREDUCE="SKIP";

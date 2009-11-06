@@ -1,8 +1,13 @@
 # invoked only on mc startup
 _MC_SHELL=1
 IGNOREEOF=2
+PROMPT_COMMAND_TITLE_PREFIX="mc - "
 . ~/.bashrc
-unset PROMPT_COMMAND
+
+#mc changes the prompt command to pwd>&7;kill -STOP $$ ...
+#unset PROMPT_COMMAND
+#echo "PC IS $PROMPT_COMMAND" > ~/log
+
 #export PS1="#(\$?)  $_PROMPT_DAY \\t \\u@\\h:\\w\n#mc-\\s$SHNEST (\$?) > "
 export PS1="#(\$?) \\t \\u@\\h:\\w\n#mc-\\s$SHNEST (\$?) > "
 

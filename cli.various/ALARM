@@ -72,6 +72,15 @@ echo -ne '\a'; sleep 1 # bash builtin, NOT in ash /bin/sh
 echo -ne '\a'; sleep 1
 echo -ne '\a'; sleep 1
 
+# any need to fix volume?
+
+test -x /usr/bin/aplay && { 
+   for i in $HOME/images/trek/tos-intercom.au; do
+      aplay $i
+      sleep 1;
+   done
+}
+
 test -x /usr/bin/mpg123 && {
    # maybe add a mixed command?
    echo press ^c to end alert
@@ -80,6 +89,7 @@ test -x /usr/bin/mpg123 && {
       padsp mpg123 $i >/dev/null 2>&1 && break
       mpg123 $i >/dev/null 2>&1 && break
    done
+}
 
 if [ "$DISPLAY" != "" ] ; then
    echo ""
@@ -87,5 +97,3 @@ if [ "$DISPLAY" != "" ] ; then
 #   echo "# to clear OSD: (1) ALERTOSD or osdctl -s ' ' / zap osdsh or"
 #   echo "#               (2) perl -e 'print qq@\n@x3' >>$l / zap osd_cat"
 fi
-
-}
