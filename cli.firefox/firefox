@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # created     jakobi@acm.org 2004xxxx
-# last change jakobi@acm.org 20080107
+# last change jakobi@acm.org 20091128
 # copyright: (c) 2004-2009, jakobi@acm.org, GPL v3 or later
 # archive:   http://jakobi.github.com/script-archive-doc/
 
@@ -234,8 +234,8 @@ while [ "$1" != "" ]; do
    case "$1" in
       -n|-no-exec)                 shift; noexec="-n"; f="/bin/echo No-Exec"; t=$f ;;
 
-      -3)                          f=$f3; shift ;;
-      -sm|-sea|-seamonkey)         f=$fs; shift
+      -3)                          f=$f3; pre_opt="-3  $pre_opt"; shift ;;
+      -sm|-sea|-seamonkey)         f=$fs; pre_opt="-sm $pre_opt"; shift
                                    firefox_to_start=1
                                    ps -u `whoami` | egrep -e seamonkey-bin   -e seamonkey > /dev/null && firefox_to_start=0
                                    ;; 
@@ -243,24 +243,34 @@ while [ "$1" != "" ]; do
       # consider these to begin the list of urls [being handled in _browsefile]
       -mail|-news)                 break ;;
 
-      # options invoking firefoxstdin/bookmark processing and RETURN
-      #-k|-kw|-key|-keyword)       shift; firefoxgrep -i -w -U -k "$1" "$2" | firefoxstdin; shift; shift ;;     
-      -k|-kw|-key|-keyword)        shift; firefoxstdin $noexec -key  "$1" "$2"; shift; shift ;;
-      -grep)                       shift; firefoxstdin $noexec -grep "$1";      shift ;;           # use ::$1:: to match whole field
+      # options invoking firefoxstdin/bookmark processing from CURRENT DEFAULT BROWSER
+      # (optionally loading the results in the requested browser (note that we first
+      #  get the full set of bookmarks before opening the first tab; to use a specific 
+      #  browser's bookmarks, use firefoxstdin/firefoxgrep directly against that browser)
+                                   # firefoxgrep -i -w -U -k "$1" "$2" | firefoxstdin; shift; shift ;;     
+      -k|-kw|-key|-keyword)        shift; 
+                                   [ "$pre_opt" = "" ] && firefoxstdin $noexec -key  "$1" "$2" || \
+                                   firefoxstdin -n  "$1" "$2" | firefoxstdin $pre_opt $noexec /dev/stdin
+                                   shift; shift ;;
+      -grep)                       shift; 
+                                   [ "$pre_opt" = "" ] && firefoxstdin $noexec -grep "$1" || \
+                                   firefoxstdin -n -grep  "$1" | firefoxstdin $pre_opt $noexec /dev/stdin
+                                   shift ;;  # use ::$1:: to match full fields when grepping
       
 
       # all further options exec() or exit() instead of processing further args in $0
       
-      # switch to firefoxstdin
+      # *switch* to firefoxstdin
       -|stdin|STDIN|-stdin|-STDIN) shift;  exec firefoxstdin ${1:+"$@"} ;;
       
       # add your shortcut args below -- case patterns do not expand vars :(
-      -example|-daily|-weekly|-nightly|-monthly|-news.daily|-jobs.daily|-job.daily)  
+      -example|-daily|-weekly|-nightly|-monthly*|-news.daily|-jobs.daily|-job.daily)  
                                    tmp="$0.$1";
                                    if [ -f "$tmp" ]; then
-                                      cat "$tmp" | firefoxstdin
+                                      cat "$tmp" | firefoxstdin $pre_opt
                                    else
-                                      firefoxstdin "$1" # ${1:+"$@"}
+                                      [ "$pre_opt" = "" ] && firefoxstdin "$1" || \
+                                      firefoxstdin -n "$1" | firefoxstdin $pre_opt /dev/stdin
                                    fi; shift ;;     
       
       # exit with suitable test status code

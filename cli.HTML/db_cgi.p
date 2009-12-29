@@ -462,6 +462,7 @@ sub parseurl {
    return $h if not $u;
    local($char,$char1,$char2,$char3)=
          ('\w','[\w\-\.]',
+# PJ should also allow utf8 chars, at least for common umlauts
                       '[^\s"\'>&\?\x7f-\xff\x00-\x1f]',
                       '[^\s"\'>\x7e-\xff\x00-\x1f]');
    if (not $u=~m"\A 

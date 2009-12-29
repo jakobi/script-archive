@@ -18,6 +18,9 @@ close FH;
 # - on anuurn: invoke as mypsnup -Plj@kefk # but avoid -o raw, as lprng hates that option, use -l instead as per default
 # - use acroread -toPostScript *pdf . to convert problem cases to postscript for pixelbased printouts
 #   [normally I'd just use this script as the print command from within acroread or firefox]
+#
+# - firefox: may require unsetting shrink to fit for readability in 4up
+# - acroread and landscape: autorotate and shrink seems sanest for 4up slides
 
 # avoid triggering the lpr wrapper
 delete $ENV{MOZ_LAUNCHED_CHILD};
@@ -36,10 +39,14 @@ $MYLPROPT  =$ENV{$MYLPROPT};
 
 while(@ARGV) {
    $_=$ARGV[0];
-   /^-[Pd](.*)$/ and do{$MYPSNUPPRT=$1; shift; $MYPSNUPPRT=shift if not $MYPSNUPPRT; next};
-   /^-([8421])$/ and do{$MYPSNUPFMT=-$1; shift; next};
-   /^-(gs|pix)$/ and do{$pix=1; $gsdev=lj5gray if not $gsdev; $gsres=1200 if not $gsres; shift; next};
-                 # ignores printer-set duplex defaults, but at least it prints. somehow.
+   /^-?-debug$/    and do{$debug=1; shift; next};
+   /^-[Pd](.*)$/   and do{$MYPSNUPPRT=$1; shift; $MYPSNUPPRT=shift if not $MYPSNUPPRT; next};
+   /^-([8421])$/   and do{$MYPSNUPFMT=-$1; shift; next};
+   /^-?-(gs|pix)$/ and do{$pix=1; $gsdev=lj5gray if not $gsdev; $gsres=1200 if not $gsres; shift; next};
+                   # above ignores printer-set duplex defaults and density/quality/..., but at least it prints. somehow.
+                   # however if acroread, first turn off let printer determine colors + lv3,
+                   # then consider trying 'print as image' (q: resolution or is that some kind of vectorized gfx stream format??)
+                   # font-DL could also create silent ps memory-issues
    last;
 }
 $ARGV[0]="/dev/stdin" if  "-" eq $ARGV[0];
@@ -65,14 +72,18 @@ $MYPSNUPPRT = "lj"   if $MYPSNUPPRT =~ /^lj$/;
 if ($MYPSNUPPRT=~/@/) {
    $lpr="lprng";
 }
+$lpr="$lpr -P$MYPSNUPPRT $MYLPROPT $RAW";
+
 
 foreach (@ARGV) {
+   $i++;
+   $lpr="cat > ~/mypsnup-output.$$.$i.ps" if $debug;
    next if not /\S/;
-   print "mypsnup: printing $_\n";
+   print main::STDERR "mypsnup: printing $_\n";
    s/'/\\'/g;
    $ENV{file}=$_;
-   print "mypsnup: ". "cat /dev/null \"$_\" | $psnup | $psselect | $gs | $lpr -P$MYPSNUPPRT $MYLPROPT $RAW". "\n";
-   system             "cat /dev/null \"\$file\" | $psnup | $psselect | $gs | $lpr -P$MYPSNUPPRT $MYLPROPT $RAW";
+   print main::STDERR "mypsnup: ".     "cat /dev/null \"$_\" | $psnup | $psselect | $gs | $lpr". "\n";
+   system                          "cat /dev/null \"\$file\" | $psnup | $psselect | $gs | $lpr";
    if ($?) {
       print "# lpr err -- in case of wrong printer name, use eg: export MYPSNUPPRT=lj\@kefk.compact\n"
    }

@@ -76,7 +76,7 @@ editor_backup_extension=~
 
 [Layout]
 equal_split=1
-first_panel_size=84
+first_panel_size=40
 message_visible=1
 keybar_visible=1
 xterm_title=1
@@ -88,7 +88,7 @@ permission_mode=0
 filetype_mode=1
 
 [Dirs]
-other_dir=/khome/jakobi/SONY/x/azu_work/done/to_move
+other_dir=/disk-PUB/arc/sites.remote.closed/amiga
 current_is_left=1
 
 [New Left Panel]

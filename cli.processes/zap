@@ -82,11 +82,12 @@ value  (root:  -19  to +19, anything goes).  To  interactively  select
 processes and print their list of PIDs, use a symlink like plist.
 
 For  nice <1 and >7, zap also tries to run ionice if available to  set
-high/low  values  for  the process. For nice values >  12,  ionice  c3
-[idle]  is used instead of class 2 [best effort, with ionice values of
-0  or 7]. For nice > 9, zap attempts to background cpulimit -l 20, for
->12,  cpulimit -l 5. To undo an ionice, rerun with a nice value of  0;
-to selectively end cpulimit, run zap 'cpulimit -z -l'.
+high/low values for the process (may require running zap as root). For
+nice  values  > 12, ionice c3 [idle] is used instead of class 2  [best
+effort,  with ionice values of 0 or 7]. For nice > 9, zap attempts  to
+background  cpulimit -l 20, for >12, cpulimit -l 5. To undo an ionice,
+rerun  with  a nice value of 0; to selectively end cpulimit,  run  zap
+'cpulimit -z -l'.
 
 
 Zap was invoked as "$me" with personality "$action" 

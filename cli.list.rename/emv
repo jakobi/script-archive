@@ -73,6 +73,8 @@ my $version="2.00pj.4";
 #   the log might contain UNDO unneeded commands in case we did detect
 #   an error a bit later than we should: Thus
 #   !DO DOUBLE CHECK the logs before using the logs for undoing changes!
+#(?)possibly allow for some config a la $EMVOPT or emvrc to ease setting
+#   default options like -nodir (other than using shell aliases/functions)
 #
 # - Note than convenience commands like rm / touch / sh / ... [won't fix for now]
 # -                               aren't fully logged 
@@ -226,7 +228,9 @@ Options:
    --cmd2   CMD  invoke CMD in pass2 (intermediate to new name; $mv2)
    --cmdtty TTY  input handle for CMD ($mvtty)
    --nopathtrack (may be required when using overriding --cmd/--cmd2)
-   --todir / --nodir - allow/disallow mv FILE DESTDIR (allow: $o_renametodir)
+   --todir / --nodir - allow/disallow mv FILE DESTDIR 
+                 (allow: $o_renametodir; use -nodir to force collision
+                  in case the target name exists as dir/symlink-to-dir)
    [--perlcmd BLOCK -- eval hook run early in pass1 and pass2]
 
 
@@ -1164,13 +1168,16 @@ sub renaming2 {
 
       ($newline0,$orgline0)=($newline,$orgline);
       $newline   =tracked($newline); $orgline   =tracked($orgline); $tmpline   =tracked($orgline.$tmpsfx); $tmpline1=$tmpline;
+
       if ($o_renametodir and not $mv2 and -d $newline) {
          # in case of single pass mode: modify newline to newline/$(basename origline)
+         # for renaming to (symlinked) directory
          my $base=$orgline; 
          $base =~ s!.*/!!;
          $newline.="/$base";
          $newline =tracked($newline);
       }
+
       if ($o_perlcmdblock) {
          eval $o_perlcmdblock; die "#ERROR: perlcmd $@" if $@;
       } 
@@ -1185,10 +1192,11 @@ sub renaming2 {
 # that dest dir case skipping the intermediate shouldn't be required (I)
 #
 #     if (-d $newline) {$tmpline=$orgline; $esctmpline=sq($tmpline)}
+
 #     if (not -d $newline) {
-         # do an intermediate renaming step to allow
-         # simple name exchanges. This is NOT a generic solution to copy 
-         # with naming cycles.
+
+         # do an intermediate renaming step to allow simple name exchanges.
+         # This is NOT a generic solution to copy with multi-level naming cycles.
          $dstline   = $mv2 ? $tmpline       : $newline;
          $escdstline= $mv2 ? $esctmpline    : $escnewline;
          $dsttag    = $mv2 ? "INTERMEDIATE" : "FINAL";
@@ -1227,11 +1235,13 @@ sub renaming2 {
          } else {
             die "# aborting -  no pass1 command (--cmd)\n";
          }
+
 # that dest dir case skipping the intermediate shouldn't be required (II)
 #     } else {
 #        # pass2 deals with dir targets
 #        push @pass2,[$cnt, $orgline, $tmpline, $newline];
 #     }
+
    }
    
 
@@ -1241,7 +1251,9 @@ sub renaming2 {
       $undo=0;
       ($cnt, $orgline, $tmpline, $newline, $orgline0,$tmpline1,$newline0) = @$_;
       $newline   =tracked($newline); $orgline   =tracked($orgline); $tmpline   =tracked($tmpline);
+
       if ($o_renametodir and $mv2 and -d $newline) {
+         # rename to (symlinked) directory newline:
          # only if not already done above:
          # modify newline to newline/$(basename orgline)
          my $base=$orgline; 
@@ -1249,6 +1261,7 @@ sub renaming2 {
          $newline.="/$base";
          $newline =tracked($newline);
       }
+
       if ($o_perlcmdblock) {
          eval $o_perlcmdblock; die "#ERROR: perlcmd $@" if $@;
       } 

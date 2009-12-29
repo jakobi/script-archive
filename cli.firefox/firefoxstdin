@@ -46,7 +46,7 @@ while(@ARGV){
    # use with  cat FOLDER | formail -m4 -c -ds metamail -d | firefoxstdin -x
    do{$o_pat=1,next}              if /^-(x|extract)$/; # removing also GREPs, etc
    do{$o_verbose=1,next}          if /^-(v|verbose)$/;
-   do{$o_norun=1,next}            if /^-(n|l|list|norun)$/;
+   do{$o_norun=1,$runlength=999;next} if /^-(n|l|list|norun)$/;
    do{$runlength=shift, next}     if /^-(p|runlength|pagesize)$/;
    do{$runlength=999, next}       if /^-np$/;
    do{&help; die}                 if /^-?-(h|help)$/;
@@ -65,6 +65,9 @@ while(@ARGV){
    do{$urls.="GREP 'nightly ::'\n",next}    if /^-nightly$/;
    do{$urls.="GREP 'weekly ::'\n",next}     if /^-weekly$/;
    do{$urls.="GREP 'monthly ::'\n",next}    if /^-monthly$/;
+   do{$urls.="GREP 'monthly1 ::'\n",next}   if /^-monthly1$/;
+   do{$urls.="GREP 'monthly2 ::'\n",next}   if /^-monthly2$/;
+   do{$urls.="GREP 'monthly ::'\nGREP 'monthly2 ::'\nGREP 'monthly1 ::'\n",next}   if /^-monthly0$/;
 # note that news.daily is impl. directly for speed
    do{$urls.="GREP 'news.daily ::'\n",next} if /^-news(\.daily)$/;
    do{$urls.="GREP 'jobs.daily ::'\n",next} if /^-jobs(\.daily)$/;
@@ -226,7 +229,7 @@ foreach(@urls) {
    if (/^\s*#/ or not m@^(?:[a-zA-Z]+?:/?/?)?$servermatch@ and not /@/) {
       print "skipping $_\n" if $o_norun or $o_verbose;
    } else {
-      sleep 2 if $i and $i % 5;# short sleep every 5 invocations, as this
+      sleep 2 if $i and $i % 5 and not $o_norun; # short sleeps
                                # might reduce number of x communication errors
       print "running "         if $o_verbose;
       print "$_\n"             if $o_norun or $o_verbose;

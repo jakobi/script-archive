@@ -24,9 +24,15 @@ function xv {
 }
 
 function gwenview {
-   # KDE4 is still a bit crippled wrt KDE3
+   # KDE4 gwenview is still a bit crippled wrt KDE3
    # set pwd as default param AND avoid an aborted gwenview killing the tty
-   nohup \gwenview "${@:-$PWD}" </dev/null >/dev/null 2>&1 &
+   
+   #nohup \gwenview "${@:-$PWD}" </dev/null >/dev/null 2>&1 &
+
+   # to test: 
+   nohup \gthumb                 </dev/null >/dev/null 2>&1 &
+   #nohup \gqview                </dev/null >/dev/null 2>&1 &
+   echo to test: gqview, gthumb
 }
 
 

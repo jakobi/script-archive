@@ -573,12 +573,19 @@ EOF
    print <<'EOF'
 # or simply (warning - first check the iregex for success - Quoting (S)Hell)
 COLLECT -nourltrans -v -auto "index.html" -toc  `find . -iregex '.*\.\(.?htm.?\|php.?\|txt\|sample\|java\)\(\.\(en\|de\|html?\)\)?'  | sort`  > X
+f2a find; COLLECT -toc "${f2a[@]}"
 
 # taming and COLLECTing nmap.org/book/
 LINKS -unsorted -files toc.html > BOOKTOC
 vi BOOKTOC # strip <link src=...> and links from non-toc areas
 COLLECT -v -toc -skip BOOK -auto index.html toc.html $(cat BOOKTOC) *.html *.pdf > BOOK.html
 firefox BOOK.html 
+
+# non-COLLECT version for chm / extracting chm: chm2pdf 
+# (also: chmsee, cs2w, chm_http, xchm/gnochm/chmsee/kchmviewer; generation is windows/prop only)
+chm2pdf --continuous        x.chm
+chm2pdf --webpage --size=a4 x.chm
+
 
 EOF
 }
