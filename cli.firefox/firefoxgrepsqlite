@@ -59,6 +59,8 @@ foreach (qw/moz_bookmarks moz_keywords
     eval $eval;
 }
 
+#die main::Dumper(%bm::moz_bookmarks);
+#die main::Dumper(%bm::moz_keywords);
 
 ### recreate folder hierarchy (and single-level tag-hierarchy)
 
@@ -94,11 +96,15 @@ foreach(keys %bm::moz_bookmarks) {
    $node{$id}{fk}=   $i->{fk}    if defined $i->{fk};
 
    # augment with keyword info [moz_booksmarks pointing to moz_keywords]
+#die main::Dumper($bm::moz_keywords{132});
    $k=$i->{keyword_id};
-   $k=$bm::moz_keywords{$k} if defined $k; # lint dummy
-   $k=$bm::moz_keywords{$k} if defined $k;
-   $k=mangle($k->{keyword}) if defined $k;
-   $node{$id}{keyword} = $k if defined $k and $k=~/\S/;
+   my $k0=$k; $k0="" if not $k0;
+#warn "1: -$k-" if $k0 == 132;
+#warn main::Dumper($k) if  $k0 == 132;
+   $k=$bm::moz_keywords{$k0} if defined $k; # lint dummy
+   $k=$bm::moz_keywords{$k0} if defined $k;
+   $k=mangle($k->{keyword})  if defined $k;
+   $node{$id}{keyword} = $k  if defined $k and $k=~/\S/;
 }
 
 # sort children acc to position attribute
@@ -142,12 +148,12 @@ sub collectpath {
    # :: name / tag / title [moz_bookmarks] :: 
    $i->{path}="";
    if (defined $i->{parent}) {
-      if (  $o_tree=~/ folders /o and 
+      if (  $o_tree=~/ folders? /o and 
             defined $node{$i->{parent}}{path}) {
          $i->{path}=$node{$i->{parent}}{path};
       }
       # if we do want to see tags, but not the normal folders
-      if (  $o_tree=~/ tag / and not $o_tree=~/ folders /o and
+      if (  $o_tree=~/ tags? / and not $o_tree=~/ folders? /o and
             defined $node{$i->{parent}}{type} and 2==$node{$i->{parent}}{type} and
             defined $node{$i->{parent}}{parent} and 4==$node{$i->{parent}}{parent} and
             $node{$i->{parent}}{title} ) {
@@ -155,7 +161,7 @@ sub collectpath {
       }
    }
    
-   if ($i->{title} and $o_tree=~/ name /o) {
+   if ($i->{title} and $o_tree=~/ names? /o) {
       $tmp.=" :: " if $tmp;
       # $bm::moz_bookmarks{$id}->{type}: 2: tag folder or normal folder, 1: plain
       # $bm::moz_bookmarks{$id}->{position} multiple entries for the same place
@@ -169,12 +175,12 @@ sub collectpath {
       $tmp.=$i->{title};
    }
    
-   if ($i->{desc} and $o_tree=~/ description /o) {
+   if ($i->{desc} and $o_tree=~/ descriptions? /o) {
       $tmp.=" :: " if $tmp;
       $tmp.= " == " . $i->{desc} . " == ";
    }
    
-   if ($i->{keyword} and $o_tree=~/ keyword /o) {
+   if ($i->{keyword} and $o_tree=~/ keywords? /o) {
       $tmp.=" :: " if $tmp;
       $tmp.= " ::" . $i->{keyword} . ":: ";
    }

@@ -250,11 +250,11 @@ while [ "$1" != "" ]; do
                                    # firefoxgrep -i -w -U -k "$1" "$2" | firefoxstdin; shift; shift ;;     
       -k|-kw|-key|-keyword)        shift; 
                                    [ "$pre_opt" = "" ] && firefoxstdin $noexec -key  "$1" "$2" || \
-                                   firefoxstdin -n  "$1" "$2" | firefoxstdin $pre_opt $noexec /dev/stdin
+                                                          firefoxstdin -n -key "$1" "$2" | firefoxstdin $pre_opt $noexec /dev/stdin
                                    shift; shift ;;
       -grep)                       shift; 
-                                   [ "$pre_opt" = "" ] && firefoxstdin $noexec -grep "$1" || \
-                                   firefoxstdin -n -grep  "$1" | firefoxstdin $pre_opt $noexec /dev/stdin
+                                   [ "$pre_opt" = "" ] && firefoxstdin $pre_opt $noexec -grep "$1" || \
+                                                          firefoxstdin -n -grep  "$1" | firefoxstdin $pre_opt $noexec /dev/stdin
                                    shift ;;  # use ::$1:: to match full fields when grepping
       
 

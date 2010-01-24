@@ -1,0 +1,93 @@
+#!/usr/bin/perl
+
+# 20100103 0.2 pj   added utf handling
+# (c) pj 2001 jakobi@acm.org, placed under GPL
+$version='0.2';
+
+# lc, uc, Uc: lc FILENAMES   # rename files to e.g. lower case
+#             lc -           # filter stdin
+
+# BUGS: 
+# - utf isn't detected automatically (work-around: -r/-u switches)
+#   see man perlunicode, perlunitut, perluniintro
+#       --> see also comments in FIND.gen
+#   - doesn't change case on e.g. umlauts dep. on perl;
+#     also Uc suffers from fake word boundaries after umlauts :/
+#   - breaks UTF chars when reporting errors
+#   - maybe make it honor locale (for eg a normal utf8 (US?) 
+#     with a German collating sequence set by LC_CTYPE)  
+
+# NOTES:
+# - LC_* set to utf8 in an utf8 terminal lists filenames
+#   with latin1 8bit chars as '?' on the terminal (find and ls
+#   still has the actual 8bit code if in a pipe, and depending
+#   on fonts, find|cat actually might display the correct
+#   char(or the invalid glyph \x{FFFD}))
+
+$loc="";
+use Encode;
+
+while(@ARGV){
+   $_=shift;
+   /^-r(aw)?$/ and do{$loc="raw";  next};
+   /^-u(tf8?)?$/ and do{$loc="utf8"; next};
+   /^-h$|^-?-help$/ and do {warn "lc/uc/Uc [-utf8|-raw] [-] FILES # case/rename files or filter stdin\n"; exit 1};
+   /^--$/ and do{last};
+   1      and do{unshift @ARGV,$_;last};
+}
+
+sub mangle {
+   # command name: Uc, UC/uc, otherwise -> lc
+   # NOTE that uc(ß) returns SS 
+   my($l)=@_;
+   $0=~/\bUc$/      and do{$l=lc($l); $l=~s/\b./uc($&)/ge; return($l)};
+   $0=~/\b(UC|uc)$/ and return(uc($l));
+   return(lc($l));
+}
+
+foreach(@ARGV) {
+   if ($_ eq '-' and not -f '-') {
+      # apply command to PIPE
+      local ($/);
+      my($c);
+      open(FH,"<-"); 
+      if ($loc) {
+         binmode(FH,":$loc");
+         binmode(main::STDOUT,":$loc");
+         binmode(main::STDERR,":$loc");
+      }
+      $c=<FH>; 
+      close FH;
+      print &mangle($c);
+   } else {
+      # apply change to FILENAMES in the FS
+
+      $loc=~/utf8/ and do{$_=decode('UTF-8', $_); binmode(main::STDERR,":$loc")};
+      $loc=~/raw/  and $_=decode('C', $_);
+
+      $old=$_; $new="";
+      s@/\.$@@;
+      s@/+$@@;
+      ($d,$f)=$_=~m@^(?:(.*)/)?([^/]+)$@;
+      $lcf=&mangle($f);
+      $lcf ne $f or next;
+      $new=$d."/" if $d;
+      $new.=$lcf;
+
+      # note that this char cleanup can break UTF chars w/o -u option 
+      $oldsafe=$old;
+      #$oldsafe=~s![^\x20-\x7e]!?!g; 
+      #$oldsafe=~s![^ -~]!?!g;       
+      # if the class defs are complete, this should also capture e.g. del, newlines, tabs and escs
+      # would be nice if this could be done just PERLIO :... on the STDERR handle... 
+      # (actually :via(MODULE) / PerlIO::via allows such a hook)
+      $oldsafe=~s![^[:print:]]!?!g; $oldsafe=~s![[:cntrl:]]!?!g;       
+
+      #warn "#lc   rename($old,$new)\n";
+      if (not -f $new) {
+         rename($old,$new) or warn "#lc !! $oldsafe - rename failed\n";
+      } else {
+         warn "#lc !! $oldsafe - target exists, skipping\n";
+      }
+   }
+}

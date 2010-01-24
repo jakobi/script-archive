@@ -76,6 +76,10 @@ my $version="2.00pj.4";
 #(?)possibly allow for some config a la $EMVOPT or emvrc to ease setting
 #   default options like -nodir (other than using shell aliases/functions)
 #
+# features?
+# - option to mkdir -p missing components if dest has /, and dest basedir 
+#   is nonzero and does not exist?
+#
 # - Note than convenience commands like rm / touch / sh / ... [won't fix for now]
 # -                               aren't fully logged 
 # -                               aren't logged in sequence

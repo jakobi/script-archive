@@ -25,6 +25,13 @@ my $version="0.4.2";
 # - utf?
 # - utf! expansyn/stemming does allow for umlauts/... in words/stems
 #        [use a local-depending charclass as subst for [a-z]?]
+#
+# Bugs when used as module (which is still experimental anyway):
+# - example users: moduletest, mt_playmusic, ...
+# - !! consider a grep object for split initialization and usage, allowing for 
+#   seeding and using multiple grep INTERMIXED and possibly in PARALELL
+# - !! trashes $_ when used as module
+# - lack of a grep against string (just against array refs, resulting in grepped lines from the arrays)
 
 
 # if these collide with using eval_hooks, disable them:
@@ -389,8 +396,8 @@ Options:
            (stemming modus can be changed by -X-1..-X2; default $opt{stemming})
   --or     change boolean matcher to use 'or' for implied conjunctions
   
-  # expressions to match (if missing, uses first non-option as regex)
-  # multiple EXPR are combined into a disjunction.
+  # expressions to match (if missing, uses first non-option as regex;
+  # multiple EXPR are combined as disjunction)
   -b E     match boolean expression E
   -B S ... similar, but first collect following non-option/non-file 
            arguments into boolean expression E
@@ -434,6 +441,16 @@ However  also consider the simpler alternatives:
   - perl with -0777ne or a separate script
 
 
+On boolean regular expressions (a,b are RE):
+- argument parsing, spaces and implied boolean operators:
+  a RE may contain spaces and extracting a RE from a commandline 
+  argument string only ends early on one of ' ( ', ' ) ', ' and ', 
+  ' or ', and ' not '. Examples:
+
+  -b 'a b'   == -e 'a b' == -B 'a b' (space is considered part of RE)
+  -B  a b    == -b 'a and b' (end of argument implies end of expr/RE)
+  -b  a -b b == -b 'a or  b'
+  
 
 On splitting into arbitrary records:
 

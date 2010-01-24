@@ -5,6 +5,9 @@
 # breaks symlinks (which aren't supported sanely in windows anyway)
 # $0 [-n|-x] PATH ... 
 
+# also consider e.g. looking for non-utf8 filenames:
+# find | perl -lne 'use Encode;$s=decode("utf-8",$_); print if $s=~/\x{FFFD}/'
+
 while($_=$ARGV[0]) {
    /^-n$/ and do {$test=1; shift; next}; 
    /^-x$/ and do {$pack=1; shift; next};

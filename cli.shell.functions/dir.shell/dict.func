@@ -23,7 +23,29 @@ function xlatej { # japanese/english
    perl -e 'undef $/; $_=<STDIN>; $_="" if /Roman?ji Conversion Error|No Matches Found/i; s/\A[\s\S]*?Found//mgoi; s/ *_____[\s\S]*//mgoi; print' | grep .
    true
 }
-
+function xlatej2 { # japanese/english phrase translation via google, w3m for it's utf8 support (lynx doesn't, but that might be google's http headers)
+   w3m -dump "http://translate.google.com/translate_t?hl=&ie=UTF-8&sl=ja&tl=en&text="`perl -e 'print join "%20", @ARGV;' "$@"` |\
+   perl -e 'undef $/; $_=<STDIN>; /[\s\S]+?Japanese to English.*\n([\S\s]*?)\n.*contribute a better translation/i and $_=$1 or $_=""; print' | grep .
+   echo
+   w3m -dump "http://translate.google.com/translate_t?hl=&ie=UTF-8&tl=ja&sl=en&text="`perl -e 'print join "%20", @ARGV;' "$@"` |\
+   perl -e 'undef $/; $_=<STDIN>; /[\s\S]+?English to Japanese.*\n([\S\s]*?)\n.*contribute a better translation/i and $_=$1 or $_=""; print' | grep .
+   true
+}
+function xlatej_url { # japanese/english via google or babelfish
+   gurl="http://translate.google.com/translate?hl=en&sl=ja&tl=en&hl=&ie=UTF-8&u=$1"
+   #furl="$(lynx -width=$COLUMNS -dump  "$url" | perl -e 'undef $/; $_=<>; $furl=$1 if /^References\n\n*(?:.*\n)+?^ *2\. (.*)/m; print $furl')"
+   #echo $furl
+   #lynx -width=$COLUMNS -dump -nolist "$furl"
+   #links2 -html-auto-refresh 1 URL actually displays frames and auto-refreshes, but doesn't in case of dump, which is dumb. 
+   #       Dumber actually, as it doesn't know/honor TERM
+   #--> all of the above fail as google presents a console-unfriendly mess of js and frames 
+   url="$1"
+   [ "${url##*://*}" = "$url" ] && url="http://$url"
+   lynx -dump -nolist -width=$COLUMNS "http://66.196.80.202/babelfish/translate_url_content?.intl=de&lp=ja_en&trurl=$url"
+   echo ==
+   echo $url
+   echo $gurl
+}
 
 
 function xlate_dict { # dictionary.com

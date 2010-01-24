@@ -207,6 +207,7 @@ if ($o_pat) {
 # expand booksmarks [user input must handle shell quoting]
 # BUG: really invoke the grep independently each time!?
 s@(^GREP(.*))@do{
+#warn "firefoxgrep $2\n";
    `firefoxgrep $2`
 }@mgoei;
 

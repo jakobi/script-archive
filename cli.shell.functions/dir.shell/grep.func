@@ -29,16 +29,45 @@ function gr_x {
 
 # filters
 
-function gr_d { 
-   sed 's@/[^/]*$@@' | sort -u
-   # and just in sed incl uniq: sed 's@/[^/]*$@@'|sed '$!N; /^\(.*\)\n\1$/!P; D'
+function gr_H { gr_HELP; }
+function gr_HELP {
+   cat <<EOF 
+ gr_* family of filename filters (uniq/unsort implied except gr_S):
+ gr_H, gr_HELP
+ gr_U, gr_UNIQ   -- uniq but not sort input
+ gr_S, gr_STRIP  -- strip ' :: '-comments from input (e.g. ogg tags, etc)
+ gr_D, gr_DIR    -- truncate to basedir
+ gr_F, gr_FILE   -- existing plain files (implies strip/uniq)
+ gr_D0           -- magical truncate to basedir/filename
+ gr_DS           -- magical paren removal + ~~-shorten for long filenames
+EOF
 }
-function gr_d0 { 
+# gr_* family of filters for handling reporting lists of files (changed to uniq/unsort, caches all seen entries)
+function gr_F { gr_FILE; }
+function gr_FILE { 
+   perl -lne 'next if $c{$_}; do{print;$c{$_}++;next} if -f $_; s/ :: +(\S.*|)?$// and do{next if $c{$_};do{print;$c{$_}++;next} if -f $_};'
+}
+function gr_S { gr_STRIP; }
+function gr_STRIP {
+   perl -lne 's/ :: +(\S.*|)?$//; print' # no uniq for this
+}
+function gr_U { gr_UNIQ; }
+function gr_UNIQ {
+   perl -lne 'print if not $c{$_}++'
+}
+function gr_D   { gr_DIR; }
+function gr_DIR { 
+   perl -lne 's@/[^/]*$@@; print if not $c{$_}++' # uniq, but unsorted
+   # sed 's@/[^/]*$@@' | sort -u or just in sed (uniq w/o sort): sed 's@/[^/]*$@@'|sed '$!N; /^\(.*\)\n\1$/!P; D'
+}
+function gr_D0 { gr_DIR0;}
+function gr_DIR0 { 
    # shorten to the final dir/filename with a twist:
    # go further left while dir is numbered, i.e. \d* c\d* v\d* 
-   perl -lne '"SECURE:OK";BEGIN {s!^(\s)!./$1!,s/^/</,s/$/\0/ for @ARGV}; s@.*?(((/|^)(?!\d|[vc]\d)[^/]+)(/(?=\d|.\d)[^/]+)*/[^/]+)$@...$1@i; print' | sort -u
+   perl -lne '"SECURE:OK";BEGIN {s!^(\s)!./$1!,s/^/</,s/$/\0/ for @ARGV}; s@.*?(((/|^)(?!\d|[vc]\d)[^/]+)(/(?=\d|.\d)[^/]+)*/[^/]+)$@...$1@i; print if not $c{$_}++'
 }
-function gr_ds { 
+function gr_DS { gr_DIRSHORTEN;}
+function gr_DIRSHORTEN { 
    # shorten by paren+ removal to a single ~~, then if there's still a monstrous name
    # in the path, truncate it in the middle. Use $1 to change 'longness'.
    # tries to allow for the highlighting codes as used on xterm by tput rmso/smso
@@ -53,7 +82,7 @@ function gr_ds {
           #anchor-/    prefix optional glue used to forbid ESC    middle            glue/esc protect     postfix         anchor  
           s@( (?:/|\A) [^/]{$m}  [^/]{0,5}? )   (?<=[^\x1b]{5})   [^/]{2,}   (?<=[^\x1b]{5})   ( [^/]{0,5}?  [^/]{$m} )  (?=/|$)@$1~~$2@gx;
           s@~~@$se~~@go;
-      }; print' | sort -u
+      }; print if not $c{$_}++'
 }
 
 
