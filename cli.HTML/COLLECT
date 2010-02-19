@@ -582,7 +582,8 @@ COLLECT -v -toc -skip BOOK -auto index.html toc.html $(cat BOOKTOC) *.html *.pdf
 firefox BOOK.html 
 
 # non-COLLECT version for chm / extracting chm: chm2pdf 
-# (also: chmsee, cs2w, chm_http, xchm/gnochm/chmsee/kchmviewer; generation is windows/prop only)
+# (also: cs2w/chm_http(extract), xchm/gnochm/chmsee/kchmviewer; generation is windows/prop only)
+# firefox hates imagefile;ID img sources and strips ;ID on fs access - consider hardlinks
 chm2pdf --continuous        x.chm
 chm2pdf --webpage --size=a4 x.chm
 

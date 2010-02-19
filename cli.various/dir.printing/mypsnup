@@ -36,6 +36,7 @@ $MYPSNUPFMT=-1                if not $MYPSNUPFMT and $0!~/up/;
 $MYPSNUPFMT=-4                if not $MYPSNUPFMT;
 $MYPSNUPOPT=$ENV{$MYPSNUPOPT};
 $MYLPROPT  =$ENV{$MYLPROPT};
+$job="";
 
 while(@ARGV) {
    $_=$ARGV[0];
@@ -47,6 +48,7 @@ while(@ARGV) {
                    # however if acroread, first turn off let printer determine colors + lv3,
                    # then consider trying 'print as image' (q: resolution or is that some kind of vectorized gfx stream format??)
                    # font-DL could also create silent ps memory-issues
+   /^-[CJT]$/      and do{$job.=qq! $_!; $_=$ARGV[1]; s/[^\x20-\x7e]/./g; s/["']/./g;; $job.=qq! "$_"!; shift; shift; next}; # job title
    last;
 }
 $ARGV[0]="/dev/stdin" if  "-" eq $ARGV[0];
@@ -71,6 +73,8 @@ $MYPSNUPPRT = "lj"   if $MYPSNUPPRT =~ /^lj$/;
 
 if ($MYPSNUPPRT=~/@/) {
    $lpr="lprng";
+} else {
+   $lpr="/usr/bin/lpr";
 }
 $lpr="$lpr -P$MYPSNUPPRT $MYLPROPT $RAW";
 
@@ -81,9 +85,12 @@ foreach (@ARGV) {
    next if not /\S/;
    print main::STDERR "mypsnup: printing $_\n";
    s/'/\\'/g;
-   $ENV{file}=$_;
-   print main::STDERR "mypsnup: ".     "cat /dev/null \"$_\" | $psnup | $psselect | $gs | $lpr". "\n";
-   system                          "cat /dev/null \"\$file\" | $psnup | $psselect | $gs | $lpr";
+   $job1=$ENV{file}=$_;
+   $job1=~s/[^\x20-\x7e]/./g; $job1=~s/["']/./g;
+   $job1=qq!-J "$job1"!;
+   $job1=$job if $job;
+   print main::STDERR "mypsnup: ".     "cat /dev/null \"$_\" | $psnup | $psselect | $gs | $lpr $job1". "\n";
+   system                          "cat /dev/null \"\$file\" | $psnup | $psselect | $gs | $lpr $job1";
    if ($?) {
       print "# lpr err -- in case of wrong printer name, use eg: export MYPSNUPPRT=lj\@kefk.compact\n"
    }

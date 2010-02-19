@@ -6,7 +6,11 @@
 
 { set; echo $$ is own pid; ps -ef; } > $HOME/.lpr.debug
 
-if echo "$ADDON_PATH" | grep -i firefox >/dev/null || 
+echo "$*" 2>&1
+
+if echo "$*" | egrep -e '^-P ?PDF$' >/dev/null; then
+   /usr/bin/lpr "$@"
+else if echo "$ADDON_PATH" | grep -i firefox >/dev/null || 
  set | grep -e MOZ_LAUNCHED_CHILD -e 'MYPSNUPREROUTEALL' >/dev/null ||
  test -f $HOME/.mypsnuprerouteall && [ "$MYSPNUPSKIPREROUTEALL" = "" ] ; then
    opt=${MYPSNUPREROUTEOPT:--2}
@@ -20,6 +24,7 @@ if echo "$ADDON_PATH" | grep -i firefox >/dev/null ||
    mypsnup $opt
 else
    /usr/bin/lpr "$@"
+fi
 fi
 
 

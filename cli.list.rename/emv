@@ -40,6 +40,8 @@ my $version="2.00pj.4";
 # - none known.
 # 
 # bugs and issues:
+# - miscounts on embedded newlines. WONT FIX.
+#   (consider e.g. myrename 's/\n/ /g' on the culprits)
 # - does NOT report non-conforming lines as IGNORED [won't fix for now]
 # - while basic dir tracking is implemented, it still lacks true canonical 
 #   de-linked dev/inode# name+path smashing. [won't fix for now]
@@ -717,7 +719,14 @@ sub getfiles {
       }
    }
    push @orgfile,qx(find . -type d|emvs -r) if $o_dirtree;
-   &cleanexit(1) if not @orgfile;
+
+   do{ print  "No existing files to rename - exiting.\n"; &cleanexit(1)}  if not @orgfile; 
+   # this happens e.g. with emv FOO*, when the shell doesn't have any matches and
+   # provides FOO* as non-existing file arg to emv, resulting in an empty @orgfile
+   # due to the (arguably inefficient early) -e stat above. Note that emv itself
+   # with no args is a different case, running the find command for $PWD. 
+   #
+   # Note: Use emv . to force a (near) empty session for just using concenience commands.
 
    @orgfile=grep({s!/?\n?\z!!;1} @orgfile); # chomp and strip any trailing /
 

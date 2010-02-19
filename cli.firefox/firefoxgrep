@@ -32,6 +32,8 @@
 #   not that we use much of it beyond dumping the tables into memory
 #   and then mangling them using hash-keys [instead of proper
 #   object refs]
+# - a more proper way to access might be e.g. looking into 
+#   File::Mork or Mozilla::Backup
 
 use strict;
 use vars;

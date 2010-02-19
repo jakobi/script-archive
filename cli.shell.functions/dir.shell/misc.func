@@ -3,12 +3,49 @@
 # archive:    http://jakobi.github.com/script-archive-doc/
 
 alias psg='ps -efww | grep -i'
+alias wget0='wget --retry-connrefused --limit-rate=500k --waitretry=10 --wait=3 --random-wait'
 
 if [ -n "_IS_BASH" ]; then
    # ksh interpretes '.' as marker for discipline functions
    function ls_size { # user needs to add -d as required
       ls -1 -al ${1:+"$@"} | sort -nbk5
    }
+   
+   # history NOTES
+
+   # a) global bash history 
+   # by default: replace history with session's history list ON CLOSE
+   # (for ksh global history may even be the default; consider just $$ 
+   #  or better the pty number as part of the history file to avoid if 
+   #  necessary)
+   # 1. shopt -s histappend # (done on close; however truncated thus still
+   #                          lossy when ending long sessions; to avoid:)
+   # 2. PROMPT_COMMAND='history -a' # (whenever displaying the prompt, 
+   #                          write the previous line to disk:
+   #                          but this may disorient due to mixing history
+   #                          and may be rather interesting in those 
+   #                          to-be-frowned-upon-multi-root situations...) 
+
+   # b) example for readline usage in loops, with retaining 
+   # BOTH the history entry for the loop command (history_self) 
+   # AND the user's readline input in the history list (history -s):
+   # $ history_self; while read -ep ">> "; do history -s "$REPLY"; gr_x $REPLY; done
+   # BUG1: history -r <(...)  # appending works only with plain files!?
+   # BUG2: the first history -s statement in an manually entered shell command
+   #       line kills the line's history entry (may actually be 
+   #       version-depending bug). Further history -s properly append.
+   #       So the next function basically is an idempotent NOP wasting
+   #       the first history -s. Otherwise it's highly annoying to loose
+   #       the loop entry from the history and having to reenter a complex
+   #       command needlessly.
+   function history_self {
+      # "NOP" - avoids loosing the current history line when 
+      #         explicitly appending with history -s 
+      #         history -s "$(history 1|sed -r 's/ *[0-9]+ +//')"; 
+      typeset _last="$(history 1)"
+      history -s "${_last/#*( )+([0-9])+( )/}"
+   }
+
 fi
 
 export EMVSHELL=/bin/bash

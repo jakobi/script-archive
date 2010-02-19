@@ -13,6 +13,7 @@ MYENSCRIPTPRT=${MYENSCRIPTPRT:-$PRINTER}
 [ "$MYLPROPT"      = "" ]   && MYLPROPT="" # -l
 MYENSCRIPT=enscript
 MYA2PS=a2ps
+job=""
 
 CMD=$MYENSCRIPT
 loop=1; while [ "$1" != "" -a "$loop" ]; do
@@ -20,6 +21,7 @@ loop=1; while [ "$1" != "" -a "$loop" ]; do
       -P|-d)      MYENSCRIPTPRT=$2; shift ;;
       -P*)        MYENSCRIPTPRT=${1##-P} ;;
       -d*)        MYENSCRIPTPRT=${1##-d} ;;
+      -J|-C|-T)   job="$2"; shift ;;
       -8)         MYENSCRIPTFMT="-1 --nup 8 --portrait -L 72" ;; # -fCourier7"
       -4)         MYENSCRIPTFMT="-1 --nup 4 --portrait -L 72 -fCourier9" ;;
       -4w)        MYENSCRIPTFMT="-1 --nup 4 --portrait -L 90 -fCourier7" ;;
@@ -44,9 +46,12 @@ default=""; test "$1" = ""   && default=/dev/stdin
 
 for i in $default "$@"; do
    test "$i" = "" && continue
+   # job is the job title
+   # missing: smash UTF-8 if any, add unique-mid-fix (but that's better done by Label=1 in /etc/cups/cups-pdf.conf)
+   job1="$i"; test "$job" != "" && job1="$job"
    echo "using $CMD with printer $MYENSCRIPTPRT";
    case $CMD in 
-     *enscript*) $MYENSCRIPT $MYENSCRIPTFMT $MYENSCRIPTOPT -G --mark-wrapped-lines=arrow -MA4dj --pass-through -p - "$i" | mypsnup -1 -P$MYENSCRIPTPRT ;;
+     *enscript*) $MYENSCRIPT $MYENSCRIPTFMT $MYENSCRIPTOPT -G --mark-wrapped-lines=arrow -MA4dj --pass-through -p - "$i" | mypsnup -1 -P$MYENSCRIPTPRT -J "$job1";;
      *a2ps*)
             # a2ps and manpage differ regarding -f and -n, -nP, --center-title, ...
             # at least folding is still implicit default
@@ -56,7 +61,7 @@ for i in $default "$@"; do
             # protect perl against insecure magic <> idiocy
             cat "$i" | \
             perl -e 'while(<>){s/([^\x8\x9\xA\xC\x20-\x7E\xA0-\xFF])/"&#0x".unpack(H2,$1).";"/ge; print}' | \
-            $MYA2PS "--center-title=$i" $MYENSCRIPTFMT $MYA2PSOPT -b -o - | mypsnup -1 -P$MYENSCRIPTPRT ;;
+            $MYA2PS "--center-title=$job1" $MYENSCRIPTFMT $MYA2PSOPT -b -o - | mypsnup -1 -P$MYENSCRIPTPRT -J "$job1";;
      *) $CMD ;;
    esac
 done

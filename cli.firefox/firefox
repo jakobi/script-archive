@@ -55,9 +55,22 @@
 #   options for its original behaviour, and implement the 
 #   functionality of the firefox bash script, maybe with
 #   a new -grep option thrown in.
+#
+# - user, display, profile setting options in addition to -sm/-3
+#   (note that multiple users' firefoxes on the same display
+#    may not work, possibly requiring redirecting the 
+#    display of further instances to e.g. VNC 
+#    (at least for the same user/uid from multiple 
+#     machines to run on the same display))
 
 
 # notes
+# - a better replacement might be replacing this set of scripts
+#   by basing things around a MozRepl-enabled fine-grained-remote controlable
+#   firefox (http://wiki.github.com/bard/mozrepl/)
+#   (say using Corion's WWW::Mechanize::Firefox Perl Module as a base)
+#   or at least considering File::Mork or Mozilla:: for more robust
+#   profile guessing/parsing
 # - using multiple profiles at once in a single user:
 #   - start the instance in the foreground by
 #     firefox -P test -no-remote URLs # or export MOZ_NO_REMOTE=1
@@ -125,8 +138,8 @@ echo "#START  $f -no-remote ${1:+$@}"
          # restart the command in case of some strange async X problem 
 echo "#TRY    $f --sync -noraise -remote 'openURL($1,new-tab)'"
          # and another thank-you to NVIDIA
-         $f --sync -noraise -remote "openURL($1,new-tab)" 2> >(grep -v 'Xlib:  extension "RANDR" missing on display') ||\
-         { _sleep 2;_ping $f && $f --sync -noraise -remote "openURL($1,new-tab)" ;}||\
+         $f --sync -noraise -remote "openURL($1,new-tab)" 2> >(grep -v -e 'Xlib: *extension "RANDR" missing' -e 'GLib-WARNING.* g_set_prgname' -e '^ *$') ||\
+         { _sleep 2;_ping $f && $f --sync -noraise -remote "openURL($1,new-tab)" 2> >(grep -v -e 'Xlib: *extension "RANDR" missing' -e 'GLib-WARNING.* g_set_prgname' -e '^ *$') ;}||\
          echo "#FAILED"
          _sleep 1
       else
@@ -175,7 +188,7 @@ function _ping {
 function _ping2 {
    # gee thanx, for nice and uptodate regular driver updates,  NVIDIA. NOT.
                                                 # set -o pipefail
-   "$1" --sync -remote "ping()" >/dev/null 2>&1 # 2>&1 | grep -v 'Xlib: *extension "RANDR" missing'
+   "$1" --sync -remote "ping()" >/dev/null 2> >(grep -v -e 'Xlib: *extension "RANDR" missing' -e 'GLib-WARNING.* g_set_prgname' -e '^ *$')
 }
 
 function _decode {
@@ -230,8 +243,10 @@ function _browsefile {
 
 
 
+export pre_opt noexec
 while [ "$1" != "" ]; do
    case "$1" in
+      # should go first...
       -n|-no-exec)                 shift; noexec="-n"; f="/bin/echo No-Exec"; t=$f ;;
 
       -3)                          f=$f3; pre_opt="-3  $pre_opt"; shift ;;
@@ -239,6 +254,13 @@ while [ "$1" != "" ]; do
                                    firefox_to_start=1
                                    ps -u `whoami` | egrep -e seamonkey-bin   -e seamonkey > /dev/null && firefox_to_start=0
                                    ;; 
+      
+      # exit with suitable test status code
+      -procall)                    ps -ef | egrep -v egrep | egrep -e 'firefox*/firefox' -e thunderbird -e firefox-bin -e 'firefox.*-bin' -e mozilla; exit $? ;;
+      -proc)                       firefoxversion=${f##*-}; ps -ef | egrep -v egrep | grep "firefox-$firefoxversion/firefox"; exit $? ;;
+      -kill)                       firefoxversion=${f##*-}; $kill "firefox-$firefoxversion/firefox"; exit $? ;;
+      -ping)                       $f -remote "ping()"; exit $? ;;
+      -ping-tb)                    $t -remote "ping()"; exit $? ;;
 
       # consider these to begin the list of urls [being handled in _browsefile]
       -mail|-news)                 break ;;
@@ -250,11 +272,11 @@ while [ "$1" != "" ]; do
                                    # firefoxgrep -i -w -U -k "$1" "$2" | firefoxstdin; shift; shift ;;     
       -k|-kw|-key|-keyword)        shift; 
                                    [ "$pre_opt" = "" ] && firefoxstdin $noexec -key  "$1" "$2" || \
-                                                          firefoxstdin -n -key "$1" "$2" | firefoxstdin $pre_opt $noexec /dev/stdin
+                                                          firefoxstdin -n -key "$1" "$2" | firefoxstdin $noexec $pre_opt /dev/stdin
                                    shift; shift ;;
       -grep)                       shift; 
                                    [ "$pre_opt" = "" ] && firefoxstdin $pre_opt $noexec -grep "$1" || \
-                                                          firefoxstdin -n -grep  "$1" | firefoxstdin $pre_opt $noexec /dev/stdin
+                                                          firefoxstdin -n -grep  "$1" | firefoxstdin $noexec $pre_opt /dev/stdin
                                    shift ;;  # use ::$1:: to match full fields when grepping
       
 
@@ -264,21 +286,16 @@ while [ "$1" != "" ]; do
       -|stdin|STDIN|-stdin|-STDIN) shift;  exec firefoxstdin ${1:+"$@"} ;;
       
       # add your shortcut args below -- case patterns do not expand vars :(
-      -example|-daily|-weekly|-nightly|-monthly*|-news.daily|-jobs.daily|-job.daily)  
+      -example|-daily|-weekly|-nightly|-monthly*|-news.daily|-jobs.daily|-job.daily|-job.nightly|-jobs.nightly)  
                                    tmp="$0.$1";
-                                   if [ -f "$tmp" ]; then
-                                      cat "$tmp" | firefoxstdin $pre_opt
-                                   else
-                                      [ "$pre_opt" = "" ] && firefoxstdin "$1" || \
-                                      firefoxstdin -n "$1" | firefoxstdin $pre_opt /dev/stdin
+                                   if [ -x "$tmp" ]; then    # execute if -x
+                                      "$tmp"
+                                   elif [ -f "$tmp" ]; then  # treat as input for firefoxstdin (incl. its GREP commands, etc)
+                                      cat "$tmp" | firefoxstdin $noexec $pre_opt
+                                   else                      # otherwise assume its a firefoxstdin option
+                                      [ "$pre_opt" = "" ] && firefoxstdin $noexec "$1" || \
+                                      firefoxstdin -n "$1" | firefoxstdin $noexec $pre_opt /dev/stdin
                                    fi; shift ;;     
-      
-      # exit with suitable test status code
-      -procall)                    ps -ef | egrep -v egrep | egrep -e 'firefox*/firefox' -e thunderbird -e firefox-bin -e 'firefox.*-bin' -e mozilla; exit $? ;;
-      -proc)                       firefoxversion=${f##*-}; ps -ef | egrep -v egrep | grep "firefox-$firefoxversion/firefox"; exit $? ;;
-      -kill)                       firefoxversion=${f##*-}; $kill "firefox-$firefoxversion/firefox"; exit $? ;;
-      -ping)                       $f -remote "ping()"; exit $? ;;
-      -ping-tb)                    $t -remote "ping()"; exit $? ;;
 
       -*)                          exec $f "${1:+$@}" ;; # firefox options
       +*)                          exec $f "${1:+$@}" ;; # firefox options

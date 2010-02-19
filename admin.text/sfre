@@ -48,9 +48,16 @@ our $changetrackcmd='changetrack';
 #
 # To be implemented/changed:
 #
+# - allow a switch to set/ask user for an after-editing-comment
+#   (as he might reconsider and the initial entry is bogus)
+#   [[possibly also a variant to set/edit the previous entry when rerun
+#   with the same params?? or is history editing just EDIT THE LOG DIRECTLY 
+#   from within sfre?]]
 # - changetrack file size limits and exclusion (long logs, etc)
 #   or optional parent proc based exclusion (e.g. invocations from
 #   emv, crontab -e or similar shouldn't be changetracked)
+# - recognize (anonymous) temp files and don't changetrack them: (regexes)
+#   NAME.pid.DATESTRING, (/var)?/tmp/{tmp,file}XXXXXX{*,/*}
 # - do I already log the RC of the executed command??? - ADD IT
 # - do keep @files in order, but strip dupes (currently lock.pl
 #   does this for us)
@@ -120,6 +127,14 @@ our $changetrackcmd='changetrack';
 #     - == both points should do the trick.
 # - special handling of vi -R and empty vi invocations
 #     - DO ask no message, maybe also avoid journaling if no o_message
+# - easier removal/cleanup of changetracked files and dirs
+#       maybe just document: getting the RCS path by doing sfre -cat > /dev/null 
+#       and stripping the hostname-pid-prefix from the RCS output on stderr
+#       (the prefix is just to allow parallel access from RCS/changetrack
+#       while mangling their files)
+# - mention the stupidly huge filename issue with changetrack's way of
+#       encoding dirs in file names, which also affects use of such files
+#       via sfre [probably as BUG/won't fix]
 #      
 # Ultimate wishlist:
 #

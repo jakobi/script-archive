@@ -23,11 +23,29 @@ function xlatej { # japanese/english
    perl -e 'undef $/; $_=<STDIN>; $_="" if /Roman?ji Conversion Error|No Matches Found/i; s/\A[\s\S]*?Found//mgoi; s/ *_____[\s\S]*//mgoi; print' | grep .
    true
 }
-function xlatej2 { # japanese/english phrase translation via google, w3m for it's utf8 support (lynx doesn't, but that might be google's http headers)
-   w3m -dump "http://translate.google.com/translate_t?hl=&ie=UTF-8&sl=ja&tl=en&text="`perl -e 'print join "%20", @ARGV;' "$@"` |\
+function xl_isascii {
+   perl -e '$_=join(" ",@ARGV); $_=`cat /dev/stdin` if $_ eq "-"; print; exit 1 if /[^\s\x20-\x7e]/' ${1:-"$@"}
+}
+function xl_isgerman { xl_islatin ;}
+function xl_islatin1 { xl_islatin ;} # a lie -- of course, it's UTF8, not latin1
+function xl_islatin  {
+   perl -e '$_=join(" ",@ARGV); $_=`cat /dev/stdin` if $_ eq "-"; print; s/[\xc3\xc4][\x80-\xbf]//g; exit 1 if /[^\s\x20-\x7e]/' ${1:-"$@"}
+}
+function xlatej2 { # japanese/english phrase+romaji translation via google
+                   # using w3m for it's utf8 support (lynx doesn't work regardless of -assume*, but that might be google's http headers)
+                   # - a local romaji conversion would be e.g.
+                   #   echo 当世ロマン歌集 | iconv -f utf-8 -t euc-jp | kakasi -Ha -Ka -Ja -Ea -ka -C -s # | iconv -f euc-jp -t utf-8
+                   #   H, K, J, E, k are the conversion options, C is capitalization, s keeps space
+                   #   the iconv is required, as ancient kakasi still doesn't know about utf8
+                   # - recode doesn't seem to handle smashing to romaji at all (recode: use -f to FORCE even on translation problems of input...)
+                   # - see also: http://php.net/manual/en/function.recode-string.php (e.g. romaji to hiragana transliteration)
+                   # - detecting non-ascii/non-sane: perl -lne 'exit 1 if not /[^\x20-\x7e]/' # maybe allow for CRLF and TAB or even ESC/CSI
+                   # - DEC, EUC, SJIS are older non-compatible kanji encodings
+   arg="$(perl -e '$_=join " ", @ARGV; s/([\(\)\[\]\{\}\&\;\+\s])/"%".unpack(H2,$1)/geo; print' "$@")"
+   w3m -dump "http://translate.google.com/translate_t?hl=&ie=UTF-8&sl=ja&tl=en&text=$arg" |\
    perl -e 'undef $/; $_=<STDIN>; /[\s\S]+?Japanese to English.*\n([\S\s]*?)\n.*contribute a better translation/i and $_=$1 or $_=""; print' | grep .
    echo
-   w3m -dump "http://translate.google.com/translate_t?hl=&ie=UTF-8&tl=ja&sl=en&text="`perl -e 'print join "%20", @ARGV;' "$@"` |\
+   w3m -dump "http://translate.google.com/translate_t?hl=&ie=UTF-8&tl=ja&sl=en&text=$arg" |\
    perl -e 'undef $/; $_=<STDIN>; /[\s\S]+?English to Japanese.*\n([\S\s]*?)\n.*contribute a better translation/i and $_=$1 or $_=""; print' | grep .
    true
 }

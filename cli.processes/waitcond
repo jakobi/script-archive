@@ -241,7 +241,7 @@ sub grep_file {
       # allow use of perl idiomatic 'command |' filenames 
       # this block temporarily uses shell rc semantics
       $rc=0; # shell.true
-      open(FH,$file) and defined read(FH,$tmp,$grepmaxsize,0) and close FH or $rc=256; # INTIONALLY INSECURE OPEN2
+      open(FH,$file) and defined read(FH,$tmp,$grepmaxsize,0) and close FH or $rc=256; # INTENTIONALLY INSECURE OPEN2 (IS SECURE)
       $rc=$?>>8 if $?;
       warn "# $Me: failed open/read for pipe grep $expr $file\n" if $rc and $rc==256;
       warn "# $Me: rc for pipe grep $expr $file: $rc\n"          if $rc and $rc!=256 and $verbose;

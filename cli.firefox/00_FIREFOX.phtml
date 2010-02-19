@@ -13,12 +13,32 @@ number  of  bookmarkfolders  (have  firefox  or  firefoxstdin   invoke
 firefoxgrep...) . In a pinch, the scripts below also offer a low level
 method to diff/copy a few changed bookmarks.<p>
 
-<p>Note  that  the  firefox wrapper should be rewritten in  perl  with
-firefoxstdin  folded  into the code. Currently thee two  scripts  call
-each other for a number of functions... . Thus I see the scripts (with
-the  possible exception of firefoxgrep* itself) not as a released  set
-of  scripts,  but  more  of a working  example  on  accessing/grepping
-bookmarks and interacting with firefox from the the command line.</p>
+<p>As  I'm  using the command line rather than just mouse  &amp;  GUI,
+these   scripts   are  life-safers  and  necessary  to  make   firefox
+<i>properly</i> usable for me at a mere 'works-for-me' level. As such,
+this set of scripts is more of a raw concept example for firefox shell
+integration  rather  than  a proper finished releasable  script.  That
+said,  if you've a shell related firefox pet-peave, I'll gladly have a
+look at it :).</p>
+
+<p  class=anno>See  also:  For a better generic  approach  to  control
+firefox,  consider  e.g.  perl-javascript bridging code  like  the  <a
+href="http://search.cpan.org/search?query=mozrepl">Perl  Interface  to
+MozRepl</a>   (<a  href="http://wiki.github.com/bard/mozrepl/">MozRepl
+itself</a>),              Corion's              recent              <a
+href="http://cpan.uwinnipeg.ca/dist/WWW-Mechanize-Firefox">WWW::Mechanize::Firefox</a>
+(should  allow hacking a javascript-conscious wget-clone), or e.g.  <a
+href="http://search.cpan.org/search?query=selenium">Selenium</a>.</p>
+
+<p   class=anno>To   use   a   tk-style   approach   to   build   a
+javascript-DOM-style user interface for a server script, consider e.g.
+XUL::Node.</p>
+
+<p  class=anno>Note  that the firefox wrapper should be  rewritten  in
+perl with firefoxstdin folded into the code. Currently the two scripts
+call each other for a number of functions... . But that's what you get
+with works-for-me examples :). </p>
+
 
 
 <p>Some remarks:</p>

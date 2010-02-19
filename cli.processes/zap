@@ -134,6 +134,14 @@ Examples:
   zap -l -y '^\\S+ +\\d+ +1 +'           # list orphaned processes
   zap -l -y -a '^(?!.*00:0\\d:\\d\\d)'    # list cpu hogs (perl5 only)
 
+  # STOP & CONT vs job-control
+  bash -c 'cmd1; cmd2'  # zap -STOP cmd1 pauses cmd1 and the list
+  bash$ ( cmd1; cmd2 )  #      the same happens for subshells
+  bash$ cmd1; cmd2      # !! here bash job control instead suspends cmd1
+  bash$ { cmd1; cmd2; } # !! and cmd2 runs immediately. This also happens
+                        #    with the normal job-control ^z for both lists and
+                        #    { group commands; }.
+
   # pipe dreams
   echo UNUSED | echo `zap -l -a -C bash </dev/tty | nl` 
   zap -l -y bash 2>&1 | nl             
