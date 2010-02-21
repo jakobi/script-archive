@@ -103,7 +103,8 @@ my $version="0.2";
 #   use in a tag.
 
 # bugs:
-# - no umlauts or utf in synonyms (&regex) or &stemming
+# - no umlauts or utf in synonyms (&regex) or &stemming due to using [a-z] 
+#   - a better replacement would be \p{Letter} 
 
 
 @ARGV=qw/-h/ if not @ARGV;

@@ -6,7 +6,7 @@
 
 my $version="0.1";
 # created     PJ 2005XXXX$ jakobi@acm.org
-# last change PJ 20090615 fixing copyright and version
+# last change PJ 20100210  -nonl,-nore: do not insert replacement at start/end of record
 # copyright:  (c) 2005-2009 PJ, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
 
@@ -41,7 +41,8 @@ Notes:
     - find | xargs0 -n 1 -iZ diff Z /mnt1/AVI-ARCHIVE/Z
   - cat0 | cat0 is not idempotent, but mostly harmless,
     the problem being filenames with embedded \\n. This is
-    however NOT TRUE for cat0 -nore / -nonl!
+    however NOT TRUE for cat0 -nore / -nonl! Trailing \\0
+    at EOF are stripped.
   - cat0 == cat0 -0 == egrep -Z -e '()'
 
 See also:
@@ -103,8 +104,12 @@ $o_inputfromarg or do{foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}};  # MA
 while(($o_inputfromarg and ($_=shift @ARGV, 1) or $_=<>), defined $_) {     # SECURE:OK
    # KEEP IN SYNC WITH CAT0PAR
    s/($lineends)+\z//o;                  # glorified chomp
-   s/($lineends)/$o_nonl/go              if defined $o_nonl; 
-   s/($lineend)/$o_nore/go               if defined $o_nore;
+   s/\A($lineends)+//go                  if defined $o_nonl;
+   s/($lineends)+\z//go                  if defined $o_nonl;
+   s/($lineends)+/$o_nonl/go             if defined $o_nonl;
+   s/\A($lineend)+/$o_nore/go            if defined $o_nore;
+   s/($lineend)+\z/$o_nore/go            if defined $o_nore;
+   s/($lineend)/$o_nore/go               if defined $o_nore; # 1:1, thus no +
    next if /\A\s*#/o                     and $o_nocomments;
    next if /\A\s*\Z/o                    and ( $o_nowhitespace or $o_nocomments );
    $_=$1 if /\A\s*(.*?\S)\s*\Z/o         and $o_nowhitespace;

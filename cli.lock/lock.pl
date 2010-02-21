@@ -5,9 +5,10 @@
 # lock.pl [options] lockpath ...                # lock; unlock with rmdir/rm -rf
 
 
-my $version="0.2";
-# 2002XXXX PJ   0.1  jakobi@acm.org initial version
-# 20090729 PJ   0.2  added flock and command
+my $version="0.2.1";
+# 2002XXXX PJ   0.1   jakobi@acm.org initial version
+# 20090729 PJ   0.2   added flock command
+# 20100210 PJ   0.2.1 added symlink detection for flock
 #
 # copyright: (c) 2002-2009 PJ, GPL v3 or later
 # archive:   http://jakobi.github.com/script-archive-doc/
@@ -28,7 +29,7 @@ BEGIN{
 use Flock; # Compact_pm::Flock
 
 
-my($break,$timeout,$rc,$flock,$verbose,$terse,$lock,$err)=(0,0,0,0,0,"");
+my($unlock,$break,$timeout,$rc,$flock,$verbose,$terse,$lock,$err)=(0,0,0,0,0,0,"");
 my $delaymessage=1; # regardless of terse/verbose, one pointer to point out delays please.
 my $timestep=5;    # period for decrementing timeout
 my $greedy=0;      # keep obtained incomplete locks?
@@ -46,6 +47,7 @@ args: while(@ARGV){
    elsif (/^-1$/o)               { $delaymessage=1 }
    elsif (/^-?-greedy$/o)        { $greedy=shift; }
    elsif (/^-?-flock$/o)         { $flock=1; }
+   elsif (/^-?-unlock$/o)        { $unlock=1; }
    elsif (/^-?-f(lockstrict)?$/o){ $flock=$flockstrict=1; }
    elsif (/^-v$/o)               { $verbose++; }
    elsif (/^-?-$/o)              { last }  
@@ -56,6 +58,7 @@ die "# no locks specified" if not @ARGV or $ARGV[0] eq '--';
 
 
 $err=0;
+my($stat,%stat,@stat);
 while($lock=shift, defined $lock){
    if ($lock eq '--') {
       @cmd=@ARGV; @ARGV=(); last;
@@ -66,19 +69,42 @@ while($lock=shift, defined $lock){
       next;
    }
    if ($flock) {
-      warn "# $Me: lock $lock is no file\n" and ++$err if -e $lock and not -f $lock and $flockstrict;
-      warn "# $Me: lock $lock does not exist\n" and ++$err if not -e $lock and $flockstrict;
+      my $exists = -e $lock;
+      warn "# $Me: lock $lock is no file\n" and ++$err if $exists and not -f $lock and $flockstrict;
+      warn "# $Me: lock $lock does not exist\n" and ++$err if not $exists and $flockstrict;
+      
+      # same file detection (symlinks, ...) 
+      # Q: mount-bind vs flock?
+      # N: this also doesn't help if somebody changes symlinks between or during lock.pl invocations
+      #    should we try to resolve the link?
+      if ($exists) {
+         @stat=stat($lock);
+         $stat=$stat[0].":".$stat[1];
+      }
+
+      push @lock,$lock if not $mode{$lock} and ( not $exists or not $stat{$stat}++ );
    } else {
-      warn "# $Me: lockpath $lock exists but is no directory??" and ++$err if -e $lock and not -d $lock;
+      warn "# $Me: lockpath $lock exists but is no directory??\n" and ++$err if -e $lock and not -d $lock;
       my $parent=$lock; $parent=~s@/[^/]*$@@;
-      warn "# $Me: lockpath parent $parent does not exist??" and ++$err if not -d $parent and not $parent eq $lock;
+      warn "# $Me: lockpath parent $parent does not exist??\n" and ++$err if not -d $parent and not $parent eq $lock;
+      push @lock,$lock if not $mode{$lock};
    }
-   push @lock,$lock if not $mode{$lock}; # dupes: just update mode
    $mode{$lock}=$mode;
 }
 die "# no locks specified\n" if not @lock;
 die "# erroneous locks\n" if $err;
 
+if ($unlock) {
+   if ($flock) {
+      warn "# $Me: unlocking doesn't make much sense for flock";
+   } else {
+      foreach(@lock) { 
+         my $msg=rmdir($_) ? "unlocked         " : "cannot unlock    ";
+         warn "# $Me: $msg $_\n" if $verbose;
+      }
+   }
+   exit;
+}
 
 my $start=time;
 my @lock0=@lock;
@@ -107,7 +133,11 @@ while(1) {
             next;
          }
          if ($break and time-$start>$break) {
-            warn ("# $Me: breaking/ignoring $lock\n"); # if $verbose;
+            # should we allow the user to choose to delete his possibly important file
+            # and loose inode and or content in order to recreate a proper flock on a fresh file?
+            # or is the current approach better to just skip this lock, thus allowing the original
+            # owner to release the lock, likely while we're still running? 
+            warn ("# $Me: ignoring/breaking $lock\n"); # if $verbose;
             next;
          } else {
             warn ("# $Me: failed to obtain  $lock\n") if $verbose;
@@ -195,14 +225,25 @@ sub help {
 
 lock.pl [-t timeout] [-b lockbreak] [-r retry] 
         [-v|-q|-1] [--greedy (-g)] [--flock[strict (-f)]]
+        [-unlock]
         [--]  lockpath ... 
         [--   [COMMAND ...]]
 
 Create  locks  with timeout and optionally run a command. 
 
+mkdir mode (default)
+
 By default, mkdir is used, which allows the lock to also double as the
 application  instance's work directory. If you provide no command, use
-rm -rf lockpath ... / rmdir lockpath ... as unlock after you're done.
+rm  -rf lockpath ... / rmdir lockpath ... as unlock after you're done.
+You  can  also call lock.pl with the same parameters and  the  -unlock
+option to rmdir the locks.
+
+With  -b,  old  locks are broken acc. to the offset to  the  directory
+ctime. If directory contents exist, the attempt will fail.
+
+
+flock mode (-flock)
 
 With  -flock, existing files are used as non-blocking exclusive  locks
 via  perl's (usually NFS-safe) flock implementation. For -flock, +x/-x
@@ -211,9 +252,12 @@ and  that the locks are released on exit, so use COMMAND to execute  a
 command  while the files are still locked. With -flockstrict, the lock
 must be an existing plain file.
 
-For mkdir-locking, breaking happens with rmdir according to the age of
-the  directory  ctime and may fail. For flock, breaking happens  after
-lockbreak seconds.
+With  -b, old locks are ignored after lockbreak seconds - the lock  is
+still  held  and might be released by the other process while  we  are
+still  active. Note that removing the file will also release the  lock
+from  the point of view of new lock.pl invocations. The -unlock option
+is a no-op.
+
 
 Returns  0  on  success. Does not block unless -t timeout is  used  to
 allow  blocking upto timeout+retry seconds. All times are specified in

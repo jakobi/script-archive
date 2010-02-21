@@ -16,15 +16,18 @@ my $version="0.4.2";
 # 20090908 PJ        added GNUGrep aliases for -H: -color.*/--colour.*/...
 # 20090913 PJ        fixed split() bug in parsestring affecting -b 'X not (' style sequences
 #                    + stupid bug on -1, sigh
+# 20100210 PJ        added -z/-Z in addition to -0
+#                    added -U ">>>_", "_<<<" ascii-style highlighting (doesn't depend on terminal/tput)
 #
 # (c) 2007-2009 PJ, placed under GPL v3
 # archive:   http://jakobi.github.com/script-archive-doc/
 
 
 # Bugs:
-# - utf?
-# - utf! expansyn/stemming does allow for umlauts/... in words/stems
-#        [use a local-depending charclass as subst for [a-z]?]
+# - utf? - usual perl caveats resulting in usually sensible guesswork by Perl
+#          (consider using perl -C to force global utf use)
+# - utf! - expansyn 0.2 stemming doesn't allow for umlauts/... in words/stems
+#          [?fix with a locale-depending charclass as substitute for [a-z] or just \p{Letter} or similar]
 #
 # Bugs when used as module (which is still experimental anyway):
 # - example users: moduletest, mt_playmusic, ...
@@ -318,8 +321,9 @@ Options:
   --exclude REGEX - skips matching files (against full path)
   --include REGEX - skips non-matching files
 
-  # input record handling
-  -0       0-terminated input/output
+  # input record handling, line or record ending
+  -0/-z    0-terminated input/output (also: --null-data)
+  -Z       0-terminated output (also: --null)
   -p       paragraph mode (actually a -2 zerowidth --split)
            Use -C 0 -p to separate paragraphs with dashes.
            Use -2 --split '\\n\\s*\\n\\K' instead of -p to split
@@ -347,13 +351,15 @@ Options:
   # Note: -H/-o/--count use the disjunction of all regexes from 
   # options -e and -b, ignoring negation and excluding perl scraps.
   -1       1 match per file 
-  -A       print all text (for highlighting)
+  -A       print all text, not just matches (use with highlighting)
   -c       give count of lines matching
   -C N     context lines, prints dash-separator between matches
            use -C 0   to print separators with 0 context lines
            use -C 00  to also add a line end after file:line:
            if negative, flag matches (similar to diff -u)
-  -H       highlight matches (also --colou?r.*)
+  -H / --colou?r.* / -u / -U: highlight, underline or mark matches.
+           (-H/-u use tput to determine terminal code sequence,
+            while -U uses plain ASCII: '>>>_..._<<<')
   -h       hide filenames 
   -l       just list matching filenames
   -n       include record numbers (records are lines by default)
@@ -368,7 +374,6 @@ Options:
            See --examples
   -o       only matches: report stretch from first to end of last match.
            In case of no match: print whole record
-  -u       underline matches
   --count  implies -c allowing for multiple matches per record
   --count-sum -- implies -c, but only report sum of counts
   --offset use byte offset for -n (do use zero-width record splitting
@@ -437,8 +442,25 @@ Perl scraps are not considered/updated by expansyn (-X), highlightling
 
 However  also consider the simpler alternatives: 
   - $Me -P undef with a disjunction of zerowidth patterns and 
-    control verbs (if the regex needs to span less than 64K)
+    control verbs (possible restriction depending on Perl version: 
+    the regex _might_ be restricted to span or match at most 64K)
   - perl with -0777ne or a separate script
+
+
+On using side-effects to retain status from previous records:
+
+Example  searching  for the string vararg, but only in files  starting
+with #!...perl:
+
+  Grep.pm -B 'do{\$.==1 and /#!.*perl/ and \$F{1}=1;1}' 'do{\$F{1}}' vararg *
+
+In  the  shell,  this can also be done with a  2-pass  grepping,  with
+xargs,  while read, or by providing the filenames in shell arrays like
+"\${ARRAY[@]}". Command substitution like Grep.pm ... -- \$(Grep.pm ...)
+for  multiple  names  however is a bad idea due to  breakage  on  e.g.
+embedded spaces. The /dev/null ensures we always see the filename.
+
+  Grep.pm -lZ -M 1 '#!.*perl' * | xargs -0 Grep.pm vararg /dev/null
 
 
 On boolean regular expressions (a,b are RE):
@@ -618,13 +640,13 @@ sub parse_args {
     my(@a,@b,@bb);
     while(@ARGV) {
        $_=shift @ARGV;
-       /^-?-$/                  and do { push @a, $_, @ARGV; last};
        /^-?-help$/              and do { &usage; mydie("\n") };
        /^-?-examples?$/         and do { &examples; mydie("\n")};
        /^-?-or$/                and do { $opt{implicit_and}="or"; next}; 
        /^-?-binary$/            and do { $opt{binary}=1; next}; 
-       /^-H$|^-?-colou?r(=.*)?$/ and do { $opt{H}=1; next}; 
        /^-?-count$/             and do { $opt{count}=1; next}; 
+       /^-?-colou?r?$/          and do { push @ARGVPOST, $_; next}; 
+       /^-?-null(-data)?$/      and do { push @ARGVPOST, $_; next}; 
        /^-?-count[-_]?sum$/     and do { $opt{countsum}=1; next}; 
        /^-?-show[-_]?files?$/   and do { $opt{mult}=1; next}; 
        /^-?-hide[-_]?files?$/   and do { $opt{mult}=""; $opt3{h}=1; next}; 
@@ -652,7 +674,7 @@ sub parse_args {
                                          @bb=@b=();
                                          push @b, $1 if defined $1 and $1 ne "";
                                          # collect all args until OPTION OR FILE
-                                         while(defined $ARGV[0] and $ARGV[0] ne "" and $ARGV[0]!~/^-/ and not -f $ARGV[0]) {
+                                         while(defined $ARGV[0] and $ARGV[0] ne "" and $ARGV[0]!~/^-/ and not -e $ARGV[0] and not -l $ARGV[0]) {
                                             push @b, shift @ARGV;
                                          }
                                          # however extend until OPTION IFF there is a subsequent one
@@ -673,8 +695,8 @@ sub parse_args {
 
     # pass2 - getopts
     my($optstring,$zeros,$empties,$undefs,@opt);
-    $optstring = '012AacFHhilnopqRrstuVvwxC:f:M:N:P:';
-    $zeros     = '012AachilnopqRrstuVvwxbf';
+    $optstring = '012AacHhilnopqRrstuUVvwxzZC:F:f:M:N:P:';
+    $zeros     = '012AachilnopqRrstuUVvwxbfzZ';
     $empties   = 'FpfMN';            
     $undefs    = 'CP';
     @opt{ split //, $zeros   } = ( 0 )     x length($zeros);
@@ -687,6 +709,9 @@ sub parse_args {
     # pass3 of argument parsing - ARGVPOST, depending on previous switches
     while(@ARGVPOST) {
        $_=shift @ARGVPOST;
+       /^-?-colou?r$/   and do {$opt{H}=1; next};
+       /^-?-null$/      and do {$opt{Z}=1; next};
+       /^-?-null-data$/ and do {$opt{z}=1; next};
        /^-e$/     and do { $_=shift @ARGVPOST; $_="" if not defined $_; 
                      ($EXPR,$HLEXPR)=&parsearray( $EXPR,$HLEXPR,$_); next};
        /^-b$/     and do { $_=shift @ARGVPOST; $_="" if not defined $_;
@@ -703,12 +728,16 @@ sub parse_args {
 
     # finish the matcher $EXPR (perl scrap) and $HLEXPR (disjunction of all regexes)
     if ($opt{f}) {
-        foreach (&readfiletoarray($opt{f})) {
-           ($EXPR,$HLEXPR)=&parsearray($EXPR,$HLEXPR,$_);
+        my @tmp=&readfiletoarray($opt{f});
+        @tmp=("(?!)") if not @tmp;
+        foreach (@tmp) {
+              ($EXPR,$HLEXPR)=&parsearray($EXPR,$HLEXPR,$_); # flattened array of size 1
         }
     }
     if ($opt{F}) {
-        foreach (&readfiletoarray($opt{F})) {
+        my @tmp=&readfiletoarray($opt{F});
+        @tmp=("(?!)") if not @tmp;
+        foreach (@tmp) {
            ($EXPR,$HLEXPR)=&parsestring($EXPR,$HLEXPR,$_);
         }
     }
@@ -734,10 +763,9 @@ sub parse_args {
           $substhlexprg=sub{s{$HLEXPR}{${SO}$&${SE}}mgo}'; 
     mywarn("# $Me exclude: $opt{exclude}\n") if $opt{V} and $opt{exclude};
     mywarn("# $Me include: $opt{include}\n") if $opt{V} and $opt{include};
-    mywarn("# $Me hlexpr:  $HLEXPR\n") if $opt{V} and $opt{H};
+    mywarn("# $Me hlexpr:  $HLEXPR\n") if $opt{V} and ($opt{H} or $opt{u} or $opt{U});
     mywarn("# $Me matcher: $EXPR\n") if $opt{V};
     mydie ("# $Me matcher: ".$@) if $@;
-
 
 
 
@@ -745,6 +773,8 @@ sub parse_args {
         ($SO, $SE) =  $opt{H} ? (`tput smso`,`tput rmso`) : (`tput smul`,`tput rmul`);
         chomp($SO,$SE);
     }
+
+    ($SO,$SE)=(">>>_","_<<<") if $opt{U};
 
     # -p/-P did set the global $*=1 in the original tcgrep 
     if ($opt{p}) {
@@ -767,6 +797,7 @@ sub parse_args {
     $opt{r} = $opt{R} = $opt{r} + $opt{R};
     $opt{1} += $opt{l};
     $opt{H} += $opt{u};
+    $opt{H} += $opt{U};
     $opt{c} += $opt{count} + $opt{countsum};
     $opt{s} += $opt{c};
     $opt{1} += $opt{s} && !$opt{c};
@@ -776,7 +807,7 @@ sub parse_args {
 
     $opt{r} = 1 if !$opt{r} && grep(-d, @ARGV) == @ARGV;
 
-    $opt{C} = undef if $opt{A} and 0 != $opt{C};
+    $opt{C} = undef if $opt{A} and defined $opt{C} and 0 != $opt{C};
     do{$opt{C_mark}=1; $opt{C}=$1} if defined $opt{C} and $opt{C}=~/\A-(\d+)\z/;
 
     if ($opt{N}) {
@@ -807,10 +838,16 @@ sub parse_args {
     $opt{2}=1 if $opt{M}=~/^-/;
     $opt{2} and $opt{V} and mywarn("# two pass mode active, matching and reporting only in second pass\n");
     
-    # lineend to use for stdout
+    # lineend to use
+    $opt{nl} = "\n" if not defined $opt{nl};
+    # $/       = "\n" if not defined $/; # also allow undef!
+    $opt{0}+=$opt{z};
     $/="\0" if $opt{0};
-    $opt{nl} = ($opt{0} ? "\0" : "\n") if not $module_use or $module_use and $module_print;
-    
+    if (not $module_use or $module_use and $module_print) {
+       $opt{nl} = "\n";
+       $opt{nl} = "\0" if $opt{0} or $opt{Z};
+    } 
+
     mywarn("\n") if $opt{V};
 }
 
@@ -1262,6 +1299,9 @@ sub printmatch {
          $hdr="" if defined $dash_printed and not $dash_printed;
       }
       $dash_printed=0;
+
+      # strip final \n in case of -Z (usually input \n to output \0)
+      s/[\n\r]{1,2}\z// if $opt{Z} and not $opt{0};
 
       myprint($hdr, $_, /$opt{nl}\z/ ? "" : $opt{nl});
    }

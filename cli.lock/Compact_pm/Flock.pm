@@ -54,6 +54,12 @@ our @ISA    = qw(Exporter);
 # not that good an idea unless with heavy lifting like
 # FUSE and giving up any chance of portability
 #
+# for module-users appending data to a locked file, 
+# it _might_ be useful to explicitely seek to EOF
+# with seek(FH,0,2) or sysseek(...) in order to avoid lost
+# updates from outside (possible? race condition between start 
+# of open and success of locking).
+#
 # note another race: upgrading a lock from shared to exclusive transiently
 # releases the lock.
 #

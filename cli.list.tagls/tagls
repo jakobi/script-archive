@@ -835,8 +835,10 @@ EOF
 # the generic solution:
 # (exec based, and thus possibly requiring yet another temp file
 #  in case you need to set args and stuff as shell commands)
-# - tagls -0 ... | xargs0 ls -l 
-# - tagls -0 ... | while read -r 
+# - tagls -0 ... | xargs -0 ls -l 
+# - tagls    ... | f2a; ls -l "${f2a[@]}"     # file-to-array, 00_lib.func
+# - tagls    ... | while read -r ...          # ksh93 pipe
+# - while read -r; do ... done < <(tagls ...) # bash "pipe"
 # - tagls -c CMD ... # plus workaround on demand via bash
 
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# for use in pipes / conditional execution
+# for use in pipes / conditional execution if data available
 # 1) $0 command...  -- slurp stdin AND pipe-execute command (w/o intervening shell)
 # 2) $0             -- cat   stdin  OR false
 #

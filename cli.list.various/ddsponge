@@ -1,7 +1,8 @@
 #!/bin/sh
 # just a memory hint
 # alternatives: 
-# - 'perl -0pe "use ARGV::readonly"' # module final NL
+# - perl -0pe 'use ARGV::readonly' # module final NL
+# - perl -0ne 'use ARGV::readonly;END{print $_}'
 # - gnu dd ibs=201M bs=200M          # bs and one of ibs/obs required
 #                                    # as it ignores buffering otherwise
 sponge ${1:+"$@"}

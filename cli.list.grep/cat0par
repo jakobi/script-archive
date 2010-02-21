@@ -4,9 +4,10 @@
 #
 # stanza/generic record splitting <--> \0-lines 
 
-my $version="0.1";
+my $version="0.1.1";
 # created     jakobi@acm.org 2007XXXX - when you do not want to write a real parser...
-# last change jakobi@acm.org 20090615
+# last change jakobi@acm.org 20100220 - change of -nl/-onl/-inl, added +/- to ease use of -f
+#                                       -nonl,-nore: do not insert replacement at start/end of record
 # copyright: (c) 2007-2009 jakobi@acm.org, GPL v3 or later
 # archive:   http://jakobi.github.com/script-archive-doc/
 
@@ -29,31 +30,39 @@ text with standard unix tools like sort, uniq, grep, perl -0ne.
 
 Options:
   -arg           use arguments as input records instead of files/stdin
+  -help
   -rk            remove first line from record if starting with a 
                  #-comment, optionally prefixed with a number  
+  -verbose       
 
 Setting output options and basic default paragraph handling:
 These also set the IRS defaults to provide a fast paragraph mode. 
 Both override any previous -nl option.
-  -0		 --zero    input \\n\\n to output \\0 (default)
+  -0             --zero    input \\n\\n to output \\0 (default)
   -00            --par     input \\0   to output \\n\\n
 
 Modify -0/00 output settings:
-  -nl            change output line end to \\n
-  -nonl[=STRING] strip any lineend-characters from *within* the 
+  -nl            change both input and output line end to \\n
+  -inl / -onl    similar, but just set input or output line end
+  -nonl[=STRING] replaces any lineend-characters from *within* the 
                  record before printing (default: '$streval_default';
                  string is quoted unless it begins with a quote or
-                 do{...}.
-  -nore[=STRING] same as above, but restricted to output record end
+                 do{...}. 
+  -nore[=STRING] same as above, but restricted to just the new output 
+                 lineend character / output record separator
+                 in the input
 
 Generic record input splitting (replaces -0/-00 input settings):
 Instead of the basic paragraph loop above, the input is read
 into memory and split into an array using the provided one or
 two regular expression delimeters. Do not use line flag for
 inputs allowing multiple records per \\n-line.
-  -start START   delimeter regex for record start
+  -start START   delimeter regex for record start 
   -end   END     delimeter regex for record end
-  -f / -flags    flags for delimeter processing
+  -f / -flags    flags for delimeter processing (use a + prefix
+                 to extend the flags with the provided string, or 
+                 a - prefix to remove a _single_ flag; current value is:
+                 "$o_flags")
                  record mangling:
                     s(trip) # remove trailing/leading ws
                  record selectors (default: *)
@@ -62,7 +71,7 @@ inputs allowing multiple records per \\n-line.
                  modifiers can be appened to the selectors:
                     strip
                  regex mangling:  
-                    i(gnorecase)
+                    i(gnorecase) # or just (?i) in the regex
                     k(ey)      # prepend a sort key comment from the first
                                # back-reference of START: '# \$1\\n' for 
                                # inside, partial and outside are '##\\n'
@@ -91,6 +100,10 @@ Examples:
        cat0par -0 -start '^\\['  |\\
        grep -v -z guest.ok.*yes |\\
        cat0par -00
+
+ - to end the old record on lines containing Pub.date, returning the record
+   as a single line (-nonl), with both input and output \\n-terminated (-nl):
+   rsstail -1 -v  -l -t -p -u URL | cat0par -nl -nonl -i -end 'pub.date.*'
 
  - to explicitely prepend/strip complex sort keys consider replacing
    -k/-rk by perl filters in the pipeline (secure only with STDIN):  
@@ -139,26 +152,37 @@ sub collect { # collect records and place them on @ARGV, handles flags strip/key
 
 
 $streval_default=' ';
-$lineends="[\n\r\0]";
-$lineend="\0";
-$/="\n\n";
+$lineends="[\n\r\0]"; 
+$lineend="\0"; 
+$/="\n\n";     
 $o_flags="outside inside partial startends";
 @argv=@ARGV;
 while(@ARGV){
    $_=shift;
-   # the default being more lenient
+   # the default being more lenient       lineends: output, input
    if(/^-?-(0|null|zero)$/o)              {$lineend="\0";  $/="\n\n";next} 
    if(/^-?-(00|par)$/o)                   {$lineend="\n\n";$/="\0";  next}
    if(/^-?-endws$/o)                      {$delim_e='\n\s*\n' ; next}
    if(/^-?-start$/o)                      {$delim_s=shift; next}
    if(/^-?-end$/o)                        {$delim_e=shift; next}
-   if(/^-?-f(lags)?$/o)                   {$o_flags=shift; next}
+   if(/^-?-f(lags)?$/o)                   {$tmp=shift; 
+                                             if    ($tmp=~s/^-//) {
+                                                 $o_flags=~s/\b$tmp\b//;
+                                             }elsif($tmp=~s/^\+//){
+                                                 $o_flags.=" $tmp";
+                                             }else {
+                                                 $o_flags = "$tmp";
+                                             }
+                                           next}
    if(/^-?-rk$/o)                         {$o_removekey=1; next}
-   if(/^-?-(nl)$/o)                       {$/="\n";  next}
-   if(/^-?-(?:nonl)(?:=(.*))?$/o)         {$o_noln=streval($1); next}
+   if(/^-?-(nl)$/o)                       {$lineend="\n"; $/="\n";  next}
+   if(/^-?-(onl)$/o)                      {$lineend="\n"; next}
+   if(/^-?-(inl)$/o)                      {$/="\n"; next}
+   if(/^-?-(?:nonl)(?:=(.*))?$/o)         {$o_nonl=streval($1); next}
    if(/^-?-(?:nore)(?:=(.*))?$/o)         {$o_nore=streval($1); next}
    # the next 2 options continue processing
    if(/^-?-args?$/o)                      {$o_inputfromarg=1;next}
+   if(/^-?-verbose?$/o)                   {$o_verbose=1;next}
    if(/^-?-h(elp)?$/o) {&help;exit 1}
    if(/^-i$/o)                            {$o_flags.=" ignorecase "; next}
    if(/^-l$/o)                            {$o_flags.=" line "; next}
@@ -179,7 +203,9 @@ $o_flags=~s/\*/ inside outside partial /;
 # read all input 
 if (not $o_inputfromarg and ($delim_s or $delim_e)) {
    foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
-   undef $/,$tmp; while(<>) { $tmp.=$_ };              # SECURE:OK
+   local($/);
+   undef $/,$tmp; 
+   while(<>) { $tmp.=$_ };              # SECURE:OK
    $_=$tmp;
 
    # from now on, input records will be found in ARGV instead of STDIN
@@ -194,7 +220,7 @@ if (not $o_inputfromarg and ($delim_s or $delim_e)) {
    ##$T=$_; $T=~s/\n/_/g;
 
    warn "\n#WARN patterns must be non-zero-width and span the full delimeter.\n".
-      "#     For -k / key, START must return \$1.\n\n" 
+          "#     For -k / key, START must return \$1.\n\n" 
       if $delim_e =~ /\(/ or $delim_s =~/\(/;
 
    # set record delimeters to look for: delim_e / delim_s
@@ -232,7 +258,7 @@ if (not $o_inputfromarg and ($delim_s or $delim_e)) {
       }
    }
 
-warn "$delim_s  -- $delim_e\n";
+warn "$delim_s  -- $delim_e\n" if $o_verbose;
 
    # real records - search for START
    ##$oldpos=-2; 
@@ -263,7 +289,7 @@ warn "$delim_s  -- $delim_e\n";
       } else {
          # partial record falling from the edge of the disc world, passing the turtle, 
          # and its predecessors it is standing on, all the way down to Pratchett himself
-         $e=length($_); o_no_lineends_within_record 
+         $e=length($_); # o_no_lineends_within_record 
          &collect("partial");
          last;
       }
@@ -298,12 +324,16 @@ $o_inputfromarg or do{foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}}; # MAG
 while(($o_inputfromarg and ($_=shift @ARGV, 1) or $_=<>), defined $_) {    # SECURE:OK
    # KEEP LOOP IN SYNC WITH CAT0
    s/($lineends)*\z//o;                  # glorified chomp
-   s/($lineends)/$o_nonl/go              if defined $o_noln;
-   s/($lineend)/$o_nore/go               if defined $o_nore;
+   s/\A($lineends)+//go                  if defined $o_nonl;
+   s/($lineends)+\z//go                  if defined $o_nonl;
+   s/($lineends)+/$o_nonl/go             if defined $o_nonl;
+   s/\A($lineend)+/$o_nore/go            if defined $o_nore;
+   s/($lineend)+\z/$o_nore/go            if defined $o_nore;
+   s/($lineend)/$o_nore/go               if defined $o_nore; # 1:1, thus no +
    s/\A([\t ]*\d+[\t ]+)?#.*(\n|\Z|\0)// if $o_removekey;
    next if /\A\s*#/o                     and $o_nocomments;
    next if /\A\s*\Z/o                    and ( $o_nowhitespace or $o_nocomments );
    $_=$1 if /\A\s*(.*?\S)\s*\Z/o         and $o_nowhitespace;
    s/\Z/$lineend/o;                      # restore proper line ending
-   print
+   print;
 }

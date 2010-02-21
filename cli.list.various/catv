@@ -1,0 +1,49 @@
+#!/usr/bin/perl
+
+# catv - combine lines from files into a single line, kind of un-cut.
+$version="0.1"; # pj20100206
+
+# BUGS:
+# - hmm. shouldn't there have been a similar basic toy in the basic cut-style text commands??
+# - unicode-safe as long as -s doesn't contain unicode chars (if it does, as the usual unicode
+#   sugar wrt the open layer)
+
+$sep=" ";
+while($_=shift,defined $_) {
+   /^-0$/       and do{$/="\0";next};
+   /^-s$/       and do{$sep=shift;next};
+   /^-[h\?]$|^-?-help$/ and do{&usage;exit 1};
+   /()/         and unshift @ARGV,$_ and last;
+}
+
+sub usage {
+   print <<EOF;
+catv [-0|-s STRING] file ... 
+
+catv takes a line from each input file and prints them joined by ' ' or STRING. 
+Use -0 to work with \\0-terminated files (do not mix).
+EOF
+}
+
+foreach(@ARGV) {
+   my $fh;
+   if ($_ eq '-' and not -f '-') { $_="/dev/stdin" };
+   open($fh,"<",$_) or die "cannot open file $_\n";
+   push @fh,$fh;
+   $files++;
+}
+
+while(not $done) {
+   $done=1;
+   $out=undef;
+   foreach(@fh) {
+      $line="";
+      if (not eof($_)) {
+         $line=<$_>;
+         $line=~s!$/\z!!;
+         $done=0;
+      }
+      $out = defined $out ? $out.$sep.$line : $line;
+   }
+   print $out.$/;
+}

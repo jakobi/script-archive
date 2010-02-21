@@ -17,6 +17,8 @@
 # xargs -P 1 -n 5 fan-out-script-running-5-instances-local/remote-in-parallel
 #                 but that will need to wait for the slowest forked instance
 
+# cat0 should be mostly idempotent for \0 input, modulo trailing \0 at EOF
+# and splitting input in case of records with embedded \n
 cat0 | exec xargs -0 ${1:+"$@"}
 
 # e.g. find | xargs0 -n 1 -iZ diff Z /mnt1/AVI-ARCHIVE/Z

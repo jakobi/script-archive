@@ -32,22 +32,40 @@ function gr_x {
 function gr_H { gr_HELP; }
 function gr_HELP {
    cat <<EOF 
- # gr_* family of filename filters (all retain original ordering):
+ # gr_* family of filename filters:
  gr_H, gr_HELP
- gr_U, gr_UNIQ    -- uniq
- gr_S, gr_STRIP   -- strip ' :: '-comments from input (e.g. '<filename> :: <ogg tags>+')
- gr_D, gr_BASEDIR -- truncate to basedir (implies uniq)
+ gr_SLURP  ...     -- read all input at once, then print
+ gr_TRIM <TAILOPT> -- trim file F to last 10 lines: gr_TRIM -10 F
 
- # filter accesses fs (implies stat/strip/uniq; allows for files containing ' :: '):
- gr_STRIP0        -- only existing in fs (strict superset of gr_STAT[FD])
- gr_STATF         -- only plain files 
- gr_STATD         -- only existing dir/symlink to existing dir
- gr_BASEDIR0      -- truncate plain files to basedir, but keep dirs as is
+ # filters retaining original ordering:
+ gr_U, gr_UNIQ     -- uniq (options -d only duplicates, -u only unique, -n default)
+                           (-D/-U/-N: similar, but ignore text between \\x01)
+ gr_D, gr_BASEDIR  -- truncate to basedir (implies uniq)
+ gr_S, gr_STRIP    -- strip ' :: '-comments from input (e.g. '<filename> :: <ogg tags>+')
+ gr_STRIPX1        -- strip \\x01 characters from input
+ 
+ # similar, but suppressing already cached lines:
+ gr_NEW F          -- uniq, but suppress lines from cache file F, appending new
+                      cache candidates to F.new
+                      -n   -- do not append to F.new
+                      -#   -- update F immediately, ignoring F.new
+                      -k K -- (keep matches even if in cache; uses Grep.pm)
+                      -p P -- filter program to insert \\x01 to skip strings in input
+ gr_NEWUPD F       -- update cache F to also contain F.new
+                      -p P -- filter, as above
+                      -r   -- reverse order of new entries
+ gr_NEWCLR F       -- clear F.new (use >F to clear the cache)
+
+ # filter accessing fs (implies stat/strip/uniq; allows for files containing ' :: '):
+ gr_STRIP0         -- only existing in fs (strict superset of gr_STAT[FD])
+ gr_STATF          -- only plain files 
+ gr_STATD          -- only existing dir/symlink to existing dir
+ gr_BASEDIR0       -- truncate plain files to basedir, but keep dirs as is
 
  # reporting only (implies uniq; output is no longer a list of filenames):
  # BUG: should honor COLUMNS to specify what to cut
- gr_SHORT         -- magical truncate to basedir/filename
- gr_SHORT0        -- magical paren removal + ~~-shorten for long filenames
+ gr_SHORT          -- magical truncate to basedir/filename
+ gr_SHORT0         -- magical paren removal + ~~-shorten for long filenames
 
 EOF
 }
@@ -65,9 +83,96 @@ function gr_S { gr_STRIP; }
 function gr_STRIP {
    perl -lne 's/ :: +(\S.*|)?$//; print' # no uniq for this
 }
-function gr_U { gr_UNIQ; }
+function gr_U { gr_UNIQ ${1:+"$@"} ; }
 function gr_UNIQ {
-   perl -lne 'print if not $c{$_}++'
+   case "X$1" in
+      # for use with e.g. perl -lpe 's/(?<=[^\x1]), +(Vol\.|Ch\.)/\x1$&/'
+      X-U)   perl -lne '$l=$_;s/\x1[^\x1]*(\x1|\z)//g;push @l,$l if not $c{$_}++;END{for(@l){$l=$_;s/\x1[^\x1]*(\x1|\z)//g;print $l if 1==$c{$_}}}' ;;
+      X-u)   perl -lne 'push @l,$_ if not $c{$_}++;END{for(@l){print if 1==$c{$_}}}' ;;
+      X-D)   perl -lne '$l=$_;s/\x1[^\x1]*(\x1|\z)//g;push @l,$l if not $c{$_}++;END{for(@l){$l=$_;s/\x1[^\x1]*(\x1|\z)//g;print $l if 1 <$c{$_}}}' ;;
+      X-d)   perl -lne '$push @l,$_ if not $c{$_}++;END{for(@l){print if 1 <$c{$_}}}' ;;
+      X-N)   perl -lne '$l=$_;s/\x1[^\x1]*(\x1|\z)//g;print $l if not $c{$_}++' ;;
+      X|X-n) perl -lne 'print if not $c{$_}++' ;;
+      *)     echo "! error - invalid option" 1>&2; return 1 ;;
+   esac
+}
+function gr_STRIPX1 {
+   perl -lpe 's/\x1//g'
+}
+function gr_SLURP {
+   perl -0ne 'use ARGV::readonly;$x.=$_; END{print $x}' ${1:+"$@"}
+}
+function gr_SLURP2 {
+   perl -0ne 'use ARGV::readonly;$x.=$_; END{print $x;print $x}' ${1:+"$@"}
+}
+function gr_TRIM {
+    typeset f cmd
+    cmd=tail
+    eval 'f=$'$#
+    case "$1" in
+       -h) shift; cmd=head ;;
+       -t) shift;          ;;
+       *)                  ;;
+    esac
+    test -f "$f" || { echo "! no file $f" 1>&2; return 1; }
+    $cmd ${1:+"$@"} > "$f.tmp" && mv "$f" "$f.old" && mv "$f.tmp" "$f" || { echo "! error - refusing to trim $f" 1>&2; return 1; } 
+    #perl -e '($l,$f)=@ARGV;
+    #         die "no number" if not $l=~/^\d+$/;
+    #         $f=~s!^-$!/dev/stdin!;
+    #         open(FH,"<",$f);@l=<FH>;close FH; 
+    #         rename $f, $f.".old" if not $f=~s!^/dev/stdin$!/dev/stdout!;
+    #         open(FH,">",$f);$f1=$#l; 
+    #         $f0 = ($f1>$l-1) ? $f1-$l+1 : 0; 
+    #         print FH @l[$f0..$f1]; close FH;' $1 "$2"
+}
+function gr_NEW {
+   typeset f filter keep output uniqopt unfilter
+   eval 'f=$'$#
+   filter="cat" # must be idempotent as cache content will pass it multiple times
+   keep=/dev/null
+   unfilter=cat
+   output="$f.new"
+   uniqopt1=-n
+   uniqopt2=-u
+   while [ $# -gt 0 ]; do
+      case "$1" in
+         -p) shift; filter="$1"; uniqopt1="-N"; uniqopt2="-U"; unfilter="gr_STRIPX1"; shift ;;
+         -k) shift; keep="$1"; shift ;;
+         -n) shift; output=/dev/null ;;
+         -#) shift; output="$f"      ;;
+         *)  break ;;
+      esac
+   done
+   [ $# != 1 ] && { echo "! gr_NEW option error" 1>&2; return 1; } 
+   cmd="( gr_SLURP2 \"$f\" | Grep.pm -v -f $keep | $filter; cat | $filter | gr_UNIQ $uniqopt1 ) | gr_UNIQ $uniqopt2 | tee -a >( $unfilter >> \"$output\" )";
+   ( echo "# `date` running $cmd" | tee -a "$output" ) 1>&2
+   eval "$cmd"
+}
+function gr_NEWUPD {
+   typeset h filter unfilter uniqopt tac
+   filter=cat
+   tac=cat
+   uniqopt=
+   unfilter=cat
+   while [ $# -gt 0 ]; do
+      case "$1" in
+         -p) shift; filter="$1"; uniqopt=-N; unfilter="gr_STRIPX1"; shift ;;
+         -r) shift; tac=tac ;;
+         *)  break ;;
+      esac
+   done
+   h=$1; shift
+   test "$h" = "" && { echo "! no cache" 1>&2; return 1; }
+   test -f "$h.new"   || { echo "! no cache file $h.new" 1>&2 ; return 1; }
+   cmd="(cat \"$h\"; echo \"# gr_NEWUPD: `date`\"; $tac \"$h.new\"|grep -v '^#') | $filter | gr_UNIQ $uniqopt | $unfilter > \"$h.tmp\" && { mv \"$h\" \"$h.old\" 2>/dev/null; > \"$h.new\"; mv \"$h.tmp\" \"$h\"; }"
+   echo "# gr_NEWUPD: $cmd" 1>&2
+   eval "$cmd"
+}
+function gr_NEWCLR {
+   typeset h
+   h=$1; shift
+   echo "# clearing new cache candidates (use > \"$h\" to clear cache contents)" 1>&2
+   test "$h" != "" -a -f "$h.new" && > "$h.new" || { echo "! cannot clear new cache candidates from $h.new" 1>&2; return 1; }
 }
 function gr_D { gr_BASEDIR; }
 function gr_BASEDIR { # note that this can easily strip the matched keyword from the filename
