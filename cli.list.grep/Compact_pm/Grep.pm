@@ -394,7 +394,8 @@ Options:
   -2       two pass mode for side-effects with -b and do{} perl scraps
   -v       invert search: EXPR -> not ( EXPR )
   # modifiers (also consider (?imsx-imsx) or [\\l\\u] [\\L\\U\\E])
-  -i       case insensitive 
+  -i       case insensitive (ASCII/LATIN1 by default; check examples for
+           utf8 notes, then consider setting PERL_UNICODE=63)
   -w       word matches only -- wrap in word boundaries
   -x       line matches only -- anchor with ^...\$
   -X       run patterns and words through expansyn to expand synonyms
@@ -511,7 +512,6 @@ Also consider
      end of '\\0'
 
 
-
 On matching over multiple buffered lines with -N N[:M] and -b/-B:
 
 \@buf  contains  the N previous records plus the current one, \$buf  the
@@ -552,6 +552,50 @@ Pass  1  only  prepares the record and buffering  upto  \$eval_input  /
 \$eval_input1,  then iterates before evaluating the boolean  expression
 generated from -e/-b-/B.
 
+
+On utf8 / unicode:
+
+Grep.pm  by default considers everything a byte stream in classic Unix
+manner.
+
+Set  the  PERL_UNICODE  variable  to  one of 63  (io+ARGV)  o  or  127
+(+locale)  before invoking Grep.pm; unset PERL_UNICODE or assign 0  to
+turn  it  all  off)  to turn on unicode support  for  a  pure  unicode
+environment.
+
+For  values  64  and  above, double check LC_*, esp.  an  existing  or
+missing  LC_COLLATE which could provide interesting confusions between
+Perl  and  Shell  for  simple things like  [A-Fg-z],  most  likely  in
+globbing and shell pattern expansion.
+
+Grepping  in  mixed latin1 / utf8 files is somewhat messy and  doesn't
+properly  handle  case; mixed grep output will contain  invalid  bytes
+(e.g.  latin1  umlauts). I currently consider extensive  file  charset
+guessing  to be fairly slow, incomplete! and to be beyond the scope of
+Grep.pm  (as  European,  I  hardly ever grep for  umlauts,  and  while
+unreadable umlauts are ugly, they aren't much of a problem in reading;
+worst  case: replace rare umlauts and similar with e.g. ".{1,6}?",  or
+"(?:[\\x80-\\x8f]|[\\xC0-\\xFF][\\x80-\\xBF]{1,5})",   or   just  grep   for
+"<latin1 string> or <utf8 byte sequence>").
+
+For  a  mixed-encoding grep output, this filter might be  useful:  The
+following  hack  checks if decode() returns \\x{FFFD} for the  "invalid
+character"  (e.g.  for umlauts in latin1) and switches to  latin1  for
+that  line,  unless  the  original encoding already  had  the  invalid
+character glyph's utf8 byte sequence. Note that this fails if the line
+(e.g.  coming  from  a latin1 source) also happens to be in  wff  utf8
+encoding  (a  better  heuristic  would use word lists  or  worse,  and
+consider previous and future line context).
+
+perl -lne 'use Encode; \$o=\$_; \$_=decode("utf8",\$_); 
+           \$_=decode("latin1",\$o) if /\\x{FFFD}/ and \$o!~/\\xef\\xbf\\xbd/; 
+           print encode("utf8",\$_)' 
+
+Do  not  use  do{} blocks substituting bytes in  the  \\x80-\\xff  range
+unless  a file is known to be in latin1/... . In a pinch, use  \\x{...}
+to  specify  an  unicode character by number, \\p{Letter}  for  classes
+(with  e.g. PERL_UNICODE=127). Or consider "use Encode" and use a do{}
+with side-effects to change the encoding during grepping.
 
 
 More examples of using do{}:

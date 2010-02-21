@@ -38,22 +38,29 @@ function gr_HELP {
  gr_TRIM <TAILOPT> -- trim file F to last 10 lines: gr_TRIM -10 F
 
  # filters retaining original ordering:
- gr_U, gr_UNIQ     -- uniq (options -d only duplicates, -u only unique, -n default)
-                           (-D/-U/-N: similar, but ignore text between \\x01)
+ gr_U, gr_UNIQ     -- uniq
+                      -d/-D    only duplicates (uppercase: ignore substrings between \\x01)
+                      -u/-U    only unique lines
+                      -n/-N/<default> -- report both kinds
+                      -i or \$gr_UNIQ_IGNCASE -- ignore case in dupe detection
  gr_D, gr_BASEDIR  -- truncate to basedir (implies uniq)
  gr_S, gr_STRIP    -- strip ' :: '-comments from input (e.g. '<filename> :: <ogg tags>+')
  gr_STRIPX1        -- strip \\x01 characters from input
  
- # similar, but suppressing already cached lines:
+ # similar, but suppressing already cached lines (-k is case insignificant):
  gr_NEW F          -- uniq, but suppress lines from cache file F, appending new
                       cache candidates to F.new
-                      -n   -- do not append to F.new
-                      -#   -- update F immediately, ignoring F.new
-                      -k K -- (keep matches even if in cache; uses Grep.pm)
-                      -p P -- filter program to insert \\x01 to skip strings in input
+                      -n       do not append to F.new
+                      -#       update F immediately, ignoring F.new
+                      -k K     (keep matches even if in cache; uses Grep.pm/egrep -i -f K)
+                      -p P     filter program to insert \\x01 to skip strings in input
+                      -i or \$gr_UNIQ_IGNCASE -- ignore case in dupe detection
  gr_NEWUPD F       -- update cache F to also contain F.new
-                      -p P -- filter, as above
-                      -r   -- reverse order of new entries
+                      -p P     filter, as above
+                      -r       sort order of new entries 
+                      -t       prepend or append (default) new entries 
+                               (top/prepend instead of append)
+                      -i or \$gr_UNIQ_IGNCASE -- ignore case in dupe detection
  gr_NEWCLR F       -- clear F.new (use >F to clear the cache)
 
  # filter accessing fs (implies stat/strip/uniq; allows for files containing ' :: '):
@@ -66,6 +73,14 @@ function gr_HELP {
  # BUG: should honor COLUMNS to specify what to cut
  gr_SHORT          -- magical truncate to basedir/filename
  gr_SHORT0         -- magical paren removal + ~~-shorten for long filenames
+ gr_MIXED2UTF      -- coping with mixed latin/utf8 pipe content:
+                      if line doesn't seem to be utf8, try latin1-to-utf8
+ 
+Notes: 
+ - only gr_UNIQ/gr_NEW* support ignoring case for dupe detection
+   (-i or export \$gr_UNIQ_IGNCASE=1). All others are case-significant.
+   The ignore case by default deals only with ASCII/LATIN1, thus you
+   need to set PERL_UNICODE to 24, 63 (+ARGV), or 127 (+locale).
 
 EOF
 }
@@ -85,16 +100,21 @@ function gr_STRIP {
 }
 function gr_U { gr_UNIQ ${1:+"$@"} ; }
 function gr_UNIQ {
-   case "X$1" in
-      # for use with e.g. perl -lpe 's/(?<=[^\x1]), +(Vol\.|Ch\.)/\x1$&/'
-      X-U)   perl -lne '$l=$_;s/\x1[^\x1]*(\x1|\z)//g;push @l,$l if not $c{$_}++;END{for(@l){$l=$_;s/\x1[^\x1]*(\x1|\z)//g;print $l if 1==$c{$_}}}' ;;
-      X-u)   perl -lne 'push @l,$_ if not $c{$_}++;END{for(@l){print if 1==$c{$_}}}' ;;
-      X-D)   perl -lne '$l=$_;s/\x1[^\x1]*(\x1|\z)//g;push @l,$l if not $c{$_}++;END{for(@l){$l=$_;s/\x1[^\x1]*(\x1|\z)//g;print $l if 1 <$c{$_}}}' ;;
-      X-d)   perl -lne '$push @l,$_ if not $c{$_}++;END{for(@l){print if 1 <$c{$_}}}' ;;
-      X-N)   perl -lne '$l=$_;s/\x1[^\x1]*(\x1|\z)//g;print $l if not $c{$_}++' ;;
-      X|X-n) perl -lne 'print if not $c{$_}++' ;;
-      *)     echo "! error - invalid option" 1>&2; return 1 ;;
-   esac
+   O="$*" perl -lne 'sub f{
+                        $l=$_;
+                        s/\x1[^\x1]*(\x1|\z)//g   if $ENV{O}=~/[UDN]/; # skip substrings within \x1
+                        $c=($ENV{gr_UNIQ_IGNCASE} or $ENV{O}=~/i/) ? lc($_) : $_};
+                     die "! error - invalid gr_UNIQ options\n" if $ENV{O}=~/[^\-iund ]/i;
+                     &f; push @l,$l if not $c{$c}++;
+                     END{
+                        for(@l){
+                           &f; 
+                           do{print $l;next} if $ENV{O}=~/u/i and 1==$c{$c};
+                           do{print $l;next} if $ENV{O}=~/d/i and 1<$c{$c};
+                           print $l if $ENV{O}!~/[du]/i
+                     }}'
+   # for e.g. -n/no options, the above scrap actually boils down to a less efficient
+   # version of perl -lne 'print if not $c{$_}++'
 }
 function gr_STRIPX1 {
    perl -lpe 's/\x1//g'
@@ -126,47 +146,70 @@ function gr_TRIM {
     #         print FH @l[$f0..$f1]; close FH;' $1 "$2"
 }
 function gr_NEW {
-   typeset f filter keep output uniqopt unfilter
+   typeset f filter keep output uniqopt unfilter grep igncase igncase_old
    eval 'f=$'$#
+   export gr_UNIQ_IGNCASE; igncase_old=$gr_UNIQ_IGNCASE
    filter="cat" # must be idempotent as cache content will pass it multiple times
    keep=/dev/null
    unfilter=cat
    output="$f.new"
    uniqopt1=-n
    uniqopt2=-u
+   grep=`type Grep.pm`; grep=${grep##Grep.pm is }; test -f "$grep" || grep=egrep
+
    while [ $# -gt 0 ]; do
       case "$1" in
-         -p) shift; filter="$1"; uniqopt1="-N"; uniqopt2="-U"; unfilter="gr_STRIPX1"; shift ;;
-         -k) shift; keep="$1"; shift ;;
-         -n) shift; output=/dev/null ;;
-         -#) shift; output="$f"      ;;
+         -p) filter=$2; uniqopt1="-N"; uniqopt2="-U"; unfilter="gr_STRIPX1"; shift ;;
+         -k) keep=$2; shift    ;;
+         -n) output=/dev/null  ;;
+         -#) output=$f         ;;
+         -i) gr_UNIQ_IGNCASE=1 ;;
          *)  break ;;
       esac
+      shift
    done
+
    [ $# != 1 ] && { echo "! gr_NEW option error" 1>&2; return 1; } 
-   cmd="( gr_SLURP2 \"$f\" | Grep.pm -v -f $keep | $filter; cat | $filter | gr_UNIQ $uniqopt1 ) | gr_UNIQ $uniqopt2 | tee -a >( $unfilter >> \"$output\" )";
+   cmd="( gr_SLURP2 \"$f\" | $grep -v -i -f $keep | $filter; cat | $filter | gr_UNIQ $uniqopt1 ) | gr_UNIQ $uniqopt2 | tee -a >( $unfilter >> \"$output\" )";
    ( echo "# `date` running $cmd" | tee -a "$output" ) 1>&2
    eval "$cmd"
+
+   gr_UNIQ_IGNCASE=$igncase_old
 }
 function gr_NEWUPD {
-   typeset h filter unfilter uniqopt tac
+   typeset h filter unfilter uniqopt tac top igncase igncase_old
+   export gr_UNIQ_IGNCASE; igncase_old=$gr_UNIQ_IGNCASE
    filter=cat
    tac=cat
+   top=0
    uniqopt=
    unfilter=cat
+
    while [ $# -gt 0 ]; do
       case "$1" in
-         -p) shift; filter="$1"; uniqopt=-N; unfilter="gr_STRIPX1"; shift ;;
-         -r) shift; tac=tac ;;
+         -p) filter="$2"; uniqopt=-N; unfilter="gr_STRIPX1"; shift ;;
+         -r) tac=tac ;;
+         -t) top=1 ;;
+         -i) gr_UNIQ_IGNCASE=1 ;;
          *)  break ;;
       esac
+      shift
    done
+
    h=$1; shift
    test "$h" = "" && { echo "! no cache" 1>&2; return 1; }
    test -f "$h.new"   || { echo "! no cache file $h.new" 1>&2 ; return 1; }
-   cmd="(cat \"$h\"; echo \"# gr_NEWUPD: `date`\"; $tac \"$h.new\"|grep -v '^#') | $filter | gr_UNIQ $uniqopt | $unfilter > \"$h.tmp\" && { mv \"$h\" \"$h.old\" 2>/dev/null; > \"$h.new\"; mv \"$h.tmp\" \"$h\"; }"
+
+   cmd="("
+   [ "$top" = "0" ] && cmd="$cmd cat \"$h\" ;"
+   cmd="$cmd echo \"# gr_NEWUPD: `date`\"; $tac \"$h.new\"|grep -v '^#'"
+   [ "$top" = "1" ] && cmd="$cmd ; cat \"$h\""
+   cmd="$cmd )"
+   cmd="$cmd | $filter | gr_UNIQ $uniqopt | $unfilter > \"$h.tmp\" && { mv \"$h\" \"$h.old\" 2>/dev/null; > \"$h.new\"; mv \"$h.tmp\" \"$h\"; }"
    echo "# gr_NEWUPD: $cmd" 1>&2
    eval "$cmd"
+   
+   gr_UNIQ_IGNCASE=$igncase_old
 }
 function gr_NEWCLR {
    typeset h
@@ -206,6 +249,10 @@ function gr_SHORT0 {
           s@( (?:/|\A) [^/]{$m}  [^/]{0,5}? )   (?<=[^\x1b]{5})   [^/]{2,}   (?<=[^\x1b]{5})   ( [^/]{0,5}?  [^/]{$m} )  (?=/|$)@$1~~$2@gx;
           s@~~@$se~~@go;
       }; print if not $c{$_}++'
+}
+function gr_MIXED2UTF {
+   # assume utf default. if invalid_char, then consider decode from latin1.
+   perl -lne 'use Encode; $o=$_; $_=decode("utf8",$_); $_=decode("latin1",$o) if /\x{FFFD}/ and not $o=~/\xef\xbf\xbd/; print encode("utf8",$_)' 
 }
 
 

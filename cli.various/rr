@@ -10,10 +10,25 @@ my $version="0.1.2";
 
 # TODO:
 # - trimming ~/.rr
-#   - [low pri] ~/.rr cleanup and/or trimming
-#   - [medium?] just add a size warning when it grows
-#   - [vlp]     consider timestamps and time-based removal of aliases
+#   - [vlp]     ~/.rr cleanup and/or trimming
+#   - [medium?] just add a size warning for e.g. more than 500 defined aliases
+#   - [vlp]     consider timestamps/usagecounter and time-or-usage-based 
+#               removal of aliases; maybe with a timestamped log of 
+#               alias/alias-expansion to use for the trimming
+#               (requiring e.g. a shell variable RR_ALIAS_LOG
+#                to specify the file and activate logging)
 #               (with a 0 or negative timestamp to protect aliases)
+#               (but detailed logging is a privacy issue in the first place; so
+#               weekly auto trim the log on next invocation with e.g. weighted reording
+#               the alias cache depending on the deleted log section?
+#               thus something like head -500 of the ordered aliasses would suffice;
+#               with maybe a split into 2 aliases sets (possibly in the same file):
+#               important aliases (that must be kept;manually maintained) and automatic
+#               section that may expire after some time)
+#   - [low pri] RR_ALIAS_CACHE to allow multiple alias sets other than ~/.rr
+#               (or a format change)
+#   - [vlp]     proper arg loop, offering options as alternatives/overrides 
+#               to above shell variable ideas...
 #   - [?]       staggered backups for the removed aliases?
 
 use vars;

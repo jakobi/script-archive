@@ -71,9 +71,12 @@ stages of the outer runpipe statement.</p>
    <li><b>gr_*</b>: simple line-based filters in grep.func, e.g. uniq (gr_UNIQ; w/o sort) 
         and a duplicate line suppression filter with memory of previous invocations (gr_NEW).
         Shell, with perl one-liners; the filters lack both efficiency and support 
-        for \0-lines.
+        for \0-lines. 
         You'll probably want to replace Grep.pm with a grep of your choice in the gr_NEW* 
         functions.
+   <li><b>gr_MIXED2UTF</b>: line-based hack to convert a file with a mix of lines in
+        latin1 and utf8 file to utf8 (heuristic based on the "invalid char" \x{FFFD}).
+        Helpful when grepping e.g. over a mix of latin1/utf8 files.
 </ul>
 
 
