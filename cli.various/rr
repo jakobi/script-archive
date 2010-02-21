@@ -1,0 +1,185 @@
+#!/usr/bin/perl
+
+my $version="0.1.2";
+# perl version after the rr C-program from v9@fakehalo.us
+# created     PJ 20090815 jakobi@acm.org
+# last change PJ 20100210 
+# copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
+# archive:    http://jakobi.github.com/script-archive-doc/
+
+
+# TODO:
+# - trimming ~/.rr
+#   - [low pri] ~/.rr cleanup and/or trimming
+#   - [medium?] just add a size warning when it grows
+#   - [vlp]     consider timestamps and time-based removal of aliases
+#               (with a 0 or negative timestamp to protect aliases)
+#   - [?]       staggered backups for the removed aliases?
+
+use vars;
+use strict;
+
+my($Me)=$0; $Me=~s!.*/!!;
+my(%rr,@rr,$o_noflock);
+
+sub usage {
+   print main::STDERR <<EOF;
+$Me - retain and recall (filename) aliases
+
+specify,  lookup  user-specific filename aliases in ~/.rr. The  script
+can  also  run  arbitrary commands while  performing  alias  expansion
+(//key) and postfix-globbing (//key//glob-pattern).
+
+$Me --help                -- usage 
+$Me --list                -- dump contents of ~/.rr
+
+# define aliases
+$Me --noflock             -- do not lock ~/.rr when appending
+$Me /etc/ld.so            -- remember partial path
+$Me /etc/init.d           -- remember as init.d/
+$Me = startup /etc/init.d -- or as startup 
+$Me --alias start=up /etc/init.d -- or as start.up (note: '=' -> '.')
+
+# lookup keys and return aliases
+$Me init.d                -- returns /etc/init.d/
+cd "\$($Me init.d)"        -- cd /etc/init.d
+echo init.d | $Me         -- returns /etc/init.d/ 
+
+# command execution with alias expansion/postfix-globbing 
+# (safe exec list call w/o shell; list must contain 2 or more elements) 
+$Me ls -ld //init.d       -- ls -l /etc/init.d/
+$Me ls -l //ld.so//.conf  -- ls -l /etc/ld.so.conf
+$Me vi //init.d//S*       -- vi /etc/init.d/S* (expansion by perl glob)
+
+
+Notes:
+ - the Perl variant isn't 100% compatible to the original C-version
+   by v9\@fakehalo.us, both wrt usage and esp. wrt storage format.
+ - storage format of ~/.rr: blank lines, #comments and aliases
+   (key=replacement_filename)
+ - the script dies intentionally on lookup errors or when trying to alias
+   pathological filenames (embedded \\n).
+ - some characters in the key are automatically replaced by '.'. This 
+   concerns e.g. '=' characters and tabs.
+ - command execution and //key//glob-pattern: globbing is done within Perl,
+   but for disambiguation of globbing, // must the key (note that both the
+   the key as well as the replacement filename may add another '/')
+ - directory handling and trailing / in the key: directories are automatically
+   stored with '/' appended. if the user provided key cannot be found, the
+   script automatically tries to lookup key+'/'.
+ - not yet implemented: truncation/cleanup of ~/.rr 
+   (duplicates/redefinitions/size/possibly also age of definition?)
+
+EOF
+}
+
+sub lookup {
+   my($key)=@_;
+   my $file=$rr{$key};
+   if ((not defined $file or $file!~/\S/) and  
+       ($file!~/\S/ and defined $rr{$key."/"} and $rr{$key."/"}=~/\S/)) {
+      $key.="/"; $file=$rr{$key};
+   }
+   die "# $Me: no file for $key" if not defined $file or not $file=~/\S/;
+   return($key,$file)
+}
+
+sub absfile {
+   my($file)=@_;
+   $file=~s! ^\./ !$ENV{PWD}!gx;
+   $file=~s! //+|/./ !/!gx;
+   $file=~s! /\.$ !/!gx;
+   $file=~s! /$ !!gx;
+   $file.="/" if -d $file;
+   die "# $Me: exiting - illegal filename.\n" if $file=~/\n/;
+   return $file
+}
+
+sub appendalias {
+   my($key,$file)=@_;
+   open(FH,">>","$ENV{HOME}/.rr") and do {
+      if (not $o_noflock) {
+         flock FH, 2; seek FH, 0, 2; # paranoia: blocking lock + seek to EOF 
+      }
+      print FH "$key=$file\n";
+   } and close FH or die;
+}
+
+sub key {
+   my $key=$_[0]; 
+   $key=~s! .*/(?=[^/]) !!x;
+   my $okey=$key;
+   $key=~s![=\t\n\r\v]!.!g;
+   warn "# $Me: key changed to $key\n" if $okey ne $key;
+   return $key;
+}   
+ 
+
+
+if (open(FH,"<","$ENV{HOME}/.rr")) {
+   while(<FH>) {
+      chomp;
+      if (/\S/ and not /^\s*#/) {
+         # old file format: /\/([^\/]+\/?)$/ and do{$rr{$1}=$_; push @rr,$_};
+         # new short=long format:
+         /([^=]*?)=(.*)$/ and do{$rr{$1}=$2; push @rr,$_};
+      }
+   }
+   close(FH);
+}
+
+if      ($ARGV[0]=~/^-?-nof?lock/) {
+   shift;
+   $o_noflock=1;
+}
+if      ($ARGV[0]=~/^-?-list$/ ) {
+   print join("\n",@rr,"");
+   exit 0;
+} elsif ($ARGV[0]=~/^-?-help$/) {
+   print &usage;
+   exit 1;
+} elsif (2==$#ARGV and $ARGV[0]=~/ ^-?-alias$ | ^=$ /x ) {
+   # for now just always append the new path to the file
+   my $file=absfile($ARGV[2]);
+   my $key=key($ARGV[1]); 
+   appendalias($key,$file);
+   exit;
+} elsif (0==$#ARGV and $ARGV[0]=~m!/[^/]!) {
+   # for now just always append the new path to the file
+   my $file=absfile($ARGV[0]);
+   my $key=key($file);
+   appendalias($key,$file);
+   exit;
+} elsif (0==$#ARGV) {
+   my($key,$file)=lookup($ARGV[0]);
+   print "$file\n";
+   exit 0;
+} elsif(-1==$#ARGV) {
+   my $key=<main::STDIN>; chomp $key;
+   my($key,$file)=lookup($key);
+   print "$file\n";
+   exit 0;
+} else {
+   my @args;
+   foreach(@ARGV) {
+      # only one substitution per arg string
+      if(m! ^//([^/]+?/?)(?://(.*)$)?$ !x ){
+         my($str,$glob)=($1,$2);
+         my($key,$file)=lookup($str);
+         if (not defined $glob or $glob eq "") {
+            $_=$file;
+            push @args,$_;
+            warn "# $Me: «", join("» «", @args), "»", "\n";
+         } else {
+            $_=$file.$glob;
+            my @glob=glob("$_");
+            push @args, @glob ? @glob : $_;
+            warn "# $Me: «", join("» «", @args), "»", "\n";
+         }
+      } else {
+         push @args,$_;
+      }
+   }
+   if (@args) { exec @args } else { exit 1 };
+   exit 20;
+}

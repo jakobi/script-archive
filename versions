@@ -32,6 +32,7 @@
 ./cli.processes/zap:0.5.3
 ./cli.various/append.p:0.2
 ./cli.various/mt_dir:0.1
+./cli.various/rr:0.1.2
 ./cli.various/sleepuntil:0.1
 ./cli.various/watchfloat:0.1
 ./vim/pipe.vim:0.1.2
