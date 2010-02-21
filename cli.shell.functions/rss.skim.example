@@ -1,0 +1,156 @@
+#!/bin/bash
+
+##
+## shell-script and rss reader functions + example
+##
+
+# usage:
+# - invoke to demonstrate example for manga rss feeds 
+#   (option -n to skip some steps for testing)
+# - source and use rss_skim function 
+
+. ~/bin/shell/grep.func
+
+
+# example rss "reader" as an usage example for gr_NEW
+# (gr_NEW is basically a variant of "uniq": a line-based filter
+#  with memory file to suppress duplicates and previously seen lines.
+#
+# the rss "reader" has a memory cache in $base, with additional manual
+# kill and select file containing regexes. interactive choice of descriptions
+# and links within an editor, link-extraction, and finally forwarding the links
+# to a remote firefox instance.
+#
+# dupe detection can be performed on a subset of the lines passing thru
+# gr_NEW by using the -p option to insert of \x01 marks, which
+# advise gr_NEW to ignore anything inbetween. A subsequent gr_STRIPX1
+# can remove the \x01 afterwards.
+
+# dependencies and possible replacements:
+# - rsstail/cat0par (could be substituted by wget (or lynx)
+#   and cat0par, or done entirely in perl; cat0par just
+#   massages rsstail or xml <item>...</item> into grep-able
+#   single line items with a fixed format cum link).
+# - Grep.pm (can be replaced by GNU egrep, with some
+#   restrictions on the regexes)
+# - grep.func functions gr_NEW,gr_UNIQ (just copy the shell
+#   functions and perl one-liners into .bashrc or similar)
+# - pipe.vim (basically any editor suitable for use _within_
+#   a pipe)
+# - firefoxstdin/firefox wrappers (a perl -lpe loop invoking
+#   firefox-3.5 to remotely load urls into tabs would suffice)
+
+
+# debugging helpers
+function SKP  { cat; }
+function DERR { tee /dev/stderr; }
+
+function rss_skim {
+   typeset auto base opt1 mangle
+   opt1="-#"
+   auto=""
+   mangle=""
+
+   base=$1; shift
+   [ "$base" = "" ] && { echo "! no filename given as arg 1" 1>&2; return 20; }
+   while [ $# -gt 0 ]; do
+      case "$1" in
+         -n) auto=SKP; opt1="-n" ;;
+         -p) mangle="-p $2"; shift    ;;
+         *)  break               ;;
+      esac
+      shift
+   done
+
+   echo "# using cache $base*"
+   echo "# RSS on `date`" >> $base.select.new
+   echo "# RSS on `date`" >> $base
+
+   # the core is this straight-forward pipe: get|grep|gr_NEW|pipe.vim|firefox
+   #
+   # get the feeds (rsstail could be replace by 
+   # wget/cat0par -nl -nonl -start '<item>' -end '</item>'),
+   # skip the last 500 recently seen entries (in .feed, 1st gr_NEW), 
+   # apply killfile, remove dupes with the main cache ($base,
+   # 2nd gr_NEW, skipping .select cache entries, but log
+   # surviving items in .new, possibly mangling (gr_NEW -p) the lines
+   # to just a string of interest by skipping anything between
+   # \x01 during dupe detection wrt the main cache), 
+   # sort, highlight matches from .select, strip \x01,
+   # show the list to the user in an editor, strip 
+   # the highlighting and just forward the link.
+   # run the links thru firefoxstdin.
+   #
+   # applying .new to the main cache is manual (given that
+   # we log dates now, it could be made automatic w/o much
+   # changes) 
+   #
+   # - set PERL_UNICODE=63 for unicode (the gr_* are mostly
+   #   perl oneliners for ease of use)
+   # - set gr_UNIQ_IGNCASE to ignore case in dupe detection
+   # - dupe detecting gr_NEW would profit from a pure-perl
+   #   rewrite. It also lacks support for \0-lines.
+   #   (maybe use catv as a base?)
+
+   for i in "$@"  ; do rsstail -1 -v -p -l -u "$i"; done |\
+   cat0par -nl -nonl -start 'Title:.*' -end 'Pub.date:.*' |\
+   grep "^Title" |\
+   Grep.pm -iv -f $base.kill - |\
+   gr_NEW $opt1 $base.feed |\
+   gr_NEW $mangle -k $base.select $base |\
+   sort -f |\
+   Grep.pm -AiU -f $base.select - |\
+   gr_STRIPX1 |\
+   $auto pipe.exec pipe.vim |\
+   perl -lpe 's/.*Link: (\S+).*/$1/; s/>>>_|_<<<//g; s!(onemanga.com/[^/]+)/[\d\.]+!$1!' |\
+   tee -a $base.select.new |\
+   $auto firefoxstdin -3
+      
+   # the feed cache just serves to make the currently fetched feed uniq
+   # so we can 
+   [ "$opt1" = "-#" ] && gr_TRIM -h -500 $base.feed # those feeds via rsstail are latest-first
+
+   echo ""
+   echo "# filtering procedure: first the rss feed is filtered against the"
+   echo "# .kill file and the .feed cache containing the 500 most recent rss items."
+   echo "# the title prefix is then matched against the core cache. if however the"
+   echo "# item is matched by .select, the core cache deduplication is skipped."
+   echo "# core cache maintenance is mostly automatic, .kill/.select is manual."
+   echo "#"
+#   echo "# to update the core cache, run (avoid editing within lines)"
+   echo "#      ( b=$base; gr_NEWUPD -t \"\$b\" )"
+#   echo "#   or (to automatically trim lines for the same story with older timestamps)" 
+#   echo "#      function M { perl -lpe 's/(?<=[^\x01])(, +(Vol\.|Ch\.)| +Chapter )/\x01$&/'; }"
+#   echo "#      b=$base; gr_NEWUPD -t -p M \"\$b\""
+#   echo "#      (also considered dupes: multiple feeds with the exact same title (incl. case))"
+#   echo "# to update the Grep.pm selection patterns for already seen manga"
+#   echo "#      b=$base; cat \"\$b\".select.new >> \"\$b\".select"
+   echo "#      b=$base; vi \"\$b\".select"
+#   echo "#      (.select is raw and may require regexification!)"
+   ls -s $base $base.*
+}
+
+
+
+##
+## example setup for some manga feeds
+##
+
+# substring of interest for cache-based dupe detection (instead of whole line)
+function mangamangle { 
+   perl -lpe 's/(?<=[^\x01])(, +(Vol\.|Ch\.)| +Chapter )/\x01$&/'
+   # caveat:
+   # - the cache currently suppresses ANY
+   #   new chapter for a series already in the cache.
+   #   only new entries and .select survive.
+}
+
+# skip if this file is sourced to use e.g. a different base
+if [ "`caller`" = "0 NULL" ]; then
+   rss_skim ~/.manga -p mangamangle ${1:+"$@"} http://feeds.feedburner.com/mangafox/latest_manga_chapters?format=xml http://www.onemanga.com/updates-feed.xml
+
+   # immediately update the cache
+   function M { perl -lpe 's/(?<=[^\x01])(, +(Vol\.|Ch\.)| +Chapter )/\x01$&/'; }
+   gr_NEWUPD -t -p M ~/.manga 2>&1 | fgrep -v '# gr_NEWUPD: ( echo "# gr_NEWUPD:'
+fi
+

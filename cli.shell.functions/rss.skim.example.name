@@ -1,0 +1,1 @@
+example for using gr_NEW/gr_UNIQ functions to implement a basic rss "reader" as a fairly simple UNIX pipe.
