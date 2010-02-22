@@ -123,12 +123,12 @@ function rss_skim {
    gr_STRIPX1 |\
    $auto pipe.exec pipe.vim |\
    perl -lpe 's/.*Link: (\S+).*/$1/; s/>>>_|_<<<//g; s!(onemanga.com/[^/]+)/[\d\.]+!$1!' |\
-   tee -a $base.select.new |\
+   tee -a $base.chosen |\
    $auto firefoxstdin -3
       
    # the feed cache just serves to make the currently fetched feed uniq
    # so we can 
-   [ "$opt1" = "-#" ] && gr_TRIM -h -500 $base.feed # those feeds via rsstail are latest-first
+   [ "$opt1" = "-#" ] && gr_TRIM -t -500 $base.feed # those feeds via rsstail are latest-first
 
    echo ""
    echo "# filtering procedure: first the rss feed is filtered against the"
