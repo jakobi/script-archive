@@ -72,17 +72,19 @@ stages of the outer runpipe statement.</p>
         and a duplicate line suppression filter (incl. lines seen during previous invocations; gr_NEW).
         Shell, with perl one-liners; the filters lack both efficiency and support 
         for \0-lines. 
-   <li><b>rss.skim.example</b> - a fairly basic example pipeline using shell functions/Perl one-liners 
+   <li><b>rss.skim.example</b> - a fairly raw and basic example pipeline using shell functions/Perl one-liners 
         gr_UNIQ and gr_NEW (see the grep.func file) to throw together an rss "reader" 
-        for interactive item selection and forwarding of links to firefox. The main difference 
-        to normal rss readers is the implementation of a proper regex-based kill file / select file,
-        combined with caching/suppression of previously seen items or "threads" of items. 
-        Which is an important feature for large feeds, but sorely lacking/crippled in 
-        proper rss-readers like newsfox or even newsbeuter (oh, please do give me filtering 
-        options to <i>set flags flags automatically</i>, not just measly flag and element 
-        filtering to select items for the item list :( ).<br>
-        The file can be sourced to use the function rss_skim
-        for feeds of your choice. It depends on other stuff from the script-archive, but
+        for interactive item selection and forwarding of links to firefox.<br>
+        The main difference to ordinary rss readers is the implementation of a proper 
+        regex-based kill file / select file, combined with caching/suppression of previously
+        seen items/"threads", reminiscent of the kill/select/threading(/thread-supression)
+        features found in the  nn news-reader. Which are very helpful for large feeds, but 
+        sorely lacking in proper rss-readers like newsfox or even newsbeuter (oh, please do 
+        give me at least filtering options to <i>automatically set flags</i>, instead of
+        just merely offering to filter item display based on manually set flags :( ...).
+        <br>
+        The file can be sourced to use the function rss_skim for feeds of your choice. 
+        It depends on other stuff from the script-archive, but
         those can be replaced with just egrep and a few simple perl/ruby/python one-liners
         for basic text mangling.<br>
         <i>All in all, a nice example of the power of UNIX concepts like pipes and orthogonality:

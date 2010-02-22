@@ -45,6 +45,13 @@
 function SKP  { cat; }
 function DERR { tee /dev/stderr; }
 
+function rss_skip_date_link {
+   # skip Link and Pub.date (helps if the feed likes to stupidly change Pub.date
+   # for already published items)
+   # works if Title: is the before either in the rss item (as formatted by rsstail/cat0par)
+   perl -lpe 's/(?<=[^\x01])(Pub.date:|Link:)/\x01$&/'
+}
+
 function rss_skim {
    typeset auto base opt1 mangle
    opt1="-#"
@@ -85,6 +92,10 @@ function rss_skim {
    # we log dates now, it could be made automatic w/o much
    # changes) 
    #
+   # - the grep-based select/kill sees any \x01 as ordinary character,
+   #   while GR_NEW will skip substrings when called with -p and a
+   #   text mangling function/command (gr_NEW just wraps the cache
+   #   management around the dupe-detecting gr_UNIQ -U)
    # - set PERL_UNICODE=63 for unicode (the gr_* are mostly
    #   perl oneliners for ease of use)
    # - set gr_UNIQ_IGNCASE to ignore case in dupe detection
@@ -96,8 +107,9 @@ function rss_skim {
    cat0par -nl -nonl -start 'Title:.*' -end 'Pub.date:.*' |\
    grep "^Title" |\
    Grep.pm -iv -f $base.kill - |\
-   gr_NEW $opt1 $base.feed |\
-   gr_NEW $mangle -k $base.select $base |\
+   gr_NEW -p rss_skip_date_link $opt1                 $base.feed |\
+   gr_STRIPX1 |\
+   gr_NEW $mangle                     -k $base.select $base |\
    sort -f |\
    Grep.pm -AiU -f $base.select - |\
    gr_STRIPX1 |\
@@ -125,7 +137,7 @@ function rss_skim {
 #   echo "#      (also considered dupes: multiple feeds with the exact same title (incl. case))"
 #   echo "# to update the Grep.pm selection patterns for already seen manga"
 #   echo "#      b=$base; cat \"\$b\".select.new >> \"\$b\".select"
-   echo "#      b=$base; vi \"\$b\".select"
+   echo "#      b=$base; vi \"\$b\".select # or .kill; edit regexes for select/kill"
 #   echo "#      (.select is raw and may require regexification!)"
    ls -s $base $base.*
 }
