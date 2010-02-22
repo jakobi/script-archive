@@ -92,6 +92,7 @@ function rss_skim {
    # we log dates now, it could be made automatic w/o much
    # changes) 
    #
+   # Notes:
    # - the grep-based select/kill sees any \x01 as ordinary character,
    #   while GR_NEW will skip substrings when called with -p and a
    #   text mangling function/command (gr_NEW just wraps the cache
@@ -102,6 +103,13 @@ function rss_skim {
    # - dupe detecting gr_NEW would profit from a pure-perl
    #   rewrite. It also lacks support for \0-lines.
    #   (maybe use catv as a base?)
+   # - if using multiple disparate feeds, you may wish to sort only within feeds: 
+   #   - one option would be to extend the for loop to cover anything
+   #     from rsstail to just before pipe.vim's invoking of the editor.
+   #   - to insert a section title before each feed's items, 
+   #     consider inserting a command like '( echo; echo "Section: $i"; cat -)'
+   #     after the second gr_NEW.
+   
 
    for i in "$@"  ; do rsstail -1 -v -p -l -u "$i"; done |\
    cat0par -nl -nonl -start 'Title:.*' -end 'Pub.date:.*' |\
