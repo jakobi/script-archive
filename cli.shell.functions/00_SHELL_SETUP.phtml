@@ -87,8 +87,9 @@ stages of the outer runpipe statement.</p>
         It depends on other stuff from the script-archive, but
         those can be replaced with just egrep and a few simple perl/ruby/python one-liners
         for basic text mangling.<br>
-        <i>All in all, a nice example of the power of UNIX concepts like pipes and orthogonality:
-        combine a few basic primitives into a time-saver of vastly different functionality.</i>
+        <i>All in all, this is a nice example of the power of the concepts behind UNIX
+        such as pipes and orthogonality: throw a few rather basic commands plus a pipe to 
+        get a customized time-saver of vastly different functionality.</i>
    <li><b>gr_MIXED2UTF</b>: line-based hack to convert a file with a mix of lines in
         latin1 and utf8 file to utf8 (heuristic based on the "invalid char" \x{FFFD}).
         Helpful when grepping e.g. over a mix of latin1/utf8 files.
