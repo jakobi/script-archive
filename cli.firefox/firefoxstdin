@@ -136,7 +136,7 @@ EOF
 undef $/;
 if (@ARGV or not $urls) { 
    if (not @ARGV and not $urls) {
-      print main::STDERR "# GREP EXPR / GREP -k ::EXPR:: EXPR; shell-quotes\n\n";
+      print main::STDERR "# firefoxstdin bookmark support: GREP [-k EXPR] EXPR (shell quoting!)\n\n" if -t "/dev/stdin";
       $urls.=&argv2url("/dev/stdin");
       print main::STDERR "\n# processing list\n"
    } else {

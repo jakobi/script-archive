@@ -147,7 +147,7 @@ function gr_TRIM {
     #         print FH @l[$f0..$f1]; close FH;' $1 "$2"
 }
 function gr_NEW {
-   typeset f filter keep output uniqopt unfilter grep igncase igncase_old
+   typeset f filter keep output uniqopt unfilter grep igncase igncase_old args
    eval 'f=$'$#
    export gr_UNIQ_IGNCASE; igncase_old=$gr_UNIQ_IGNCASE
    filter="cat" # must be idempotent as cache content will pass it multiple times
@@ -157,6 +157,7 @@ function gr_NEW {
    uniqopt1=-n
    uniqopt2=-u
    grep=`type Grep.pm`; grep=${grep##Grep.pm is }; test -f "$grep" || grep=egrep
+   args="$*"
 
    while [ $# -gt 0 ]; do
       case "$1" in
@@ -172,7 +173,12 @@ function gr_NEW {
 
    [ $# != 1 ] && { echo "! gr_NEW option error" 1>&2; return 1; } 
    cmd="( gr_SLURP2 \"$f\" | $grep -v -i -f $keep | $filter; cat | $filter | gr_UNIQ $uniqopt1 ) | gr_UNIQ $uniqopt2 | tee -a >( $unfilter >> \"$output\" )";
-   ( echo "# `date` running $cmd" | tee -a "$output" ) 1>&2
+
+   echo  "# gr_NEW: `date` with args: args" >> "$output"
+   #echo "# gr_NEW: `date` running gr_NEW args" 1>&2
+   #echo "# gr_NEW: `date` running $cmd"        >> "$output"
+   #echo "# gr_NEW: `date` running $cmd"        1>&2
+
    eval "$cmd"
 
    gr_UNIQ_IGNCASE=$igncase_old
@@ -208,7 +214,9 @@ function gr_NEWUPD {
    [ "$top" = "1" ] && cmd="$cmd ; cat \"$h\""
    cmd="$cmd )"
    cmd="$cmd | $filter | gr_UNIQ $uniqopt | $unfilter > \"$h.tmp\" && { mv \"$h\" \"$h.old\" 2>/dev/null; > \"$h.new\"; mv \"$h.tmp\" \"$h\"; }"
-   echo "# gr_NEWUPD: $cmd" 1>&2
+   
+   #echo "# gr_NEWUPD: $cmd" 1>&2
+   
    eval "$cmd"
    
    gr_UNIQ_IGNCASE=$igncase_old

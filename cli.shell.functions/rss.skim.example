@@ -71,10 +71,13 @@ function rss_skip_date_link {
 }
 
 function rss_skim {
-   typeset auto base opt1 mangle
+   typeset auto base opt1 mangle per_feed
    opt1="-#"
    auto=""
    mangle=""
+
+   # set to SKP for a combine core cache and strip the feedurl prefix in the cache
+   per_feed="" 
 
    base=$1; shift
    [ "$base" = "" ] && { echo "! no filename given as arg 1" 1>&2; return 20; }
@@ -128,15 +131,12 @@ function rss_skim {
    # - dupe detecting gr_NEW would profit from a pure-perl
    #   rewrite. It also lacks support for \0-lines.
    #   (maybe use catv as a base?)
+   # - restricted core cache to detect dupes only within a single feed:
+   #   - remove the corresponding two perl oneliners to do global thread dupe detection
+   #     (or set/unset the per_feed variable above)
+   #   - if the feed url changes - to avoid amnesia -  you need to update the cache, 
+   #     as the feed url is the first word of each cached line.
  
-   # Sketch to sort items only within feeds:  
-   # If using multiple disparate feeds, you may wish to sort only within feeds: 
-   # - one option would be to extend the for loop to cover anything
-   #   from rsstail to just before pipe.vim's invoking of the editor.
-   # - to insert a section title before each feed's items, 
-   #   consider inserting a command like '( echo; echo "Section: $i"; cat -)'
-   #   after the second gr_NEW.
-
    # Sketch to modify this pipe to generate rss streams:
    # - First remove the final firefoxstdin, and possibly also remove pipe.vim
    #   (otherwise you might wish to set EDITOR to gvim or another graphical
@@ -149,17 +149,23 @@ function rss_skim {
    #   for both ordering hack and cat0par and probably also our use of wget.
    
 
-   for i in "$@"  ; do rsstail -1 -v -p -l -u "$i"; done |\
-   cat0par -nl -nonl -start 'Title:.*' -end 'Pub.date:.*' |\
-   grep "^Title" |\
-   Grep.pm -iv -f $base.kill - |\
-   gr_NEW -p rss_skip_date_link $opt1                 $base.feed |\
-   gr_STRIPX1 |\
-   gr_NEW $mangle                     -k $base.select $base |\
-   sort -f |\
+   for i in "$@"  ; do 
+      echo "" 1>&2 
+      echo "# feed $i" 1>&2 
+      rsstail -1 -v -p -l -u "$i" |\
+      cat0par -nl -nonl -start 'Title:.*' -end 'Pub.date:.*' |\
+      grep "^Title" |\
+      Grep.pm -iv -f $base.kill - |\
+      gr_NEW -p rss_skip_date_link $opt1                 $base.feed |\
+      gr_STRIPX1 |\
+      i=$i $per_feed perl -lpe '$_="$ENV{i} $_"   # allow dupe detection only within a single feed' |\
+      gr_NEW $mangle                     -k $base.select $base |\
+      gr_STRIPX1 |\
+      i=$i $per_feed perl -lpe 's/^\Q$ENV{i} \E// # allow dupe detection only within a single feed' |\
+      sort -f
+   done |\
    Grep.pm -AiU -f $base.select - |\
-   gr_STRIPX1 |\
-   $auto pipe.exec pipe.vim |\
+   $auto pipe.exec pipe.vim -header "# remaining rss items will be fed to firefox for reading." |\
    perl -lpe 's/.*Link: (\S+).*/$1/; s/>>>_|_<<<//g; s!(onemanga.com/[^/]+)/[\d\.]+!$1!' |\
    tee -a $base.chosen |\
    $auto firefoxstdin -3

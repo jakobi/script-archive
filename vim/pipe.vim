@@ -44,7 +44,14 @@ my $version="0.1.2";
 # somewhere hidden in the fs]
 
 $Me=$0; $Me=~s@.*/([^/]+)$@$1@;
-$silent=shift if $ARGV[0]=~/^--?silent$/;
+
+while(@ARGV) {
+   $_=$ARGV[0];
+   /^--?silent$/    and do {$silent=1; shift; next};
+   /^--?head(er)?$/ and do {shift;$header=shift;next;};
+   last;
+}
+
 @vimargs=@ARGV; @ARGV=();
 if ($ENV{EDITORPIPED}) {
    $EDITOR=$ENV{EDITORPIPED};
@@ -76,6 +83,7 @@ $msg=<<EOF;
 # $Me: (:com! ViewHtml exe "%!lynx -dump -force_html /dev/stdin" |setl ro)
 
 EOF
+$msg.="$header\n\n" if $header;
 # $time=time;
 foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
 undef $/; $_=<>; # SECURE:OK
