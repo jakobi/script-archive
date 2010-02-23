@@ -36,6 +36,9 @@
 # and links within an editor, link-extraction, and finally forwarding the links
 # to a remote firefox instance.
 #
+# the reader skips previously seen items as well as previously seen "threads", 
+# unless the thread is expressly matched by a user entered regex in the select file:
+#
 # dupe detection can be performed on a subset of the lines passing thru
 # gr_NEW by using the -p option to insert of \x01 marks, which
 # advise gr_NEW to ignore anything inbetween. A subsequent gr_STRIPX1
