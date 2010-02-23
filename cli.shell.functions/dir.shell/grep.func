@@ -35,7 +35,9 @@ function gr_HELP {
  # gr_* family of filename filters:
  gr_H, gr_HELP
  gr_SLURP  ...     -- read all input at once, then print
- gr_TRIM <TAILOPT> -- trim file F to last 10 lines: gr_TRIM -10 F
+ gr_TRIM [-t|-h] [<TAIL|HEAD-OPT>] -- gr_TRIM -h -12 F: trim file to first 12 lines
+                      -t       tail with tail options (default)
+                      -h       head with tail options
 
  # filters retaining original ordering:
  gr_U, gr_UNIQ     -- uniq
@@ -58,8 +60,7 @@ function gr_HELP {
  gr_NEWUPD F       -- update cache F to also contain F.new
                       -p P     filter, as above
                       -r       sort order of new entries 
-                      -t       prepend or append (default) new entries 
-                               (top/prepend instead of append)
+                      -h / -t  head or tail append new entries (default: tail)
                       -i or \$gr_UNIQ_IGNCASE -- ignore case in dupe detection
  gr_NEWCLR F       -- clear F.new (use >F to clear the cache)
 
@@ -131,7 +132,7 @@ function gr_TRIM {
     eval 'f=$'$#
     case "$1" in
        -h) shift; cmd=head ;;
-       -t) shift;          ;;
+       -t) shift; cmd=tail ;;
        *)                  ;;
     esac
     test -f "$f" || { echo "! no file $f" 1>&2; return 1; }
@@ -189,7 +190,8 @@ function gr_NEWUPD {
       case "$1" in
          -p) filter="$2"; uniqopt=-N; unfilter="gr_STRIPX1"; shift ;;
          -r) tac=tac ;;
-         -t) top=1 ;;
+         -h) top=1 ;;
+         -t) top=0 ;;
          -i) gr_UNIQ_IGNCASE=1 ;;
          *)  break ;;
       esac

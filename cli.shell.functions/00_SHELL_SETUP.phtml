@@ -76,17 +76,27 @@ stages of the outer runpipe statement.</p>
         gr_UNIQ and gr_NEW (see the grep.func file) to throw together an rss "reader" 
         for interactive item selection and forwarding of links to firefox.<br>
         The main difference to ordinary rss readers is the implementation of a proper 
-        regex-based kill file / select file, combined with caching/suppression of previously
-        seen items/"threads", reminiscent of the kill/select/threading(/thread-supression)
-        features found in the  nn news-reader. Which are very helpful for large feeds, but 
-        sorely lacking in proper rss-readers like newsfox or even newsbeuter (oh, please do 
-        give me at least filtering options to <i>automatically set flags</i>, instead of
-        just merely offering to filter item display based on manually set flags :( ...).
+        regex-based <i>kill file / select file</i>, combined with caching/suppression of previously
+        <i>seen items/"threads"</i>, reminiscent of the kill/select/threading(/thread-supression)
+        features found in the  nn news-reader. Which are an <i>absolute necessity</i> for 
+        <i>huge feeds</i> (say those with more than 100 items/day, grouped in a large 
+        number of "threads" of related items). However the "full-featured" rss-reader
+        applications always seem to lack powerful kill/select/threading. This includes
+        apps like newsfox or even newsbeuter (oh, please do give me at least filtering 
+        options to <i>automatically set flags</i>, instead of just merely offering 
+        to filter item display based on manually set flags :( ...).
         <br>
         The file can be sourced to use the function rss_skim for feeds of your choice. 
         It depends on other stuff from the script-archive, but
         those can be replaced with just egrep and a few simple perl/ruby/python one-liners
-        for basic text mangling.<br>
+        for basic text mangling.
+        <br>
+        This example pipe is probably also a good starting point for a small pipe
+        implementing rss-reader plugins that filter remote rss-feeds.
+        This would also fix the usual lack of powerful select/kill-files of 
+        rss-reader applications. AFAIR at least newsbeuter should support such 
+        program-generated feeds.
+        <br>
         <i>All in all, this is a nice example of the power of the concepts behind UNIX
         such as pipes and orthogonality: throw a few rather basic commands plus a pipe to 
         get a customized time-saver of vastly different functionality.</i>

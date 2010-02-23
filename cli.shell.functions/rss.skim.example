@@ -1,8 +1,19 @@
 #!/bin/bash
 
 ##
-## shell-script and rss reader functions + example
+## shell-hack: rss reader functions 
+##             a usage example for combining the gr_* line-based text filters
 ##
+
+#   (actually a quite useful hack for me to cope with a few huge threads,
+#    which would otherwise be absolutely overwhelming when e.g accessed
+#    with newsfox or newsbeuter - it looks like rss readers are still
+#    immature and lack proper news reader filtering capabilities. Then
+#    again I've never found _sufficient_ filtering/killfile support
+#    outside of the ancient nn news reader... . And GUI apps as a rule
+#    seem to be the least powerful of news readers - probably part of
+#    the reason for the long&slow decline of Usenet).
+
 
 # last change: 201002
 # copyright:  (c) 2010 jakobi@acm.org, GPL v3 or later
@@ -74,17 +85,21 @@ function rss_skim {
    done
 
    echo "# using cache $base*"
-   echo "# RSS on `date`" >> $base.select.new
-   echo "# RSS on `date`" >> $base
+   # echo "# RSS on `date`" >> $base
+   echo "# RSS on `date`" >> $base.chosen # just log the results from vim.pipe, not used otherwise
 
-   # the core is this straight-forward pipe: get|grep|gr_NEW|pipe.vim|firefox
+   # Description: 
+   # The core is merely this straight-forward pipe of basic line-based text filters:
    #
-   # get the feeds (rsstail could be replace by 
+   # <get_feed> | <grep kill> | <gr_NEW skip dupes*> | <gr_NEW skip dupe threads unless selected*> | <grep highlight selected> | <editor> | <firefox>
+   #                                              *) stages update cache files for future pipe invocations
+   #
+   # get the feeds (rsstail could be replaced with 
    # wget/cat0par -nl -nonl -start '<item>' -end '</item>'),
-   # skip the last 500 recently seen entries (in .feed, 1st gr_NEW), 
+   # skip the last 500 seen entries (in $base.feed, 1st gr_NEW), 
    # apply killfile, remove dupes with the main cache ($base,
-   # 2nd gr_NEW, skipping .select cache entries, but log
-   # surviving items in .new, possibly mangling (gr_NEW -p) the lines
+   # 2nd gr_NEW, skipping $base.select cache entries, but log
+   # surviving items in $base.new, possibly mangling (gr_NEW -p) the lines
    # to just a string of interest by skipping anything between
    # \x01 during dupe detection wrt the main cache), 
    # sort, highlight matches from .select, strip \x01,
@@ -92,27 +107,43 @@ function rss_skim {
    # the highlighting and just forward the link.
    # run the links thru firefoxstdin.
    #
-   # applying .new to the main cache is manual (given that
-   # we log dates now, it could be made automatic w/o much
-   # changes) 
-   #
+   # Optional final step: update $base with $base.new to remember
+   # the new threads/items in the 2nd gr_NEW, either manually
+   # or automatically (gr_NEWUPD call below).
+   
    # Notes:
+   # - the dupe detection by gr_UNIQ is just a variant of the old trick
+   #   "cat <SEEN_ENTRIES> <SEEN_ENTRIES> - | uniq" with a slightly modified uniq.
    # - the grep-based select/kill sees any \x01 as ordinary character,
    #   while GR_NEW will skip substrings when called with -p and a
    #   text mangling function/command (gr_NEW just wraps the cache
-   #   management around the dupe-detecting gr_UNIQ -U)
+   #   management around the dupe-detecting gr_UNIQ -U). This is the
+   #   trick used for 'threading' items.
    # - set PERL_UNICODE=63 for unicode (the gr_* are mostly
    #   perl oneliners for ease of use)
    # - set gr_UNIQ_IGNCASE to ignore case in dupe detection
    # - dupe detecting gr_NEW would profit from a pure-perl
    #   rewrite. It also lacks support for \0-lines.
    #   (maybe use catv as a base?)
-   # - if using multiple disparate feeds, you may wish to sort only within feeds: 
-   #   - one option would be to extend the for loop to cover anything
-   #     from rsstail to just before pipe.vim's invoking of the editor.
-   #   - to insert a section title before each feed's items, 
-   #     consider inserting a command like '( echo; echo "Section: $i"; cat -)'
-   #     after the second gr_NEW.
+ 
+   # Sketch to sort items only within feeds:  
+   # If using multiple disparate feeds, you may wish to sort only within feeds: 
+   # - one option would be to extend the for loop to cover anything
+   #   from rsstail to just before pipe.vim's invoking of the editor.
+   # - to insert a section title before each feed's items, 
+   #   consider inserting a command like '( echo; echo "Section: $i"; cat -)'
+   #   after the second gr_NEW.
+
+   # Sketch to modify this pipe to generate rss streams:
+   # - First remove the final firefoxstdin, and possibly also remove pipe.vim
+   #   (otherwise you might wish to set EDITOR to gvim or another graphical
+   #   editor opening its own window). Change rsstail to wget and cat0par to
+   #   cat0par -nl -nonl -start '<item>' -end '</item>'. Maybe retain some header
+   #   tags as well. 
+   # - If the tag ordering within items is not stable, use a line of perl
+   #   to force a fixed ordering of sub-elements (CPAN probably should 
+   #   offer more complete modules for string mangling; which could substitute
+   #   for both ordering hack and cat0par and probably also our use of wget.
    
 
    for i in "$@"  ; do rsstail -1 -v -p -l -u "$i"; done |\
@@ -131,8 +162,19 @@ function rss_skim {
    $auto firefoxstdin -3
       
    # the feed cache just serves to make the currently fetched feed uniq
-   # so we can 
-   [ "$opt1" = "-#" ] && gr_TRIM -t -500 $base.feed # those feeds via rsstail are latest-first
+   # truncate some files
+   if [ "$opt1" = "-#" ]; then
+      # gr_NEWUPD -h        $base         # latest _first_; update core cache 
+      #                                   # (this does "threading" as part of the dupe detection)
+      #                                   # (currently done for the main cache when this file
+      #                                   #  is executed as a script, see the IF-caller stanza
+      #                                   #  below).
+      #                                   # ! DO NOT TRIM THIS FILE ! (except maybe semi-manual
+      #                                   # removing of entries last updated a few years ago...,
+      #                                   # and regular comment elimination)
+      gr_TRIM     -t -2000  $base.feed    # latest last;    currently do update and trim 
+      gr_TRIM     -t -500   $base.chosen  # latest last;    the other caches immediately
+   fi
 
    echo ""
    echo "# filtering procedure: first the rss feed is filtered against the"
@@ -169,12 +211,14 @@ function mangamangle {
    #   only new entries and .select survive.
 }
 
-# skip if this file is sourced to use e.g. a different base
+# run automatically UNLESS the file is sourced (sourcing would allow you to
+# call the rss_skim function with other feeds and possibly different mangling/
+# core cache update behaviour.
 if [ "`caller`" = "0 NULL" ]; then
    rss_skim ~/.manga -p mangamangle ${1:+"$@"} http://feeds.feedburner.com/mangafox/latest_manga_chapters?format=xml http://www.onemanga.com/updates-feed.xml
 
    # immediately update the cache
    function M { perl -lpe 's/(?<=[^\x01])(, +(Vol\.|Ch\.)| +Chapter )/\x01$&/'; }
-   gr_NEWUPD -t -p M ~/.manga 2>&1 | fgrep -v '# gr_NEWUPD: ( echo "# gr_NEWUPD:'
+   [ grep -v '^#' ~/.manga.new ] && gr_NEWUPD -h -p M ~/.manga 2>&1 | fgrep -v '# gr_NEWUPD: ( echo "# gr_NEWUPD:'
 fi
 

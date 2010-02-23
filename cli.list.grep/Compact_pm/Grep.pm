@@ -28,6 +28,8 @@ my $version="0.4.2";
 #          (consider using perl -C to force global utf use)
 # - utf! - expansyn 0.2 stemming doesn't allow for umlauts/... in words/stems
 #          [?fix with a locale-depending charclass as substitute for [a-z] or just \p{Letter} or similar]
+# - some single letter options cannot be combined, as they are handled outside getopts
+#   [lowpri, will only be fixed when switching to an improved getopts module]
 #
 # Bugs when used as module (which is still experimental anyway):
 # - example users: moduletest, mt_playmusic, ...
@@ -300,9 +302,12 @@ is  used  in  the  boolean expression.  Issue --examples for more.
 
 
 Options:
-  Multiple simple options can be combined (excluding -/-e/-b/-B/-X).
-  Options with argument can be given as --cmd=foo or --perl bar
-  
+
+Multiple  simple options can be combined (excluding -/-e/-b/-B/-X; the
+combination however must _not_ match long options, as the second minus
+is  currently  optional. Example: -or is --or instead of -o -r).  Long
+options arguments can be given as either --cmd=foo or --perl bar.
+
   --       last argument
   -q       quiet about failed file and dir opens
   -s       silent mode
@@ -398,8 +403,10 @@ Options:
            utf8 notes, then consider setting PERL_UNICODE=63)
   -w       word matches only -- wrap in word boundaries
   -x       line matches only -- anchor with ^...\$
-  -X       run patterns and words through expansyn to expand synonyms
-           (stemming modus can be changed by -X-1..-X2; default $opt{stemming})
+  -X       run patterns and words through expansyn to expand synonyms.
+           Use -X-1/-X0/-X1/-X2 to choose a specific stemming mode, 
+           see expansyn/tagls for more information on this
+           (default $opt{stemming})
   --or     change boolean matcher to use 'or' for implied conjunctions
   
   # expressions to match (if missing, uses first non-option as regex;
