@@ -222,6 +222,6 @@ if [ "`caller`" = "0 NULL" ]; then
 
    # immediately update the cache
    function M { perl -lpe 's/(?<=[^\x01])(, +(Vol\.|Ch\.)| +Chapter )/\x01$&/'; }
-   [ grep -v '^#' ~/.manga.new ] && gr_NEWUPD -h -p M ~/.manga 2>&1 | fgrep -v '# gr_NEWUPD: ( echo "# gr_NEWUPD:'
+   grep -v '^#' ~/.manga.new >/dev/null && gr_NEWUPD -h -p M ~/.manga 2>&1 | fgrep -v '# gr_NEWUPD: ( echo "# gr_NEWUPD:'
 fi
 
