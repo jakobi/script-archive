@@ -21,6 +21,7 @@
 ./cli.list.various/lc:0.2
 ./cli.list.various/line.print:0.1
 ./cli.list.various/line.replace:0.1
+./cli.list.various/pipe.exec:0.1.1
 ./cli.list.various/randomcat:0.1
 ./cli.list.various/range:0.2
 ./cli.list.various/xchange.pl:2.2

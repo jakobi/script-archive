@@ -68,10 +68,20 @@ stages of the outer runpipe statement.</p>
        <tt>bash$&nbsp; f2a -a ARGS < <(find . -print); less "$ARGS[@]"</tt>
    <li><b>uniqpath</b> deals with :-separated strings and removes duplicates and 
        optionally '.' and '' (both of which are a security risk e.g. in $PATH; 00_lib.func)
-   <li><b>grep.func / gr_*</b>: simple line-based filters in grep.func, e.g. uniq (gr_UNIQ; w/o sort) 
-        and a duplicate line suppression filter (incl. lines seen during previous invocations; gr_NEW).
-        Shell, with perl one-liners; the filters lack both efficiency and support 
+
+   <li><b>grep.func / gr_*</b>: simple line-based filters in grep.func, e.g. uniq (<b>gr_UNIQ</b>; w/o sort),
+        a duplicate line suppression filter with a persistant cache  (<b>gr_NEW</b>), and some support for
+        easy use of Schwartzian transforms within pipes (<b>gr_MAP</b> | ... | <b>gr_UNMAP</b>: 
+        remember and retrieve lines a persistant cache, regardless of changes, 
+        provided the line ID embedded by gr_MAP survives until gr_UNMAP. <b>gr_MAPORDER</b> 
+        orders the lines as per the occurance of their IDs in the cache, thus allowing
+        transient reordering in addition to the transient line modifications permitted 
+        by gr_MAP/gr_UNMAP).<br>
+        Shell, with some perl (mostly one-liners); the filters lack both efficiency and support 
         for \0-lines. 
+   <li><b>gr_MIXED2UTF</b>: line-based hack to convert a file with a mix of lines in
+        latin1 and utf8 file to utf8 (heuristic based on the "invalid char" \x{FFFD}).
+        Helpful when grepping e.g. over a mix of latin1/utf8 files.
    <li><b>rss.skim.example</b> - a fairly raw and basic example pipeline using shell functions/Perl one-liners 
         gr_UNIQ and gr_NEW (see the grep.func file) to throw together an rss "reader" 
         for interactive item selection and forwarding of links to firefox.<br>
@@ -100,9 +110,6 @@ stages of the outer runpipe statement.</p>
         <i>All in all, this is a nice example of the power of the concepts behind UNIX
         such as pipes and orthogonality: throw a few rather basic commands plus a pipe to 
         get a customized time-saver of vastly different functionality.</i>
-   <li><b>gr_MIXED2UTF</b>: line-based hack to convert a file with a mix of lines in
-        latin1 and utf8 file to utf8 (heuristic based on the "invalid char" \x{FFFD}).
-        Helpful when grepping e.g. over a mix of latin1/utf8 files.
 </ul>
 
 

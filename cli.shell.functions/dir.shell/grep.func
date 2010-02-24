@@ -64,6 +64,22 @@ function gr_HELP {
                       -i or \$gr_UNIQ_IGNCASE -- ignore case in dupe detection
  gr_NEWCLR F       -- clear F.new (use >F to clear the cache)
 
+ # shell support for the schwartzian transform 
+ # (do not change line ID; by default lines not in cache are suppressed)
+ # (be careful - not as well tested as gr_NEW/gr_UNIQ)
+ gr_MAP F          -- remember lines in cache file F and print them augmented 
+                      with ID (' =ID=\d= ')
+                      -A/-P/-U append/prepend ID (with a unique suffix: time.host.pid)
+                      -S x     use x as additional separator string
+                      -a/-c    append/clear cache (default: clear)
+ gr_UNMAP F        -- retrieve matching lines from cache (retains input order)
+                      -A/-P    append/prepend intermediate line to returned cache
+                               line (separated by x/' ')
+                      -S x     use x as separator instead of ' '
+                      -k / -q  print  lines not in cache / be quiet about such lines
+ gr_MAPORDER F     -- restore order of lines from in cache file F (uses ID to recover
+                      -k / -q  append lines not in cache / be quiet about such lines
+
  # filter accessing fs (implies stat/strip/uniq; allows for files containing ' :: '):
  gr_STRIP0         -- only existing in fs (strict superset of gr_STAT[FD])
  gr_STATF          -- only plain files 
@@ -99,6 +115,70 @@ function gr_S { gr_STRIP; }
 function gr_STRIP {
    perl -lne 's/ :: +(\S.*|)?$//; print' # no uniq for this
 }
+
+function gr_D { gr_BASEDIR; }
+function gr_BASEDIR { # note that this can easily strip the matched keyword from the filename
+   perl -lne 's@/[^/]*$@@ if not m!/(MNG|LNK)\.[^/]+$|/[^/]*\.lnk!; print if not $c{$_}++' # uniq, but unsorted, don't strip .lnk (hopefully a symlink)
+   # sed 's@/[^/]*$@@' | sort -u or just in sed (uniq w/o sort): sed 's@/[^/]*$@@'|sed '$!N; /^\(.*\)\n\1$/!P; D'
+}
+function gr_BASEDIR0 { #
+   perl -lne 'next if $c{$_}; do{print;$c{$_}++;next} if -d $_; 
+              s/ :: +(\S.*|)?$// if not -e _; 
+              next if $c{$_}; do{print;$c{$_}++;next} if -d $_; 
+              s@/[^/]*$@@ if not m!/(MNG|LNK)\.[^/]+$|/[^/]*\.lnk!; print if not $c{$_}++'
+}
+function gr_SHORT { 
+   # shorten to the final dir/filename with a twist:
+   # go further left while dir is numbered, i.e. \d* c\d* v\d* 
+   perl -lne '"SECURE:OK";BEGIN {s!^(\s)!./$1!,s/^/</,s/$/\0/ for @ARGV}; s@.*?(((/|^)(?!\d|[vc]\d)[^/]+)(/(?=\d|.\d)[^/]+)*/[^/]+)$@...$1@i; print if not $c{$_}++'
+}
+function gr_SHORT0 { 
+   # shorten by paren+ removal to a single ~~, then if there's still a monstrous name
+   # in the path, truncate it in the middle. Use $1 to change 'longness'.
+   # tries to allow for the highlighting codes as used on xterm by tput rmso/smso
+   # and e.g. grep.p / hlgrep (3-5bytes). Does NOT add ESC when line is ESC-clean.
+   N=${1:-60} perl -lne 'BEGIN{s!^(\s)!./$1!,s/^/</,s/$/\0/ for @ARGV; # fix <> mess
+                               use POSIX;$n=$ENV{N}||60; 
+                               $p=q![^/\(\)\[\]\{\}]!; chomp($se=qx(tput rmso)); $m=floor($n/2)
+                              };
+      do{ local ($se)=$se;  $se="" if not /x1b/o;
+          s@\($p+\)|\[$p+\]|\{$p+]\}[\. -_]?@~~@go; s@(~~[^~/]?)+~~@~~@go; 
+          ##  s@/([^/]{2}[^/]{$n,})(?=/|$)@do{$2.substr($$1,0,$n/2)."~~".substr($1,-$n/2)}@ge; 
+          #anchor-/    prefix optional glue used to forbid ESC    middle            glue/esc protect     postfix         anchor  
+          s@( (?:/|\A) [^/]{$m}  [^/]{0,5}? )   (?<=[^\x1b]{5})   [^/]{2,}   (?<=[^\x1b]{5})   ( [^/]{0,5}?  [^/]{$m} )  (?=/|$)@$1~~$2@gx;
+          s@~~@$se~~@go;
+      }; print if not $c{$_}++'
+}
+
+function gr_SLURP {
+   perl -0ne 'use ARGV::readonly;$x.=$_; END{print $x}' ${1:+"$@"}
+}
+function gr_SLURP2 {
+   perl -0ne 'use ARGV::readonly;$x.=$_; END{print $x;print $x}' ${1:+"$@"}
+}
+
+function gr_TRIM {
+    typeset f cmd
+    cmd=tail
+    eval 'f=$'$#
+    case "$1" in
+       -h) shift; cmd=head ;;
+       -t) shift; cmd=tail ;;
+       *)                  ;;
+    esac
+    test -f "$f" || { echo "! no file $f" 1>&2; return 1; }
+    $cmd ${1:+"$@"} > "$f.tmp" && mv "$f" "$f.old" && mv "$f.tmp" "$f" || { echo "! error - refusing to trim $f" 1>&2; return 1; } 
+    #perl -e '($l,$f)=@ARGV;
+    #         die "no number" if not $l=~/^\d+$/;
+    #         $f=~s!^-$!/dev/stdin!;
+    #         open(FH,"<",$f);@l=<FH>;close FH; 
+    #         rename $f, $f.".old" if not $f=~s!^/dev/stdin$!/dev/stdout!;
+    #         open(FH,">",$f);$f1=$#l; 
+    #         $f0 = ($f1>$l-1) ? $f1-$l+1 : 0; 
+    #         print FH @l[$f0..$f1]; close FH;' $1 "$2"
+}
+
+# uniq that retains the original ordering of lines
 function gr_U { gr_UNIQ ${1:+"$@"} ; }
 function gr_UNIQ {
    O="$*" perl -lne 'sub f{
@@ -120,32 +200,8 @@ function gr_UNIQ {
 function gr_STRIPX1 {
    perl -lpe 's/\x1//g'
 }
-function gr_SLURP {
-   perl -0ne 'use ARGV::readonly;$x.=$_; END{print $x}' ${1:+"$@"}
-}
-function gr_SLURP2 {
-   perl -0ne 'use ARGV::readonly;$x.=$_; END{print $x;print $x}' ${1:+"$@"}
-}
-function gr_TRIM {
-    typeset f cmd
-    cmd=tail
-    eval 'f=$'$#
-    case "$1" in
-       -h) shift; cmd=head ;;
-       -t) shift; cmd=tail ;;
-       *)                  ;;
-    esac
-    test -f "$f" || { echo "! no file $f" 1>&2; return 1; }
-    $cmd ${1:+"$@"} > "$f.tmp" && mv "$f" "$f.old" && mv "$f.tmp" "$f" || { echo "! error - refusing to trim $f" 1>&2; return 1; } 
-    #perl -e '($l,$f)=@ARGV;
-    #         die "no number" if not $l=~/^\d+$/;
-    #         $f=~s!^-$!/dev/stdin!;
-    #         open(FH,"<",$f);@l=<FH>;close FH; 
-    #         rename $f, $f.".old" if not $f=~s!^/dev/stdin$!/dev/stdout!;
-    #         open(FH,">",$f);$f1=$#l; 
-    #         $f0 = ($f1>$l-1) ? $f1-$l+1 : 0; 
-    #         print FH @l[$f0..$f1]; close FH;' $1 "$2"
-}
+
+# uniq capable of remembering duplicates over multiple invocations
 function gr_NEW {
    typeset f filter keep output uniqopt unfilter grep igncase igncase_old args
    eval 'f=$'$#
@@ -227,42 +283,111 @@ function gr_NEWCLR {
    echo "# clearing new cache candidates (use > \"$h\" to clear cache contents)" 1>&2
    test "$h" != "" -a -f "$h.new" && > "$h.new" || { echo "! cannot clear new cache candidates from $h.new" 1>&2; return 1; }
 }
-function gr_D { gr_BASEDIR; }
-function gr_BASEDIR { # note that this can easily strip the matched keyword from the filename
-   perl -lne 's@/[^/]*$@@ if not m!/(MNG|LNK)\.[^/]+$|/[^/]*\.lnk!; print if not $c{$_}++' # uniq, but unsorted, don't strip .lnk (hopefully a symlink)
-   # sed 's@/[^/]*$@@' | sort -u or just in sed (uniq w/o sort): sed 's@/[^/]*$@@'|sed '$!N; /^\(.*\)\n\1$/!P; D'
-}
-function gr_BASEDIR0 { #
-   perl -lne 'next if $c{$_}; do{print;$c{$_}++;next} if -d $_; 
-              s/ :: +(\S.*|)?$// if not -e _; 
-              next if $c{$_}; do{print;$c{$_}++;next} if -d $_; 
-              s@/[^/]*$@@ if not m!/(MNG|LNK)\.[^/]+$|/[^/]*\.lnk!; print if not $c{$_}++'
-}
-function gr_SHORT { 
-   # shorten to the final dir/filename with a twist:
-   # go further left while dir is numbered, i.e. \d* c\d* v\d* 
-   perl -lne '"SECURE:OK";BEGIN {s!^(\s)!./$1!,s/^/</,s/$/\0/ for @ARGV}; s@.*?(((/|^)(?!\d|[vc]\d)[^/]+)(/(?=\d|.\d)[^/]+)*/[^/]+)$@...$1@i; print if not $c{$_}++'
-}
-function gr_SHORT0 { 
-   # shorten by paren+ removal to a single ~~, then if there's still a monstrous name
-   # in the path, truncate it in the middle. Use $1 to change 'longness'.
-   # tries to allow for the highlighting codes as used on xterm by tput rmso/smso
-   # and e.g. grep.p / hlgrep (3-5bytes). Does NOT add ESC when line is ESC-clean.
-   N=${1:-60} perl -lne 'BEGIN{s!^(\s)!./$1!,s/^/</,s/$/\0/ for @ARGV; # fix <> mess
-                               use POSIX;$n=$ENV{N}||60; 
-                               $p=q![^/\(\)\[\]\{\}]!; chomp($se=qx(tput rmso)); $m=floor($n/2)
-                              };
-      do{ local ($se)=$se;  $se="" if not /x1b/o;
-          s@\($p+\)|\[$p+\]|\{$p+]\}[\. -_]?@~~@go; s@(~~[^~/]?)+~~@~~@go; 
-          ##  s@/([^/]{2}[^/]{$n,})(?=/|$)@do{$2.substr($$1,0,$n/2)."~~".substr($1,-$n/2)}@ge; 
-          #anchor-/    prefix optional glue used to forbid ESC    middle            glue/esc protect     postfix         anchor  
-          s@( (?:/|\A) [^/]{$m}  [^/]{0,5}? )   (?<=[^\x1b]{5})   [^/]{2,}   (?<=[^\x1b]{5})   ( [^/]{0,5}?  [^/]{$m} )  (?=/|$)@$1~~$2@gx;
-          s@~~@$se~~@go;
-      }; print if not $c{$_}++'
-}
+
+# make mixed-charset grep output slightly less painful
+# assume utf default. if invalid_char, then consider decode from latin1.
 function gr_MIXED2UTF {
-   # assume utf default. if invalid_char, then consider decode from latin1.
    perl -lne 'use Encode; $o=$_; $_=decode("utf8",$_); $_=decode("latin1",$o) if /\x{FFFD}/ and not $o=~/\xef\xbf\xbd/; print encode("utf8",$_)' 
+}
+
+# schwartzian transform support, allowing for temporary destructive
+# line changes. 
+#
+# given that gr_NEW was quite useful, it's probably worthwile to 
+# use the same concept and allow even more intermediate mangling
+# and restoring of lines in pipes beyond say adding and stripping
+# line numbers.
+
+# STATUS gr_*MAP*: still waiting for some non-toy-data testing
+# source ~/bin/shell/grep.func; ( echo a; echo b; echo c) | gr_MAP -S '#' -A X | ( echo x; tac) | tr a-z A-Z | sed s/B/BB/ | gr_MAPORDER  X | gr_UNMAP X
+function gr_MAP {
+   perl -lne 'BEGIN{
+         $clr=1; $pos=q!^!;
+         while(@ARGV){$_=$ARGV[0];
+            /^-U$/ and do{$u=sprintf(".%d.%s.%d",time,$ENV{HOSTNAME},$$);shift;next};
+            /^-P$/ and do {$pos=q!^!;shift;next};
+            /^-A$/ and do {$pos=q!$!;shift;next};
+            /^-S$/ and do {shift;$str=shift;next};
+            /^-c$/ and do {$clr=1;shift;next};
+            /^-a$/ and do {$clr=0;shift;next};
+         last};
+         $f=shift;
+         die "! gr_MAP: no cache $f / invalid args\n" if @ARGV;
+         unlink $f if $clr and -f $f;
+         open(CACHE,">>",$f) or die "! gr_MAP: no cache $f\n";
+         select(CACHE);$|=1;select(STDOUT); # add autoflush
+      };
+      $i=sprintf "%06d",$i+1; # ID =^= line number, allow for easy lexicographic sorting
+      $c=$_; $c=~s/^/ =ID=$i$u= /;
+      s/$/ $str =ID=$i$u= / if $pos eq q!$!;
+      s/^/ =ID=$i$u= $str / if $pos eq q!^!;
+      print CACHE $c;
+      print $_;
+      END{close CACHE;select(undef,undef,undef,0.3);close FH}; # the FS should honor the closing order even w/o sleep...
+                                                               # the alternative would be to line-wise flush
+   ' -- ${1:+"$@"}
+}
+function gr_UNMAP {
+   perl -e '$str=" ";
+      while(@ARGV){$_=$ARGV[0];
+         /^-P$/ and do {$pos=q!^!;shift;next};
+         /^-A$/ and do {$pos=q!$!;shift;next};
+         /^-S$/ and do {shift;$str=shift;next};
+         /^-k$/ and do {$keep=1;shift;next};
+         /^-q$/ and do {$silent=1;shift;next};
+      last};
+      $f=shift;
+      die "! gr_UNMAP: no cache $f / invalid args\n" if not -f $f or @ARGV;
+      @in=<STDIN>; # slurp first, to ensure that we see the full&final disk cache for our pipe
+                   # (otherwise we would have to check FH for updates)
+      open(FH,"<",$f);
+      while(<FH>) {s/[\n\r]+\z//; s!(?: |^)(=ID=\d+(?:\.\d+\.[a-z0-9]*\.\d+)?=)( |$)!!io and $f{lc($1)}=$_ or warn "? gr_UNMAP: invalid cache entry ".++$i.": $_\n"; }
+      $i=0;
+      foreach(@in) { 
+         s/[\n\r]+\z//o;
+         $i++;
+         if (not /(?: |^)(=ID=\d+(?:\.\d+\.[a-z0-9]*\.\d+)?=)( |$)/io) {
+            print $_."\n" if $keep;
+            warn "? gr_UNMAP: line $i lacks CACHE ID: $_\n" if /\S/ and not $silent;
+         } elsif ($k=lc($1), exists $f{$k}) {
+            $_=$f{$k}.$str.$_ if $pos eq q!$!;
+            $_=$_.$str.$f{$k} if $pos eq q!^!;
+            $_=$f{$k}         if $pos eq q!!;
+            print $_."\n";
+         } else {
+            print $_."\n" if $keep;
+            warn "? gr_UNMAP: line $i not in cache: $_\n" if /\S/ and not $silent;
+         }
+      }
+   ' -- ${1:+"$@"}
+}
+function gr_MAPORDER {
+   perl -e 'while(@ARGV){$_=$ARGV[0];
+         /^-k$/ and do {$keep=1;shift;next};
+         /^-q$/ and do {$silent=1;shift;next};
+      last};
+      $f=shift;
+      die "! gr_UNMAP: no cache $f / invalid args\n" if not -f $f or @ARGV;
+      @in=<STDIN>;
+      open(FH,"<",$f);
+      while(<FH>) {s/[\n\r]+\z//; s!(?: |^)(=ID=\d+(?:\.\d+\.[a-z0-9]*\.\d+)?=)( |$)!!io and $f{lc($1)}=++$i or warn "? gr_UNMAP: invalid cache entry $i: $_\n"; }
+      $i=0;
+      foreach(@in){
+         s/[\n\r]+\z//o;
+         $i++;
+         if (not /(?: |^)(=ID=\d+(?:\.\d+\.[a-z0-9]*\.\d+)?=)( |$)/io) {
+            push @oops,$_ if $keep;
+            warn "? gr_UNMAP: line $i lacks CACHE ID: $_\n" if /\S/ and not $silent;
+         } elsif ($k=lc($1), exists $f{$k}) {
+            $out[$f{$k}]=$_;
+         } else {
+            push @oops,$_ if $keep;
+            warn "? gr_UNMAP: line $i not in cache: $_\n" if /\S/ and not $silent;
+         }
+      }
+      foreach(@out){print $_."\n"if defined $_};
+      foreach(@oops){print $_."\n"};
+   ' -- ${1:+"$@"}
 }
 
 
