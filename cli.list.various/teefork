@@ -1,10 +1,20 @@
 #!/usr/bin/perl
 
 # created Tom Christiansen <tchrist@convex.com> 6 June 91
-# last change PJ 20090615
+# last change PJ 201002
 # perl artistic licence
 
 # WARNING -- intentionally unsafe uses of <> and open2, NOTSECURE 
+
+# PJ fixed close to occur in order of arguments: stdout arg1..N, to allow e.g.
+#
+# editor trick: filter input lines to have hits followed by non-hits
+#    sorting input by grep-match followed by non-match. For this trick we need
+#    to soak up all input by either ddsponge or perl -e 'undef $/;$_=<STDIN>;print':
+# teefork -n '|fgrep MATCH|ddsponge;echo' '|fgrep -v MATCH|ddsponge'
+#    more efficiently and fully in perl this example would be:
+# perl -lne 'do{push @a1,$_;next} if /MATCH/; push @a2,$_; 
+#            END{foreach(@a1){print};print "";foreach(@a2){print}}')
 
 # PJ added check for trailing '|' -
 #
@@ -188,6 +198,7 @@ if ($ignore_ints) {
 $mode = $append ? '>>' : '>';
 $fh = 'FH000';
 %fh = ('STDOUT', 'standard output') if not $nostdout;
+@fh = ('STDOUT')                    if not $nostdout;
 $| = 1 if $unbuffer;
 
 for (@ARGV) {
@@ -201,15 +212,17 @@ for (@ARGV) {
 	next;
     }
     select((select($fh), $| = 1)[0]) if $unbuffer;
-    $fh{$fh++} = $_ 
+    $fh{$fh} = $_;
+    push @fh,$fh;
+    $fh++;
 } 
 while (<STDIN>) {
-    for $fh (keys %fh) {
+    for $fh (@fh) {
         next if $fh{$fh}=~/^\|\|\w+\|\|/; # PJ
 	warn "print fail to $f{$fh}" if not print $fh $_;
     } 
 } 
-for $fh (keys %fh) { 
+for $fh (@fh) { 
     close($fh) && next;
     warn "# teefork: non-zero rc $! for $fh{$fh}: $!\n";
     $status++;

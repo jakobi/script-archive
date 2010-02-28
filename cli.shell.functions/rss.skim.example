@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ##
-## shell-hack: rss reader functions 
+## shell-hack: rss reader functions
 ##             a usage example for combining the gr_* line-based text filters
 ##
 
@@ -18,6 +18,7 @@
 # last change: 201002
 # copyright:  (c) 2010 jakobi@acm.org, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
+# status: hack/example
 
 # usage:
 # - invoke to demonstrate example for manga rss feeds 
@@ -92,7 +93,7 @@ function rss_skim {
 
    echo "# using cache $base*"
    # echo "# RSS on `date`" >> $base
-   echo "# RSS on `date`" >> $base.chosen # just log the results from vim.pipe, not used otherwise
+   # echo "# RSS on `date`" >> $base.chosen # just log the results from vim.pipe, not used otherwise
 
    # Description: 
    # The core is merely this straight-forward pipe of basic line-based text filters:
@@ -165,9 +166,11 @@ function rss_skim {
       sort -f
    done |\
    Grep.pm -AiU -f $base.select - |\
-   $auto pipe.exec pipe.vim -header "# remaining rss items will be fed to firefox for reading." |\
-   perl -lpe 's/.*Link: (\S+).*/$1/; s/>>>_|_<<<//g; s!(onemanga.com/[^/]+)/[\d\.]+!$1!' |\
+   $auto pipe.exec pipe.vim -header "# `date +"%Y%m%d-%H%M:"` remaining rss items will be fed to firefox." |\
+   pipe.exec -i grep '.' |\
    tee -a $base.chosen |\
+   perl -lpe 's/.*Link: (\S+).*/$1/; s/>>>_|_<<<//g; s!(onemanga.com/[^/]+)/[\d\.]+!$1!' |\
+   tee -a $base.chosen-links |\
    $auto firefoxstdin -3
       
    # the feed cache just serves to make the currently fetched feed uniq

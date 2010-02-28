@@ -7,13 +7,22 @@ my $version="0.1.1";
 # archive:    http://jakobi.github.com/script-archive-doc/
 
 # for use in pipes / conditional execution if data available
-# type 1) $0 [--ignore-header] command...  -- slurp stdin AND pipe-execute command (w/o intervening shell)
-# type 2) $0 [--ignore-header]             -- cat   stdin  OR false (test data in pipe)
+# type 1) $0 [options] command...  -- slurp stdin AND pipe-execute command (w/o intervening shell)
+# type 2) $0 [options]             -- cat   stdin  OR false (test data in pipe)
 #
 # usage examples:
 # - grep foo LOG |   pipe.exec         mutt -s "ALERT - log contains matching terms" $LOGNAME  # type 1 - mail on match
 # - grep foo LOG | { pipe.exec || echo "no matches"; } | mutt -s "daily log summary" $LOGNAME  # type 2 - mail always
 # - ... | (echo "# please check these lines"; echo; cat - ) | pipe.exec --ignore-header gvim - # type 1 - display data in editor if any
+#
+# options are:
+# -i   -ignore-headers             data availability is determined after stripping initial
+#                                  whitespace and #-comment lines. No output (suppressing 
+#                                  initial whitespace and initial #-comment lines) nor 
+#                                  command execution if no real data
+# -ip  -ignore-headers-but-print   similar, but in case of no-data/suppressing command execution,
+#                                  we still print initial whitespace and #-comment-lines to stdout
+
 
 undef $/; 
 $_=<main::STDIN>;
@@ -25,19 +34,23 @@ while(@ARGV) {
       m! \A (?: \s*\z | (?: (?:[\t ]* (?:\#.*)?) [\r\n]+ )* ) ([\S\s]?) !x and $no_data=("" eq $1); 
       shift; next
    };
+   $ARGV[0]=~/^-ip$|^-hp$|^-?-(ignore[-_])?head(ers?)?[-_]but[-_]print/ and do{
+      m! \A (?: \s*\z | (?: (?:[\t ]* (?:\#.*)?) [\r\n]+ )* ) ([\S\s]?) !x and $no_data=("" eq $1); 
+      $print=1;
+      shift; next
+   };
    last;
 }
 
-                                   #  type / input     - output               - return code
-                                   # -----------------   --------------------   -----------
-if      (not @ARGV and $no_data) { # 2 - test: no data - none                 - false
-   exit 1;
-} elsif (not @ARGV) {              # 2 - test: data    - print data on stdout - true
-   print $_;
-   exit 0;
-} elsif ($no_data) {               # 1 -  cmd: no data - none                 - true
-   exit 0;
-} else {                           # 1 -  cmd: data    - pipe data to cmd     - cmd rc
+                                   #  type / input     - output                               - return code
+                                   # -----------------   -----------------------------------    -----------
+if      (not @ARGV and $no_data) { # 2 - test: no data - none (or -ip: just headings if any)  - false
+   print $_ if $print; exit 1;
+} elsif (not @ARGV) {              # 2 - test: data    - print data on stdout                 - true
+   print $_;           exit 0;
+} elsif ($no_data) {               # 1 -  cmd: no data - none (or -ip: just headings if any)  - true
+   print $_ if $print; exit 0;
+} else {                           # 1 -  cmd: data    - pipe data to cmd                     - cmd rc
    open(FH,"|-",@ARGV) and print FH $_; exit $?>>8 if $?;
    close FH;                            exit $?>>8 if $?;
    exit 0;
