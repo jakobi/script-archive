@@ -156,10 +156,11 @@ function rss_skim {
       rsstail -1 -v -p -l -u "$i" |\
       cat0par -nl -nonl -start 'Title:.*' -end 'Pub.date:.*' |\
       grep "^Title" |\
+      perl -lne 'print; s/LINK: \S*//i; $o=$_ if /\S/ and not $o; END{print main::STDERR "#$o"};' |\
       Grep.pm -iv -f $base.kill - |\
       gr_NEW -p rss_skip_date_link $opt1                 $base.feed |\
       gr_STRIPX1 |\
-      i=$i $per_feed perl -lpe '$_="$ENV{i} $_"   # allow dupe detection only within a single feed' |\
+      i=$i $per_feed perl -lpe '$_="$ENV{i} $_";"allow dupe detection only within a single feed"' |\
       gr_NEW $mangle                     -k $base.select $base |\
       gr_STRIPX1 |\
       i=$i $per_feed perl -lpe 's/^\Q$ENV{i} \E// # allow dupe detection only within a single feed' |\
@@ -186,6 +187,7 @@ function rss_skim {
       #                                   # and regular comment elimination)
       gr_TRIM     -t -2000  $base.feed    # latest last;    currently do update and trim 
       gr_TRIM     -t -500   $base.chosen  # latest last;    the other caches immediately
+      gr_TRIM     -t -500   $base.chosen-links 
    fi
 
    echo ""

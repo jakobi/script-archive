@@ -2,13 +2,6 @@
 # copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
 
-# note2self/todo:
-# I should probably fold all these functions into a single multi-named
-# perl script. caveat: the -p mangle function can no longer be supplied
-# as a temp shell function...; OTOH, this would allow easy adding
-# of \0 lines and improve efficiency somewhat (then again pipes usually
-# are about efficiency of quickly building up hacks, not about cpu)
-
 function gr_x { 
    for i in /*FIND* /disk*/*FIND*; do
        case "$i" in
@@ -35,6 +28,19 @@ function gr_x {
 
 
 # filters
+
+# note2self/todo: gr_* filters (excluding gr_x)
+# I should probably fold all these functions into a single multi-named
+# perl script. caveat: the -p mangle function can no longer be supplied
+# as a temp shell function...; OTOH, this would allow easy adding
+# of \0 lines and improve efficiency somewhat (then again pipes usually
+# are about efficiency of quickly building up hacks, not about cpu).
+#
+# (implement as cmd verb ... verb for the likes of statf,shorten,strip?)
+# (implemrnt gr_UNIQ,gr_NEW,gr_MAP in a second command?)
+# 
+# I think this set of grep support functions is slowly getting complete.
+
 
 function gr_H { gr_HELP; }
 function gr_HELP {
@@ -235,14 +241,20 @@ function gr_NEW {
    done
 
    [ $# != 1 ] && { echo "! gr_NEW option error" 1>&2; return 1; } 
-   cmd="( gr_SLURP2 \"$f\" | $grep -v -i -f $keep | $filter; cat | $filter | gr_UNIQ $uniqopt1 ) | gr_UNIQ $uniqopt2 | tee -a >( $unfilter >> \"$output\" )";
+   cmd="( gr_SLURP2 \"$f\" | $grep -v -i -f $keep | $filter; cat | $filter | gr_UNIQ $uniqopt1 ) | gr_UNIQ $uniqopt2 | tee -a >( $unfilter >> \"$output.tmp\" )";
 
-   echo  "# gr_NEW: `date` with args: args" >> "$output"
    #echo "# gr_NEW: `date` running gr_NEW args" 1>&2
-   #echo "# gr_NEW: `date` running $cmd"        >> "$output"
    #echo "# gr_NEW: `date` running $cmd"        1>&2
 
    eval "$cmd"
+   
+   if [ -s "$output.tmp" ]; then # or just use perl / pipe.exec instead 
+                                 # to suppress adding headers w/o data
+      echo  "# gr_NEW: `date` with args: $args" >> "$output"
+      #echo "# gr_NEW: `date` running $cmd"        >> "$output"
+      cat   "$output.tmp" >> "$output"
+      rm    "$output.tmp"
+   fi
 
    gr_UNIQ_IGNCASE=$igncase_old
 }

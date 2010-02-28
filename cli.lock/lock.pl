@@ -13,6 +13,16 @@ my $version="0.2.1";
 # copyright: (c) 2002-2009 PJ, GPL v3 or later
 # archive:   http://jakobi.github.com/script-archive-doc/
 
+# BUGS:
+# - lock breaking/timeout is bad in the first place:
+#   for flock, it would be good to replace the old file
+#   with the new file as basis for a fresh lock; at least
+#   this option should be open to the user as loosing possible
+#   data from the old lock file may be preferable to not locking 
+#   the current process... (flock). Not that breaking mkdir mode 
+#   is much better when the stuck previous owner starts reviving 
+#   and suddenly rmdirs the lock. rename LOCK LOCK.broken?
+
 
 use strict;
 use warnings;
