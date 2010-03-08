@@ -68,6 +68,12 @@ typeset|grep -e '^typeset -a cdsx$'        -e '^integer cdsx$'        > /dev/nul
 #   threading into a major shell to enable a few new modes of 
 #   broken semantics and deadlocks]
 
+# TODO:
+# - [low pri, on next real change; 20100301]
+#   Nicolas: I noticed your comments about differences in local variable 
+#   semantics [between bash and ksh]. In ksh functions created with "foo() { ... }"
+#   syntax are dynamically-scoped, while ones created with "function foo { ... }"
+#   syntax are not.  Maybe this would help simplify things?
 
 # Changes:
 # - cdinit tries to retain previous list/stack on sourcing
