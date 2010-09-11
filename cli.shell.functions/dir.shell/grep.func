@@ -42,6 +42,12 @@ function gr_x {
 # I think this set of grep support functions is slowly getting complete.
 
 
+
+# --> perl has a similar uniq function as part of the List::MoreUtils 
+#     CPAN module
+
+
+
 function gr_H { gr_HELP; }
 function gr_HELP {
    cat <<EOF 
@@ -223,6 +229,7 @@ function gr_NEW {
    keep=/dev/null
    unfilter=cat
    output="$f.new"
+   tmpoutput="$output.tmp"
    uniqopt1=-n
    uniqopt2=-u
    grep=`type Grep.pm`; grep=${grep##Grep.pm is }; test -f "$grep" || grep=egrep
@@ -232,8 +239,8 @@ function gr_NEW {
       case "$1" in
          -p) filter=$2; uniqopt1="-N"; uniqopt2="-U"; unfilter="gr_STRIPX1"; shift ;;
          -k) keep=$2; shift    ;;
-         -n) output=/dev/null  ;;
-         -#) output=$f         ;;
+         -n) output=/dev/null; tmpoutput=/dev/null  ;;
+         -#) output=$f       ; tmpoutput="$output.tmp"   ;;
          -i) gr_UNIQ_IGNCASE=1 ;;
          *)  break ;;
       esac
@@ -241,7 +248,7 @@ function gr_NEW {
    done
 
    [ $# != 1 ] && { echo "! gr_NEW option error" 1>&2; return 1; } 
-   cmd="( gr_SLURP2 \"$f\" | $grep -v -i -f $keep | $filter; cat | $filter | gr_UNIQ $uniqopt1 ) | gr_UNIQ $uniqopt2 | tee -a >( $unfilter >> \"$output.tmp\" )";
+   cmd="( gr_SLURP2 \"$f\" | $grep -v -i -f $keep | $filter; cat | $filter | gr_UNIQ $uniqopt1 ) | gr_UNIQ $uniqopt2 | tee -a >( $unfilter >> \"$tmpoutput\" )";
 
    #echo "# gr_NEW: `date` running gr_NEW args" 1>&2
    #echo "# gr_NEW: `date` running $cmd"        1>&2

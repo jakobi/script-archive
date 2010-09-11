@@ -4,14 +4,19 @@
 # enough to cope for a while and exit things sanely to avoid
 # more mischivious missettings.
 
-system 'tput rmacs;';
-system 'setterm -reset; setterm -initialize';
+system 'tput rmacs';
+system 'tput sgr0';
+system 'setterm -reset';
+system 'setterm -initialize';
 system 'stty sane';
+
 print "\x1bc";
 # fix the fg  colors for my green on black urxvt terminal,
 # which gets mangled by vim sometimes
 print "\x1b]10;#80FF80\x07";
 print "\n";
+
+# some terminal docs follow, as taken e.g. from rxvt and others
 __END__
 
 see also http://pwet.fr/man/linux/conventions/urxvt

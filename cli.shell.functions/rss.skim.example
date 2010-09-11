@@ -49,7 +49,8 @@
 # - rsstail/cat0par (could be substituted by wget (or lynx)
 #   and cat0par, or done entirely in perl; cat0par just
 #   massages rsstail or xml <item>...</item> into grep-able
-#   single line items with a fixed format cum link).
+#   single line items with a fixed format plus link). See rsstail1 
+#   hack below
 # - Grep.pm (can be replaced by GNU egrep, with some
 #   restrictions on the regexes)
 # - grep.func functions gr_NEW,gr_UNIQ (just copy the shell
@@ -64,6 +65,23 @@
 function SKP  { cat; }
 function DERR { tee /dev/stderr; }
 
+rsstail=rsstail1 # real rsstail binary or hack below
+function rsstail1 {
+   # emulate rsstail -1 ... -u URL
+   typeset f
+   eval 'f=$'$#
+   wget -O - $f 2>/dev/null |\
+   cat0par -nl -nonl -f inside -start '(?i)<item.*?>' -end '(?i)</item.*?>' 2>/dev/null |\
+   perl -lne 'sub t { return "$_[0]: $1 " if m!<$_[1]\b.*?>\s*(.*?)\s*</$_[1]\b.*?>!i; return ""};
+      $o=""; $o.=t("Title","title"); 
+      $l="";
+      $l=t("Link","feedburner:origlink") if not $l;
+      $l=t("Link","link") if not $l; 
+      $o.=$l; 
+      $o.=t("Pub.date","pubdate"); 
+      print $o if $o'
+}
+
 function rss_skip_date_link {
    # skip Link and Pub.date (helps if the feed likes to stupidly change Pub.date
    # for already published items)
@@ -72,10 +90,12 @@ function rss_skip_date_link {
 }
 
 function rss_skim {
-   typeset auto base opt1 mangle per_feed
+   typeset auto base opt1 mangle per_feed numitem augment
+   numitem=1000
    opt1="-#"
    auto=""
    mangle=""
+   augment=cat
 
    # set to SKP for a combine core cache and strip the feedurl prefix in the cache
    per_feed="" 
@@ -86,12 +106,18 @@ function rss_skim {
       case "$1" in
          -n) auto=SKP; opt1="-n" ;;
          -p) mangle="-p $2"; shift    ;;
+         -P) augment="$2";   shift    ;;
          *)  break               ;;
       esac
       shift
    done
 
    echo "# using cache $base*"
+   test -f "$base"        || touch "$base"
+   test -f "$base.select" || touch "$base.select"
+   test -f "$base.kill"   || touch "$base.kill"
+   test -f "$base.feed"   || touch "$base.feed"
+
    # echo "# RSS on `date`" >> $base
    # echo "# RSS on `date`" >> $base.chosen # just log the results from vim.pipe, not used otherwise
 
@@ -101,8 +127,7 @@ function rss_skim {
    # <get_feed> | <grep kill> | <gr_NEW skip dupes*> | <gr_NEW skip dupe threads unless selected*> | <grep highlight selected> | <editor> | <firefox>
    #                                              *) stages update cache files for future pipe invocations
    #
-   # get the feeds (rsstail could be replaced with 
-   # wget/cat0par -nl -nonl -start '<item>' -end '</item>'),
+   # get the feeds using rsstail or the above rsstail1 hack
    # skip the last 500 seen entries (in $base.feed, 1st gr_NEW), 
    # apply killfile, remove dupes with the main cache ($base,
    # 2nd gr_NEW, skipping $base.select cache entries, but log
@@ -147,32 +172,37 @@ function rss_skim {
    # - If the tag ordering within items is not stable, use a line of perl
    #   to force a fixed ordering of sub-elements (CPAN probably should 
    #   offer more complete modules for string mangling; which could substitute
-   #   for both ordering hack and cat0par and probably also our use of wget.
+   #   for both ordering hack and cat0par and probably also our use of wget).
    
 
    for i in "$@"  ; do 
       echo "" 1>&2 
       echo "# feed $i" 1>&2 
-      rsstail -1 -v -p -l -u "$i" |\
+      $rsstail -n $numitem -1 -v -p -l -u "$i" |\
       cat0par -nl -nonl -start 'Title:.*' -end 'Pub.date:.*' |\
       grep "^Title" |\
-      perl -lne 'print; s/LINK: \S*//i; $o=$_ if /\S/ and not $o; END{print main::STDERR "#$o"};' |\
+      perl -lne 'print; s/LINK: \S*//i; $o=$_ if /\S/ and not $o; END{print main::STDERR "#last line: $o"};' |\
       Grep.pm -iv -f $base.kill - |\
       gr_NEW -p rss_skip_date_link $opt1                 $base.feed |\
       gr_STRIPX1 |\
       i=$i $per_feed perl -lpe '$_="$ENV{i} $_";"allow dupe detection only within a single feed"' |\
-      gr_NEW $mangle                     -k $base.select $base |\
+      gr_NEW $mangle                     -k $base.select $base      |\
       gr_STRIPX1 |\
       i=$i $per_feed perl -lpe 's/^\Q$ENV{i} \E// # allow dupe detection only within a single feed' |\
       sort -f
    done |\
+   $augment |\
    Grep.pm -AiU -f $base.select - |\
+   tee -a /dev/stderr |\
    $auto pipe.exec pipe.vim -header "# `date +"%Y%m%d-%H%M:"` remaining rss items will be fed to firefox." |\
+#   pipe.exec pipe.vim -header "# `date +"%Y%m%d-%H%M:"` remaining rss items will be fed to firefox." |\
    pipe.exec -i grep '.' |\
+   tee    $base.chosen.new |\
    tee -a $base.chosen |\
    perl -lpe 's/.*Link: (\S+).*/$1/; s/>>>_|_<<<//g; s!(onemanga.com/[^/]+)/[\d\.]+!$1!' |\
    tee -a $base.chosen-links |\
-   $auto firefoxstdin -3
+cat ###  
+###$auto firefoxstdin -3
       
    # the feed cache just serves to make the currently fetched feed uniq
    # truncate some files
@@ -196,7 +226,7 @@ function rss_skim {
    echo "# the (feed url+) title prefix is then matched against the core cache."
    echo "# if however the item is matched by .select, the core cache item/thread"
    echo "# deduplication is skipped."
-   echo "# core cache maintenance is mostly automatic, regexes in .kill/.select are manual."
+   echo "# core cache maintenance is automatic, regexes in .kill/.select are manual."
    echo "#"
 #   echo "# to update the core cache, run (avoid editing within lines)"
    echo "#      ( b=$base; gr_NEWUPD -t \"\$b\" )"
@@ -206,7 +236,7 @@ function rss_skim {
 #   echo "#      (also considered dupes: multiple feeds with the exact same title (incl. case))"
 #   echo "# to update the Grep.pm selection patterns for already seen manga"
 #   echo "#      b=$base; cat \"\$b\".select.new >> \"\$b\".select"
-   echo "#      b=$base; vi \"\$b\".select # or .kill; edit regexes for select/kill"
+   echo "#      b=$base; vi \"\$b\".select # or .kill; edit regexes manually"
 #   echo "#      (.select is raw and may require regexification!)"
    ls -s $base $base.*
 }
@@ -214,8 +244,10 @@ function rss_skim {
 
 
 ##
-## example setup for some manga feeds
+## example setup of the reader for some manga feeds
 ##
+
+
 
 # substring of interest for cache-based dupe detection (instead of whole line)
 function mangamangle { 
@@ -226,14 +258,51 @@ function mangamangle {
    #   only new entries and .select survive.
 }
 
+# try augmenting the line presented to the user with
+# chapter/date information from the cache (the previous chapter/datestamp)
+function mangaaugment {
+   perl -lpe 'BEGIN{
+                 $f=shift;
+                 open(FH,"<","$f");
+                 while(<FH>){
+                    $d=$c=$t="";
+                    s/\S+ //; # strip feed name
+                    /date:\s+.*?(\d+ [a-z]{3} \d+)/i and $d=$1;
+                    s/ (Link|pub.?date):.*//i; 
+                    /(, +(Vol\.|Ch\.)| +Chapter ).*/ and ($t,$c)=($`,$&); 
+                    $c=~s/^[, ]+//g; 
+                    $c=~s/Vol\.?|Chapter |Ch\.//g; 
+                    $c{$t}=$c;
+                    $c{$t}.="; ".$d if $d;
+                 }
+              }; 
+              s/(, +(Vol\.|Ch\.)| +Chapter ).*?(?=Link:|pub.?date)/$& [$c{$`}] /i;
+        ' ~/.manga
+}
+
+# usage: $0    [-n / ...] # run rss reader with or without updating cache
+#        $0 -e [-n / ...] # also re-invoke editor with the set of chosen links
+
 # run automatically UNLESS the file is sourced (sourcing would allow you to
 # call the rss_skim function with other feeds and possibly different mangling/
 # core cache update behaviour.
+
 if [ "`caller`" = "0 NULL" ]; then
-   rss_skim ~/.manga -p mangamangle ${1:+"$@"} http://feeds.feedburner.com/mangafox/latest_manga_chapters?format=xml http://www.onemanga.com/updates-feed.xml
+   f=~/.manga.chosen.new
+   edit=
+   if [ "$1" = "-e" ]; then
+      rm $f; edit=1; shift
+   fi
+
+   rss_skim ~/.manga -P mangaaugment -p mangamangle ${1:+"$@"} http://feeds.feedburner.com/mangafox/latest_manga_chapters?format=xml http://www.onemanga.com/updates-feed.xml
 
    # immediately update the cache
    function M { perl -lpe 's/(?<=[^\x01])(, +(Vol\.|Ch\.)| +Chapter )/\x01$&/'; }
    grep -v '^#' ~/.manga.new >/dev/null && gr_NEWUPD -h -p M ~/.manga 2>&1 | fgrep -v '# gr_NEWUPD: ( echo "# gr_NEWUPD:'
+
+   # allow user to re-invoke the editor (e.g. to view date stamps of the selection)
+   if [ "$edit" != "" -a -s $f ]; then
+      sleep 4; vi $f
+   fi
 fi
 

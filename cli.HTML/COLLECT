@@ -585,7 +585,7 @@ firefox BOOK.html
 # (also: cs2w/chm_http(extract), xchm/gnochm/chmsee/kchmviewer; generation is windows/prop only)
 # firefox hates imagefile;ID img sources and strips ;ID on fs access - consider hardlinks
 chm2pdf --continuous        x.chm
-chm2pdf --webpage --size=a4 x.chm
+chm2pdf --webpage --size=a4 x.chm # --extract-only
 
 
 EOF

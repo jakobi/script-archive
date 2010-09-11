@@ -35,8 +35,32 @@ my $version="0.4.2";
 # - example users: moduletest, mt_playmusic, ...
 # - !! consider a grep object for split initialization and usage, allowing for 
 #   seeding and using multiple grep INTERMIXED and possibly in PARALELL
+#   - remove our
+#   - new/destroy
+#   - something like setargs and applygrep methods
 # - !! trashes $_ when used as module
 # - lack of a grep against string (just against array refs, resulting in grepped lines from the arrays)
+# - perl6 - for each eval group and each regex, add a magic perl6-to-perl5 translation switch.
+#   (at least for the main regexes, to allow for rules -> Perl6::Rules might do the trick, I think)
+# - add some more BEGIN{} namespace tricks for more flexible naming of the package / module
+#   - shall we use Misc::Jakobi:: ?
+# - for speed consider compiled subs / closures instead of eval hooks
+# - infile magic when working with filelists
+#   - either using the filelist option and for 2pass mode, allow
+#     - head (until N kB or first par or <head></head>)
+#     - body (... most efficient, when grepping against the whole file I guess)
+#     - name, dir, path prefixes
+#     (i.e. change the scope we match against per match as requested, e.g. by localizing $_ temporarily, 
+#      from record to name or file head, memoizing (depending on $_ or just on scope) for e.g. filehead matches)
+#     or 
+#     - cache the file on demand and run against the slurped portion of the file 
+#       regexes with a specific prefix 
+#     for the initial test, just try do{} instead of the to-be-explicitely-enabled magics like H: B: N: D: P:
+#     or
+#     - have a e / b / B option to run against the names first
+#       --> give this only as a Grep.pm | Grep.pm -F /dev/stdin example...
+#       --> as well as a do{} hook example saying next File (should already be possible with current code)
+
 
 
 # if these collide with using eval_hooks, disable them:

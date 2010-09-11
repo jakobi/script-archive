@@ -27,6 +27,7 @@ delete $ENV{MOZ_LAUNCHED_CHILD};
 delete $ENV{ADDON_PATH};
 
 $MYPSNUPOPT="-pA4";
+$MYPSNUPBND="";
 $MYPSNUPPRT=$ENV{MYPSNUPPRT};
 $MYPSNUPPRT=$ENV{PRINTER}     if not $MYPSNUPPRT; 
 $MYPSNUPPRT="oj"              if not $MYPSNUPPRT and $0=~/oj/;
@@ -40,10 +41,16 @@ $job="";
 
 while(@ARGV) {
    $_=$ARGV[0];
+   /^\+s3$/        and do{$MYPSNUPBND="-m0.5cm -b-2cm"; shift; next}; # scale mini page up, mini page boundaries
+   /^\+s2$/        and do{$MYPSNUPBND="-m1cm   -b-1.5cm"; shift; next}; # scale mini page up, mini page boundaries
+   /^\+s1$/        and do{$MYPSNUPBND="-m0.0cm -b-0.7cm"; shift; next}; 
+   /^[-\+]s0?$/    and do{$MYPSNUPBND="-m0.0cm"; shift; next}; # scale final page down - outer page boundary
+   /^-s1?$/        and do{$MYPSNUPBND="-m0.5cm"; shift; next};
+   /^-s2$/         and do{$MYPSNUPBND="-m0.7cm"; shift; next};
    /^-?-debug$/    and do{$debug=1; shift; next};
-   /^-[Pd](.*)$/   and do{$MYPSNUPPRT=$1; shift; $MYPSNUPPRT=shift if not $MYPSNUPPRT; next};
-   /^-([8421])$/   and do{$MYPSNUPFMT=-$1; shift; next};
-   /^-?-(gs|pix)$/ and do{$pix=1; $gsdev=lj5gray if not $gsdev; $gsres=1200 if not $gsres; shift; next};
+   /^-[Pd](.*)$/   and do{$MYPSNUPPRT=$1; shift; $MYPSNUPPRT=shift if not $MYPSNUPPRT; next}; # destination printer
+   /^-([8421])$/   and do{$MYPSNUPFMT=-$1; shift; next}; # number of pages
+   /^-?-(gs|pix)$/ and do{$pix=1; $gsdev=lj5gray if not $gsdev; $gsres=1200 if not $gsres; shift; next}; # pixels instead of ps
                    # above ignores printer-set duplex defaults and density/quality/..., but at least it prints. somehow.
                    # however if acroread, first turn off let printer determine colors + lv3,
                    # then consider trying 'print as image' (q: resolution or is that some kind of vectorized gfx stream format??)
@@ -54,7 +61,11 @@ while(@ARGV) {
 $ARGV[0]="/dev/stdin" if  "-" eq $ARGV[0];
 push @ARGV, "/dev/stdin" if not @ARGV;
 
-$psnup      = "cat";     $psnup    = "psnup $MYPSNUPFMT $MYPSNUPOPT -m0.5cm" if $MYPSNUPOPT or $MYPSNUPFMT ne "-1";
+#$MYPSNUPBND="-m1cm   -b-1.5cm" if not $MYPSNUPBND and $MYPSNUPFMT=~/[48]/; # defaults to +s2 page upscale for 4up/8up
+ $MYPSNUPBND="-m0cm   -b-0.7cm" if not $MYPSNUPBND and $MYPSNUPFMT=~/[48]/; # defaults to +s1 page upscale for 4up/8up
+
+
+$psnup      = "cat";     $psnup    = "psnup -b-0.5cm $MYPSNUPFMT $MYPSNUPOPT $MYPSNUPBND" if $MYPSNUPOPT or $MYPSNUPBND or $MYPSNUPFMT ne "-1";
 # GS is single-sided and usable for oj/dj and similar printers
 $gsdev      = "lj5gray"; $gsdev    = "cdjcolor" if $MYPSNUPPRT =~ /^oj/;
                          $gsdev    = "cdjmono"  if $MYPSNUPPRT =~ /^ojmono$|^dj$/;

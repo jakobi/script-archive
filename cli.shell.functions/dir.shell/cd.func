@@ -2,7 +2,7 @@
 # copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
 
-# changed 20091106 changed rd
+# changed 20100626 changed rd yet again
 
 # export CDPATH # do NOT export it, CDPATH is not really suitable for noninteractive use.
 
@@ -55,27 +55,54 @@ function tdir { # multi argument cd
    cd "$1"; shift;
    while [ "$1" != "" ]; do cd "$1"; shift; done
 }
-function md { _p=""; [ "$1" = "-p" ] && _p=-p && shift; mkdir $_p "$@"; cd "$1"; }
+function md { typeset _p; _p=""; [ "$1" = "-p" ] && _p=-p && shift; mkdir $_p "$@"; cd "$1"; }
 function mdkir { mkdir "$@"; }
 function rd {
-   typeset o_p olddir rc pwddir
-   [ "$1" = "-p" ] && o_p="-p" && shift
+   typeset o_rm o_rmdir olddir rc pwddir
+   rc=0
 
-   if [ "$1" = "" -o "$1" = "." ]; then
+   while [ $# -gt 0 ]; do
+       if [ "$1" = "-p"                  ]; then o_rmdir="$o_rmdir -p";    shift; continue; fi # rmdir: only if parents are otherwise empty
+       if [ "$1" = "-r"  -o "$1" = "-R"  ]; then    o_rm="$o_rm    -r";    shift; continue; fi # rm: -r, -rf, -f, -i/I (recursive/force/interactive)
+       if [ "$1" = "-rf" -o "$1" = "-Rf" ]; then    o_rm="$o_rm    -r -f"; shift; continue; fi
+       if [ "$1" = "-f"                  ]; then    o_rm="$o_rm    -f";    shift; continue; fi
+       if [ "$1" = "-i"                  ]; then    o_rm="$o_rm    -i";    shift; continue; fi
+       if [ "$1" = "-I"                  ]; then    o_rm="$o_rm    -I";    shift; continue; fi
+       if [ "$1" = "-h" -o "$1" = "-help" -o "$1" = "--help" ]; then echo "rd [-p] [-r|-f|-rf|-i]  {dir ... | . | }" 1>&2; false; return; fi
+       break
+   done
+
+   # allow to rd $PWD
+   if [ "$1" = "" -o "$1" = "." -o "$1" = "$PWD" ]; then
       curdir="$PWD"
       pardir=`dirname "$PWD"`
       cd "$pardir"
-      # semantics of "rd . some_dir" kills sane relative semantics, so unset further args
+
+      # semantics of "rd . some_dir" kill relative path semantics, so unset any further args
       [ "$2" != "" ] && echo "warn: ignoring further args: $2, ..." 1>&2
       set -- "$curdir"
    fi
 
-   rmdir $o_p "$1"
-   rc=$?
+   # license to kill? Dir contents that is.
+   if [ "$o_rm" != "" -a -d "$1" ]; then
+#echo rm $o_rm -- "$1/".[^.] "$1/".??* "$1/"*
+      rm $o_rm -- "$1/".[^.] "$1/".??* "$1/"* 2>&1 | egrep -v '^rm: cannot remove .*: No such file or directory'
+      rc=$?
+   fi
 
+   # remove the dir as requested (must be empty at this point)
+   if [ -d "$1" ]; then
+#echo rmdir $o_rmdir -- "$1"
+      rmdir $o_rmdir -- "$1"
+      rc=$?
+      # special case error handling - try returning to curdir if we changed to pardir
+      [ "$rc" != "0" -a "$curdir" != "" ] && cd - # "$curdir"
+   fi
+
+   # reinvoke if we've one or more further dirs to kill [UGLY & plain lazy]
    shift
    if [ "$1" != "" ]; then
-      rd $o_p "${1:-$@}"
+      rd $o_rmdir $o_rm "${1:-$@}"
    else
       [ "$rc" = "0" ]
    fi

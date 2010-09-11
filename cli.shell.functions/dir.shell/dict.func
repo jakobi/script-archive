@@ -3,17 +3,17 @@
 # archive:    http://jakobi.github.com/script-archive-doc/
 
 # translation functions
+function xlate_filter { # dict.leo.org
+   recode -f latin1..utf8 | perl -e 'undef $/; $_=<STDIN>; s/\A[\s\S]*?(Englisch|Spanisch|Franz.*?sisch)\s*Deutsch//mgoi; s/^ {10,}//mgo; s/ +$//mgo; s/^ *(Forumsdiskussionen, die den Suchbegriff|Suchfilter einstellen|_____[\s\S]*|Werbung|LEO wird unterst.tzt durch|[ \t]+Hinweise[\s\-]+FAQ)[\s\S]*//mgoi; print'
+}
 function xlate { # dict.leo.org E-D
-    lynx -width=$COLUMNS -dump -nolist "HTTP://dict.leo.org/?lang=de&search="`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"` | \
-   perl -e 'undef $/; $_=<STDIN>; s/\A[\s\S]*?Englisch\s*Deutsch//mgoi; s/^ {10,}//mgo; s/ +$//mgo; s/^ *(_____[\s\S]*|Werbung|LEO wird unterst.tzt durch|[ \t]+Hinweise[\s\-]+FAQ)[\s\S]*//mgoi; print'
+   lynx -width=$COLUMNS -dump -nolist "HTTP://dict.leo.org/?lang=de&search="`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"` | xlate_filter
 }
 function xlates { # espaniol
-   lynx -width=$COLUMNS -dump -nolist "HTTP://dict.leo.org/?lang=de&lp=esde&search="`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"` | \
-   perl -e 'undef $/; $_=<STDIN>; s/\A[\s\S]*?Spanisch\s*Deutsch//mgoi; s/^ {10,}//mgo; s/ +$//mgo; s/^ *(_____[\s\S]*|Werbung|LEO wird unterst.tzt durch|[ \t]+Hinweise[\s\-]+FAQ)[\s\S]*//mgoi; print'
+   lynx -width=$COLUMNS -dump -nolist "HTTP://dict.leo.org/?lang=de&lp=esde&search="`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"` | xlate_filter
 }
 function xlatef { # francais
-   lynx -width=$COLUMNS -dump -nolist "HTTP://dict.leo.org/?lang=de&lp=frde&search="`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"` | \
-   perl -e 'undef $/; $_=<STDIN>; s/\A[\s\S]*?Franz.*?sisch\s*Deutsch//mgoi; s/^ {10,}//mgo; s/ +$//mgo; s/^ *(_____[\s\S]*|Werbung|LEO wird unterst.tzt durch|[ \t]+Hinweise[\s\-]+FAQ)[\s\S]*//mgoi; print'
+   lynx -width=$COLUMNS -dump -nolist "HTTP://dict.leo.org/?lang=de&lp=frde&search="`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"` | xlate_filter
 }
 # translations D/J (req. netscape): http://bunmei7.hus.osaka-u.ac.jp:591/WadokuJT/search.htm
 function xlatej { # japanese/english
@@ -23,14 +23,19 @@ function xlatej { # japanese/english
    perl -e 'undef $/; $_=<STDIN>; $_="" if /Roman?ji Conversion Error|No Matches Found/i; s/\A[\s\S]*?Found//mgoi; s/ *_____[\s\S]*//mgoi; print' | grep .
    true
 }
-function xl_isascii {
+
+function xl_is_ascii {
    perl -e '$_=join(" ",@ARGV); $_=`cat /dev/stdin` if $_ eq "-"; print; exit 1 if /[^\s\x20-\x7e]/' ${1:-"$@"}
 }
-function xl_isgerman { xl_islatin ;}
-function xl_islatin1 { xl_islatin ;} # a lie -- of course, it's UTF8, not latin1
-function xl_islatin  {
+function xl_is_german { cat ${1+"$@"} | xl_is_latin ;}
+function xl_is_latin1 { cat ${1+"$@"} | xl_is_latin ;} # a lie -- of course, it's UTF8, not latin1
+function xl_is_latin  {
    perl -e '$_=join(" ",@ARGV); $_=`cat /dev/stdin` if $_ eq "-"; print; s/[\xc3\xc4][\x80-\xbf]//g; exit 1 if /[^\s\x20-\x7e]/' ${1:-"$@"}
 }
+
+function xl_to_ascii { cat ${1+"$@"} | noumlaut | recode -f ..flat ;}
+function xl_to_utf   { cat ${1+"$@"} | recode -f latin1..utf8 ;}
+
 function xlatej2 { # japanese/english phrase+romaji translation via google
                    # using w3m for it's utf8 support (lynx doesn't work regardless of -assume*, but that might be google's http headers)
                    # - a local romaji conversion would be e.g.

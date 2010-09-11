@@ -73,3 +73,4 @@ done
 #    Media:  A4              595     842     24      24      571     81
 #    Media:  A4dj            595     842     24      50      571     818
 
+# Bugs: enscript supports only latin1, no utf as of jaunty yet
