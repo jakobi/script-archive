@@ -1,8 +1,7 @@
 To view the rendered HTML
 -------------------------
 
-* [cli.conf/00_EXAMPLE_CONFIGURATIONS.html]
-  (http://jakobi.github.com/script-archive-doc/cli.conf/00_EXAMPLE_CONFIGURATIONS.html)
+* [cli.conf/00_EXAMPLE_CONFIGURATIONS.html](http://jakobi.github.com/script-archive-doc/cli.conf/00_EXAMPLE_CONFIGURATIONS.html)
 
 
 See also

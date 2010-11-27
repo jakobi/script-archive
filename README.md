@@ -1,8 +1,7 @@
 To view the rendered HTML
 -------------------------
 
-* [TEMPLATE.html]
-  (http://jakobi.github.com/script-archive-doc/TEMPLATE.html)
+* [TEMPLATE.html](http://jakobi.github.com/script-archive-doc/TEMPLATE.html)
 
 
 See also

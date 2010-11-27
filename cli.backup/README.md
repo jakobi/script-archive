@@ -1,8 +1,7 @@
 To view the rendered HTML
 -------------------------
 
-* [cli.backup/00_BACKUP.html]
-  (http://jakobi.github.com/script-archive-doc/cli.backup/00_BACKUP.html)
+* [cli.backup/00_BACKUP.html](http://jakobi.github.com/script-archive-doc/cli.backup/00_BACKUP.html)
 
 
 See also

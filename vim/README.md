@@ -1,8 +1,7 @@
 To view the rendered HTML
 -------------------------
 
-* [vim/00_VIM.html]
-  (http://jakobi.github.com/script-archive-doc/vim/00_VIM.html)
+* [vim/00_VIM.html](http://jakobi.github.com/script-archive-doc/vim/00_VIM.html)
 
 
 See also

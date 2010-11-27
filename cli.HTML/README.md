@@ -1,8 +1,7 @@
 To view the rendered HTML
 -------------------------
 
-* [cli.HTML/00_HTML-PROCESSING.html]
-  (http://jakobi.github.com/script-archive-doc/cli.HTML/00_HTML-PROCESSING.html)
+* [cli.HTML/00_HTML-PROCESSING.html](http://jakobi.github.com/script-archive-doc/cli.HTML/00_HTML-PROCESSING.html)
 
 
 See also

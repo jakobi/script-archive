@@ -1,8 +1,7 @@
 To view the rendered HTML
 -------------------------
 
-* [cli.list.various/00_LISTPROCESSING2.html]
-  (http://jakobi.github.com/script-archive-doc/cli.list.various/00_LISTPROCESSING2.html)
+* [cli.list.various/00_LISTPROCESSING2.html](http://jakobi.github.com/script-archive-doc/cli.list.various/00_LISTPROCESSING2.html)
 
 
 See also

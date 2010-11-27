@@ -1,8 +1,7 @@
 To view the rendered HTML
 -------------------------
 
-* [cli.list.tagls/00_TAGS_AND_COMMANDLINE.html]
-  (http://jakobi.github.com/script-archive-doc/cli.list.tagls/00_TAGS_AND_COMMANDLINE.html)
+* [cli.list.tagls/00_TAGS_AND_COMMANDLINE.html](http://jakobi.github.com/script-archive-doc/cli.list.tagls/00_TAGS_AND_COMMANDLINE.html)
 
 
 See also

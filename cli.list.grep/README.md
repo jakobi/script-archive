@@ -1,8 +1,7 @@
 To view the rendered HTML
 -------------------------
 
-* [cli.list.grep/00_LISTPROCESSING.html]
-  (http://jakobi.github.com/script-archive-doc/cli.list.grep/00_LISTPROCESSING.html)
+* [cli.list.grep/00_LISTPROCESSING.html](http://jakobi.github.com/script-archive-doc/cli.list.grep/00_LISTPROCESSING.html)
 
 
 See also

@@ -1,8 +1,7 @@
 To view the rendered HTML
 -------------------------
 
-* [cli.processes/00_PROCESS+EVENT-HANDLING.html]
-  (http://jakobi.github.com/script-archive-doc/cli.processes/00_PROCESS+EVENT-HANDLING.html)
+* [cli.processes/00_PROCESS+EVENT-HANDLING.html](http://jakobi.github.com/script-archive-doc/cli.processes/00_PROCESS+EVENT-HANDLING.html)
 
 
 See also

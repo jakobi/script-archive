@@ -1,8 +1,7 @@
 To view the rendered HTML
 -------------------------
 
-* [cli.firefox/00_FIREFOX.html]
-  (http://jakobi.github.com/script-archive-doc/cli.firefox/00_FIREFOX.html)
+* [cli.firefox/00_FIREFOX.html](http://jakobi.github.com/script-archive-doc/cli.firefox/00_FIREFOX.html)
 
 
 See also
