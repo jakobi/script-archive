@@ -8,7 +8,5 @@ To view the rendered HTML
 See also
 --------
 
-* [the archive's documentation overview / filelist page]
-  (http://jakobi.github.com/script-archive-doc/
-  "Peter's Script-Archive Overview and Filelist")
+* [the archive's documentation overview / filelist page](http://jakobi.github.com/script-archive-doc/ "Peter's Script-Archive Overview and Filelist")
 
