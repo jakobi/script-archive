@@ -4,11 +4,11 @@
 
 =head1 VERSION
 
-Version 0.32
+Version 0.33
 
 =cut
 
-our $VERSION="0.32";
+our $VERSION="0.33";
 
 # 20071107 PJ jakobi@acm.org created - wait for processes, tty idle, files, grep in file
 # 20071228 PJ added netidle, diskidle, cpuidle 
@@ -16,11 +16,22 @@ our $VERSION="0.32";
 # 20090824 PJ changed iostat, modified grep for 'command|', switched to strict
 # 20090913 PJ fixed my($_) for older perls
 # 20090917 PJ changes for cpan.org/scripts
+# 20101117 PJ help/examples for negated aliases, fixed ping
+# 20101119 PJ true/false, before/after, looping+shell commands: -l/-ci/-cs/-cfs/-cff
 #
-# copyright:  (c)2007-2009, GPL v3 or later
+# copyright:  (c)2007-2010, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/ 
 #             [check github.com/jakobi/script-archive/cli.processes 
 #              for some ideas on using waitcond with dbus events]
+
+# TODO
+# - --testsuite TESTSTRING to be embedded in this file, but permitting for 
+#   external calling, possibly just running some basic -t conditions w/o looping
+#   (avoiding false errors due to issues like system load on the test machine...) 
+#   sub testtmpfile...
+#   /^1$/ and do {testpre(forkbackgroundflag,perlscrap);$rc=testrun(regex,min,max,arglist);testpost();$rc}
+# - consider setting pscmd as in zap (ps auxww vs. COLUMNS=999 ps -edalf or similar)
+# - CPAN test suite, have dummy scripts call --testsuite...
 
 use warnings;
 use vars;
@@ -28,11 +39,13 @@ use strict;
 
 # defaults for various options
 my $Me=$0; $Me=~s!.*/!!;
+my ($o_force_no_24h)=(0);
 my ($rc,$iter,$oldpackagecount,$packagecount,$count)=(0,0,0,0,0);
+my ($cmd_loop,$cmd_failure,$cmd_success,$cmd_iter,$do_loop)=("","","","","");
 my ($sleep,$recent,$cpuidle,$diskidle,$netidle,$bytesnonempty);
 my ($iostat,$ifconfig)=("","");
 my ($countinit,$loopmax);
-my ($grepmaxsize,$grepopt,$pscmd,$pingcmd, $tty);
+my ($grepmaxsize,$grepopt,$pscmd,$psout,$psout_generation,$pingcmd, $pingmatch, $tty)=(0,"","","",0,"","","");
 $sleep=5;     # shorten to waitcond -V -C 1 -s 1 in case of debugging
 $recent=300; 
 $cpuidle=95;
@@ -44,8 +57,9 @@ $diskidle=10; # buffer cache heuristics -- expect SHORT EXTREME spikes
 $bytesnonempty=0; 
 $grepmaxsize=100000000;
 $grepopt="m"; # eval "m//".$grepopt;
-$pscmd="ps -edalf";
-$pingcmd="ping -t 3 -c 2 >/dev/null 2>&1"; # command must provide rc 1 on fail
+$pscmd="ps -edalfww";
+# ping X is just an alias for grep "2 received" "ping X |"
+$pingcmd="ping -w 6 -c 2 2>&1 "; $pingmatch="2 received"; # ping command and string to match # FIXME language specific
 $tty=`tty`; $tty=~s!(/dev/|\n)!!g; # the part of the pty name that top/ps/... display
 $loopmax=99999; # less than 6 days (assuming 5sec sleep + 0sec cpu usage per iteration)
 
@@ -63,7 +77,7 @@ $and=""; # changed to "and " if an implicit and is possible
 
 while($_=$ARGV[0]){ # OK
    /^(-V|-?-verbose)$/o  and do{shift; $verbose=1; next};
-   /^(-v|--negate)$/o    and do{shift; $negate=1; next};
+   /^(-v|-?-negate)$/o   and do{shift; $negate=1; next};
    /^-r$/o               and do{shift; $recent=shift; next};
    /^-c$/o               and do{shift; $cpuidle=shift; next};
    /^-d$/o               and do{shift; $diskidle=shift; next};
@@ -75,14 +89,20 @@ while($_=$ARGV[0]){ # OK
    /^-i$/o               and do{shift; $grepopt.="i"; next};
    /^-b$/o               and do{shift; $bytesnonempty=shift; next};
    /^-s$/o               and do{shift; $sleep=shift; next};
-   /^(-t|--test)$/o      and do{shift; $test=1; next};
+   /^-l$/o               and do{shift; $do_loop=1; next};
+   /^(-t|-?-test)$/o     and do{shift; $test=1; next};
+   /^--?ci$/o            and do{shift; $cmd_iter=shift; next};
+   /^--?cs$/o            and do{shift; $cmd_loop=shift; next};
+   /^--?cff$/o           and do{shift; $cmd_failure=shift; next};
+   /^--?cfs$/o           and do{shift; $cmd_success=shift; next};
 
-   /^-(h|-?help|\?)$/o  and do{&usage; exit 1};
-   /^-(-?examples)$/o   and do{&usage_examples; exit 1};
+   /^-(h|-?help|\?)$/o   and do{&usage; exit 1};
+   /^-(-?examples?)$/o   and do{&usage_examples; exit 1};
    /^--?$/o and do{shift; last};
    last;
 }
 do{print "no arguments to test..."; exit 1} if not @ARGV;
+$do_loop=0 if $test;
 
 
 
@@ -110,49 +130,107 @@ my $i=0;
 
 
 $rc=eval($expr) ? 1 : 0; # 1st test plus syntax test
-die "whatever this is, a boolean expression it ain't\n: $@\n" if $@;
+die "# $Me: whatever this is, a boolean expression it ain't\n: $@\n" if $@;
 &vprint("# 1st eval returned " . ( $rc ? "true" : "false" ) . "\n");
 exit( $rc ? 0 : 1 ) if $test;
 sleep $initialsleep if $initialsleep;
 
-
-
-$rc=0;
-# basically be paranoid and wait for countinit event repetitions
-$count=$countinit;
-while(($loopmax>0) and ($count>0)){
-   until($rc=eval($expr)){
-      &vprint("# loop condition not yet true ($count;$iter/$loopmax)\n");
-      $count=$countinit;
-      last if not $loopmax>0;
-      $loopmax--;
-      $iter++;
-      sleep $sleep;
+while(1) {
+   $rc=0;
+   # basically be paranoid and wait for countinit event repetitions
+   $count=$countinit;
+   while(($loopmax>0) and ($count>0)){
+      $rc=eval($expr);
+      if ($rc) {
+         &vprint("# loop condition true ($count;$iter/$loopmax)\n");
+         $count--;
+      } else {
+         &vprint("# loop condition not yet true ($count;$iter/$loopmax)\n");
+         $count=$countinit;
+      }
+      $loopmax-- if $loopmax>0;
+      if ($cmd_iter) {
+         system($cmd_iter);
+         if($?) {
+            $loopmax=$do_loop=0;
+            warn "# $Me: LOOP ABORT -ci: ",$?>>8,"\n";
+         }
+      }
+      sleep $sleep if $count and $loopmax>0;
+      next;
    }
-   &vprint("# loop condition true ($count;$iter/$loopmax)\n");
-   $count--;
-   sleep $sleep if $count;
+   
+   # we've a success for countinit iterations - run a shell command?
+   if ($cmd_loop) {
+      warn "# $Me: success on ".localtime(time)."\n" if $do_loop and $loopmax;
+      system($cmd_loop) if $cmd_loop;
+      #if($?) {
+      #   $do_loop=0;
+      #   print main::STDERR "LOOP ABORT -cs: ",$?>>8,"\n";
+      #}
+   }
+   
+   # we're done, run a shell command on the overall results?
+   if ($loopmax<1 or not $do_loop) {
+      # print main::STDERR "TIMEOUT ABORT: returning rc from previous test\n";
+      if ($rc) {
+         system($cmd_success) if $cmd_success;
+         exit 0;
+      } else {
+         system($cmd_failure) if $cmd_failure; 
+         exit 1;
+      }
+   }
+
+   if ($do_loop) {
+      sleep $sleep;
+      next;
+   }
+   last; # shouldn't happen
 }
-
-
-
-print main::STDERR "TIMEOUT OCCURED - returning result from last test\n" if not $loopmax>0;
-exit( $rc ? 0 : 1 ); # switch to shell return code semantics
+exit 20; # shouldn't happen
 
 
 
 #-----------------------------------------------------------------------------------------------------------
 
-sub newfile { # compile time: side effects: $_, $and, @file
+sub newfile { # remember and number files/globs - side effects: @file
    local($_);
    my ($flags);
    ($_,$flags)=@_;
    # allow user to omit the /dev/ prefix when just pasting
    # a tty name from say top or ps -edalf
    $_="/dev/$_" if /^pts\/\d+$/ and $flags=~/\bdev\b/ and not -e $_;
+   warn "# $Me: options cannot appear after condition - filename: $_\n" if /^-/;
    push @file,$_;
    $and="and ";
    $#file;
+};
+
+sub newtime { # convert TIMESPEC to epoch; taken from sleepuntil
+   my ($time,$timespec,$flags, $offset, $epoch);
+   ($timespec,$flags)=@_;
+   $time=$timespec;
+   if    ($time=~/^\d?\d:\d\d(:\d\d)?$/)         { $offset=24*3600 }
+   elsif ($time=~/^(\d{8,})$/)                   { $epoch=$1 }
+   elsif ($time=~/^\+?(\d+)s?$/)                 { $epoch=time+$1 }
+   elsif ($time=~/^\+(\d+)m$/)                   { $epoch=time+$1*60 }
+   elsif ($time=~/^\+(\d+)h$/)                   { $epoch=time+$1*3600 }
+   elsif ($time=~/^\+(\d+):(\d{2})(:(\d{2}))?$/) { $epoch=time+$1*3600+$2*60+$3 };
+   if ($time=~/[^a-z0-9:,\-\.\+ ]/i) {
+      die "# $Me: invalid char in timespec $time";
+   }
+   #$epoch=str2time($time); # too weak, use gnu date -d instead
+   if (not $epoch) {
+      $epoch=`date -d "$time" +\%s`; chomp($epoch); $epoch="" if $?;
+   }
+   if ($epoch=~/\D/ or not $epoch) {
+      die "# $Me: timespec invalid $time / $timespec";
+   } elsif ($offset and time-$epoch>0 and not $o_force_no_24h) {
+      $epoch+=$offset
+   } 
+   $and="and ";
+   $epoch;
 };
 
 sub compile {
@@ -160,12 +238,13 @@ sub compile {
    my($expr)="";
    while(@_){
       $_=shift;
-      /^$/o         and do {die "illegal operator/argument"};
+      /^$/o         and do {die "# $Me: illegal operator/argument"};
       # aliases
+      /^before$/o   and do {unshift @_, "not", "after";   next};
       /^idle$/o     and do {unshift @_, "not", "recent";   next};
       /^empty$/o    and do {unshift @_, "not", "nonempty"; next};
       /^sh$/o       and do {unshift @_, "grep", "()", shift()."|"; next };
-      /^ping$/o     and do {unshift @_, "sh", $pingcmd." ".shift(); next};
+      /^ping$/o     and do {unshift @_, "grep", $pingmatch, $pingcmd." ".shift()."|"; next};
       # syntactic sugar
       /^not$/o      and do {$expr.=$and  ."not ";                                      $and="";     next};
       /^and$/o      and do {$expr.="and ";                                             $and="";     next};
@@ -173,6 +252,10 @@ sub compile {
       /^\($/o       and do {$expr.=$and."( ";                                          $and="";     next};
       /^\)$/o       and do {$expr.=") ";                                               $and="and "; next};
       # functions
+      /^true$/o     and do {$expr.=$and  .'1 ';                                        $and="and "; next };
+      /^false$/o    and do {$expr.=$and  .'0 ';                                        $and="and "; next };
+      /^after$/o    and do {$expr.=$and  .'time >= '.      &newtime(shift).' '; 
+                                                                                       $and="and "; next };
       /^exists$/o   and do {$expr.=$and  .'-e &fn('.       &newfile(shift).') ';       $and="and "; next };
       /^cpuidle$/o  and do {$expr.=$and  .'&cpuidle() ';                               $and="and "; next };
       /^diskidle$/o and do {$expr.=$and  .'&diskidle('."'".        (shift) ."'".') ';  $and="and "; next };
@@ -219,15 +302,14 @@ sub nonempty {
 
 sub grep_ps {
    my($expr,$rc,$tmp)=($_[0],0,"");
-   $tmp=`$pscmd`;
-   $tmp=~s/^.*//; # header line
-   # exclude SELF, but hopefully not too much else (the \d\d:\d\d are sufficient)
-   $tmp=~s/.*\b$$\b.* \d\d:\d\d $tty\b.*$Me\b.*//gm; 
-
-   $rc=1 if eval '$tmp=~/$expr/'.$grepopt; # no o!
+   if ($loopmax != $psout_generation or $psout eq "") {
+      $psout=`COLUMNS=999 $pscmd`; 
+      $psout=~s/^.*//; # skip header line
+      $psout=~s/.*\b$$\b.* \d\d:\d\d $tty\b.*$Me\b.*//gm; # skip waitcond 
+      $psout_generation=$loopmax;
+   }
+   $rc=1 if eval '$psout=~m@$expr@'.$grepopt; # no o!
    warn "# $Me: invalid grep in ps output: $@" if $@;
-   $tmp="";
-  
    return($rc);
 }
 
@@ -250,7 +332,8 @@ sub grep_file {
       # ignore failure for this
       open(FH, "<", $file) and read(FH,$tmp,$grepmaxsize,0); close FH;
    }
-   $rc and do{ eval '$tmp=~/$expr/'.$grepopt or $rc=0 }; # no o!
+warn "READ $tmp\n";
+   $rc and do{ eval '$tmp=~m@$expr@'.$grepopt or $rc=0 }; # no o!
    warn "# $Me: invalid grep in file: $@" if $@; 
   
    return($rc);
@@ -328,88 +411,116 @@ sub vprint {
 sub usage {
    print <<EOF;
 
-waitcond [OPTIONS] EXPR
+waitcond [OPTIONS] CONDITION
 
 version: $VERSION
 
 Wait  for  a  boolean condition expression to evaluate to true  for  a
-minimum number of iterations (-c N; default $countinit).
+minimum number of subsequent iterations (-c N; default $countinit).
 
-The command exits immediately after the test with a suitable exit code
-for  option  -t, and exits with a non-zero exit code after  a  timeout
-(default $loopmax iterations).
+The  command exits after the final successful test for CONDITION  with
+exit  code  0,  otherwise with exit code 1  after  time-out  ($loopmax
+iterations).  Option  -t exists immediately with a suitable exit  code
+depending on CONDITION.
 
-EXPR  might  be as simple as a non-empty list of filenames,  which  is
-expanded  into  a  perl boolean expression that tests  for  the  ANDed
-existence  of  all files. Note that perl's AND actually is ANDSEQ  and
-thus  stops  testing the next sub expression if it cannot  reach  true
-anyway.
+CONDITION  might be as simple as a non-empty list of filenames,  which
+is  expanded  into a perl boolean expression that tests for the  ANDed
+existence  of  all files. 
 
 Alternately  it  can be a valid complex boolean expression  containing
 parenthesis  and the keywords "and", "or", "not" in addition to atoms.
 A  sequence of multiple atoms is ANDed. Use ./ or similar if  keywords
-and filenames collide.
+and  filenames  collide. Note that perl's AND actually is  ANDSEQ  and
+thus  stops  early if the condition is obviously false (regardless  of
+remaining sub expressions).
 
-Atoms for boolean expressions are
 
-a) filenames - test for existance the file.
+Atoms for building boolean conditions:
+
+a) filenames - test for existence the file.
 b) fileglobs - beginning with '*', the remainder is assumed to be a
    glob pattern and IFF matching files do exist _at_ _run-time_, 
    the argument is replaced by the first of these matching files.
-c) functions without arguments
-   1) "cpuidle" 
-d) functions that take 'filenames' or fileglobs as argument:
-   (you may need to protect the execution of more complex tests 
-    with earlier tests for the existance of files - not being
-    able to grep an error string in the log might be due to an
-    even larger error when the application died before creating
-    or updating the log...)
-   1) "exists"        (alias ->see case a)
-   2) "recent"        (file is recently touched)
-   3) "nonempty"      (file is small/empty)
-   4) "idle", "empty" (alias ->recent, ->nonempty)
-   5) "diskidle"      (argument is device basename, e.g. sda; like
+c) constants and functions without arguments
+   1)  "cpuidle" 
+   2)  "true" 
+   3)  "false"
+d) functions with a single argument, usually a filename (or the 
+   first file from a fileglob).
+   # You may need to protect the execution of more complex tests with
+   # earlier tests for the existence of files - not being able to grep
+   # an error string in the log might be due to an even larger error when
+   # the application died before creating or updating the log...; also 
+   # an issue for ->negated aliases.
+   1)  "exists"        (alias for ->case a)
+   2)  "recent"        (file is recently touched)
+   3)  "nonempty"      (file is of more than negible size -> -b) 
+   # negated aliases: 4+5 also succeed if the file doesn't exist
+   4)  "idle"          (alias not ->recent)
+   5)  "empty"         (alias for not ->nonempty)
+   6)  "diskidle"      (argument is device basename, e.g. sda; like
                        cpuidle, it is implemented via iostat and takes
                        about 30s to get a usable value when using 
                        iostat 10 3)
-   6) "netidle"       (argument is device basename, e.g. eth0)
-   7) "sh"            (run shell command and use its return code; ->grep)
-   8) "ping"          (ping a host; update \$pingcmd if necessary ->sh)
+   7)  "netidle"       (argument is device basename, e.g. eth0)
+   8)  "sh"            (run shell command and use its return code; ->grep)
+   9)  "ping"          (ping a host; see \$pingcmd/\$pingmatch; ->grep)
+   10) "after"  TIME   (either EPOCH, a time in the future with +HH:MM(:SS) /
+                        +DDD[hms], or a time string suitable for GNU date -d)
+   11) "before" TIME   (alias not ->after)
 e) functions with a perl regex as first argument (modifiers: $grepopt):
    1) "ps" greps in $pscmd (update \$pscmd if necessary)
    2) "grep" greps in the file given as second argument, allowing
-       use of perl-style 'command |' pseudo filenames to regularly
-       run a shell command, test its return code and for a zero shell
-       return code, grep the command output. Use a regex like '()' 
-       if you are only interested in the commands shell return code.
+       use of perl-style 'command |' pseudo filenames to repeatedly
+       run a shell command, test its return code and - ONLY for a zero 
+       shell return code - grep the command output. Use a regex like '()' 
+       to just use the command's return code.
+
 
 Options:
-  -V     verbose output incl. printing of the compiled expression
-  -i     ignore case for ps and grep
-  -p CMD use as ps command 
-  -t     test condition and return immediately with exit code 
-         for testing or e.g. for use in "while LIST; do LIST; done"
-  -v     globally negate condition 
+
+  -V         verbose output and compiled expression/list of files
+  -i         ignore case for ps and grep (or use /(?i).../)
+  -t         test condition once and return immediately with exit code 
+             e.g. for use in "while waitcond -t CONDITION; do COMMAND; done"
+  -v         globally negate condition 
   
-  -C N   require the expression to be true for a sequence of N 
-         iterations before exiting. -1 implies -C 1 ($countinit) 
-  -T N   timeout after CNT iterations, returning last eval results
-         ($loopmax)
-  -b N   nonempty(/empty): files must have more than N bytes 
-         ($bytesnonempty)
+  # idleness thresholds, ...
+  -b N       nonempty(/empty): files must have more than N bytes ($bytesnonempty)
+  -c N       cpuidle:  if more than N [%] ($cpuidle)
+  -d N       diskidle: if less than N transactions per second ($diskidle)
+  -n N       netidle:  if less than N packets per iteration ($netidle)
+  -p CMD     ps command to use for ps grep ($pscmd)
+  -r SEC     recent(/idle): modified/touched within SEC seconds ($recent)
 
-         # NOTE that idle itself always refers to files, NOT to cpu
-  -c N   cpuidle:  if more than N [%] ($cpuidle)
-  -d N   diskidle: if less than N transactions per second ($diskidle)
-  -n N   netidle:  if less than N packets per iteration are sent or 
-         received ($netidle)
+  # iteration control
+  -C N       require the expression to be true for a sequence of N iterations
+             before returning success. -1 implies -C 1 (default: $countinit) 
+  -T N       timeout after CNT iterations, returning last eval results ($loopmax)
+  -s SEC     sleep SEC seconds per iteration ($sleep) 
 
-  -r SEC recent(/idle): modified/touched within SEC seconds ($recent)
-  -s SEC sleep SEC seconds ($sleep) 
+  # wrap in an infite loop and run shell commands acc. to CONDITION
+  #    waitcond -l -cs "echo ALARM" CONDITION
+  #    =^=   while true;   waitcond CONDITION; echo ALARM; done
+  -l         loop forever, possibly running commands as follow:
+  -ci CMD    run CMD for each iteration / abort looping if false
+  -cs CMD    run CMD on success for ($countinit) iterations (restarts 
+             success-iteration counting, see -C)
+  -cff CMD   run CMD on exit/final failure (e.g. due to a timeout...)
+  -cfs CMD   run CMD on exit/final success (... or a false -ci)
   
 
-For additional notes and examples try --examples.
+Example running a remote upgrade and watching out for hangs / input requests
+  
+  term1\$ tty                                          # -> /dev/pts/18
+  term1\$ ssh -t other_host screen
+  term1\$ apt-get dist-upgrade
 
+  # iterate with sleep 60s and checking for >= 120s idle time of the pty
+  term2\$ waitcond -l -cs "mpg123 LOUD.mp3" -s 60 -r 120 idle /dev/pts/18
+
+
+For further raw notes and examples, try --examples.
 See also: sleepuntil, waitcond.timeout
 
 EOF
@@ -433,21 +544,29 @@ Notes:
     form of open, allowing e.g. to provide pipes as 'filenames'. This is
     a security issue with e.g. waitcond grep string "$(ls -1 log*|head -1)".
     Please consider symlinking to safe name to grep against.
+  - "idle" and "empty" are implemented as negations of "recent", "nonempty".
+    Thus they succeed if the file in question does not exist. To avoid this
+    behaviour, use an additional guard like "exists <file> and idle <file>".
+    A similar issue occurs with "(not) grep REGEX <file>".
 
 Examples: 
   - regularly run a command and wait for a zero shell return code (=success)
     waitcond grep '()' 'true|'
 
   - regularly run a command and grep even if the command fails
-    (example waits for the existance of NaMe in the current dir):
+    (example waits for the existence of NaMe in the current dir):
     waitcond grep 'NaMe(?!: No such file)' '{ ls -1d NaMe 2>&1; true; } |'
     as the shell never sees the final '|', we can strip the braces:
     waitcond grep 'NaMe(?!: No such file)' 'ls -1d NaMe 2>&1;true|'
 
   - wait for processes PID to exit:
     while ps -p 100 102 >/dev/null; do sleep 1; done
-    waitcond not /proc/PID not /proc/PID # aka
-    waitcond -v /proc/{PID,PID}
+    waitcond not /proc/PID1 not /proc/PID1 =^= waitcond -v /proc/{PID1,PID2}
+    waitcond not ps "$LOGNAME +(PID1|PID2) "
+
+    Note  that we've something of a race condition here, depending on the 
+    loop sleep and the OS PID reuse behaviour, suggesting another method:
+    waitcond -V not grep '^sleep\x003601\x00' /proc/9889/cmdline
   
   - wait for processes matching PATTERN to exit:
     while zap -y -l PATTERN | grep . >/dev/null; do sleep 10; done # -a for all users
@@ -461,6 +580,13 @@ Examples:
      the more interesting cpu short-term averages; but there's
      no procfile or command to get this value quickly]
     perl -e 'while(chomp($_=`uptime|cut -d, -f4`)>1.05){sleep 1}'
+
+  - wait until 14:00 hours and run command ALARM
+    waitcond -cs ALARM after 14:00 
+    sleepuntil 14:00; ALARM
+
+    see also date.after:
+    [[ $(date -d "now" +%s) -ge $(date -d "14:00" +%s) ]]
 
   - wait for cpu idle higher than 95%
     [ignoring the averages-SINCE-BOOT on the first and possibly 
@@ -493,11 +619,20 @@ Examples:
     [use who / who am i / or ps -ef to get the associated tty / or this one:]
     # perl -e 'split(/\s+/,$_=`ps -fp 24408|tail -n -1`);print "/dev/$_[5]\n"'
     waitcond not recent /dev/pts/13
+  
+  - wait/loop for a tty to become idle and run a noisy ALARM script
+    to notify $poor_me of possible @\$!?# requests for user input
+    (e.g. a debian dist-upgrade running elsewhere over ssh and screen)
+    waitcond -l -cs ALARM -s 120 -r 120 idle pty/16
 
   - to kill a program after a time interval or condition, try
     waitcond.timeout                               300 top
     waitcond.timeout -TERM:10:KILL                 300 top
     waitcond.timeout "waitcond not recent /dev/pts/13" top
+
+  - watch over a server reboot or service restart, combine conditions:
+    waitcond -v ping SRV && waitcond sh "ssh SRV :" # possibly tweak timeouts
+    waitcond -v grep ... "lynx -dump ..." && waitcond grep ... "lynx -dump ..."
 
   - to restart, these 'watchdogs' are more suitable
     # to kill/watch/restart a command consider e.g. *ps-watcher*
@@ -535,7 +670,7 @@ waitcond [OPTIONS]
 
 Like  tagls/Grep.pm, this script also offers boolean expressions, this
 time  on top of a language of tests likes grepping in ps-output, files
-and  logs, running shell commands, pinging hosts, testing existance of
+and  logs, running shell commands, pinging hosts, testing existence of
 files, threshold-based file mtime, as well as threshold-based cpu, net
 or disk-idle.
 

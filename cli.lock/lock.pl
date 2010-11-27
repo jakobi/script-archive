@@ -43,7 +43,7 @@ my($unlock,$break,$timeout,$rc,$flock,$verbose,$terse,$lock,$err)=(0,0,0,0,0,0,"
 my $delaymessage=1; # regardless of terse/verbose, one pointer to point out delays please.
 my $timestep=5;    # period for decrementing timeout
 my $greedy=0;      # keep obtained incomplete locks?
-my $flockstrict=0; # require plainfile + existance of lockfile
+my $flockstrict=0; # require plainfile + existence of lockfile
 my $mode="ex";     # flock mode (always non-blocking)
 my(@cmd,@lock,%mode,@locked,@tolock,@lockfh);
 

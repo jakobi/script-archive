@@ -4,7 +4,8 @@
 
 # translation functions
 function xlate_filter { # dict.leo.org
-   recode -f latin1..utf8 | perl -e 'undef $/; $_=<STDIN>; s/\A[\s\S]*?(Englisch|Spanisch|Franz.*?sisch)\s*Deutsch//mgoi; s/^ {10,}//mgo; s/ +$//mgo; s/^ *(Forumsdiskussionen, die den Suchbegriff|Suchfilter einstellen|_____[\s\S]*|Werbung|LEO wird unterst.tzt durch|[ \t]+Hinweise[\s\-]+FAQ)[\s\S]*//mgoi; print'
+   # recode -f latin1..utf8 | 
+   perl -e 'undef $/; $_=<STDIN>; s/\A[\s\S]*?(Englisch|Spanisch|Franz.*?sisch)\s*Deutsch//mgoi; s/^ {10,}//mgo; s/ +$//mgo; s/^ *(Forumsdiskussionen, die den Suchbegriff|Suchfilter einstellen|_____[\s\S]*|Werbung|LEO wird unterst.tzt durch|[ \t]+Hinweise[\s\-]+FAQ)[\s\S]*//mgoi; print'
 }
 function xlate { # dict.leo.org E-D
    lynx -width=$COLUMNS -dump -nolist "HTTP://dict.leo.org/?lang=de&search="`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"` | xlate_filter

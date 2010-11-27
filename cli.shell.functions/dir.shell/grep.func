@@ -2,27 +2,31 @@
 # copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
 
+function gr_catfile {
+   for i in ${1:+"$@"}; do
+      # actually we should also differentiate between 
+      # {latin1,utf8} x {nl,\0-terminated} x {plain/compressed}
+      # [\0 currently only used for /FIND during backup; and there are
+      #   wide char issues already in /FIND]
+      test -f "$i" || continue;
+      perl -lne 'BEGIN{
+                   $ENV{i}=$ARGV[0]; 
+                   $cat="cat   -- \$i |"; # dd bs=262144 improves about 0-3% wrt cat
+                                          # nor does slurping change much
+                   $cat="zcat  -- \$i |"  if $ENV{i}=~/\.gz$/o;
+                   $cat="bzcat -- \$i |"  if $ENV{i}=~/\.bz(ip)?2?$/o;
+                   open(STDIN,"$cat") and read(STDIN,$_,1000) and /\0/ and do{ $/="\0"; };
+                   seek(STDIN,0,0);       # may fail when used with pipes 
+                };
+                print if not m!^/*(\./)?[^/]*/(SYSTEM-BACKUPS|automated-backup)/!io;
+      ' "$i"
+   done
+}
+
 function gr_x { 
-   for i in /*FIND* /disk*/*FIND*; do
-       case "$i" in
-          *.gz)                zcat < "$i"      ;; # or zegrep to reduce piping
-          *.bzip|*.bz|*.bzip2) bzcat < "$i"     ;; 
-          # - actually we should differentiate between {latin1,utf8} x {nl,\0-terminated}, 
-          #   all of which may also be gzipped, etc. 
-          #   [\0 currently only used for /FIND during backup; and 
-          #    indeed we have wide char probs already in /FIND; 1 for cat, 3 for cat0]
-          # - possibly exclude already seen files from symlinks, caching stat[0,1]:
-          #   normal stat w/o -l first resolves all links/symlinks:
-          #   perl -e 'print join(":",(stat $ARGV[0])[0,1])."\n";'
-          #   -> but for speed, fully rewrite in perl
-          *)                   if head -c 300 < "$i" | tr -c -d '\0' | grep -a . >/dev/null; then
-                                  tr '\0' '\12' < "$i"
-                               else 
-                                  cat < "$i"
-                               fi
-                               ;;
-       esac
-   done | egrep -v -i -e '^/[^/]*/SYSTEM-BACKUPS' -e '^/[^/]*/automated-backup' | Grep.pm -h -i -B "$@" | sort -u
+   for i in /*FIND* /data*/FIND /disk*/FIND.disk*([^.])?(.gz|.bz|.bz2); do
+      gr_catfile "$i";
+   done | Grep.pm -h -i -B "$@" | sort -u
 }
 
 

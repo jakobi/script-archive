@@ -37,7 +37,7 @@ file: while($#ARGV>-1) {
    $filename=shift(@ARGV);
    $sqfilename=sq($filename);
 
-   # 1.1   check for existance
+   # 1.1   check for existence
    if (! -f $filename) {
       print stderr "* !!! Cannot stat file. Skipping $filename.\n";
       next file;

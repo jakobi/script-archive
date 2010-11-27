@@ -490,7 +490,7 @@ print main::STDERR "$inline - $tmp - $base \n";
 }
 
 sub test {
-   # test existance of a file
+   # test existence of a file
    local($base, $list)=@_;
    local($tmp,$_,$done)=("","","");
 

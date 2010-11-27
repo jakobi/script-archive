@@ -74,9 +74,25 @@ editor_visible_spaces=1
 mcview_remember_file_position=0
 editor_backup_extension=~
 
+kilobyte_si=0
+mouse_close_dialog=0
+ftpfs_use_passive_connections_over_proxy=0
+editor_persistent_selections=1
+editor_cursor_beyond_eol=1
+editor_line_state=0
+editor_simple_statusbar=0
+editor_check_new_line=0
+auto_fill_mkdir_name=1
+reverse_files_only=1
+copymove_persistent_attr=1
+select_flags=6
+skin=default
+keymap=mc.keymap
+auto_save_setup_panels=1
+
 [Layout]
 equal_split=1
-first_panel_size=67
+first_panel_size=91
 message_visible=1
 keybar_visible=1
 xterm_title=1
@@ -87,8 +103,10 @@ show_mini_info=1
 permission_mode=0
 filetype_mode=1
 
+free_space=1
+
 [Dirs]
-other_dir=/home/jakobi
+other_dir=/disk-MED/media/video/anime/xAZU/done
 current_is_left=0
 
 [New Left Panel]
@@ -122,10 +140,18 @@ panel_display_codepage=Other_8_bit
 [Misc]
 ftpfs_password=anonymous@
 ftp_proxy_host=gate
-display_codepage=Other_8_bit
+display_codepage=UTF-8
 ftp_codepage=Other_8_bit
 
+find_ignore_dirs=
+source_codepage=Other_8_bit
+
+[Colors]
+base_color=
+xterm=
+color_terminals=
+
 [Panelize]
-Find *.orig after patching=find . -name \*.orig -print
-Find SUID and SGID programs=find . \( \( -perm -04000 -a -perm +011 \) -o \( -perm -02000 -a -perm +01 \) \) -print
-Find rejects after patching=find . -name \*.rej -print
+Find *.orig after patching=find . -name \\*.orig -print
+Find SUID and SGID programs=find . \\( \\( -perm -04000 -a -perm +011 \\) -o \\( -perm -02000 -a -perm +01 \\) \\) -print
+Find rejects after patching=find . -name \\*.rej -print

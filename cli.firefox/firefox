@@ -93,7 +93,7 @@
 t=thunderbird
 f3=/usr/bin/firefox-3.0
 f=$(which firefox-3.5)
-[ "$f" = "" ] && f=firefox
+[ "$f" = "" ] && f=/usr/bin/firefox
 fs=/usr/bin/mozilla                # 64bit
 #fs=/usr/local/seamonkey/seamonkey # 32bit official build - currently FAIL
 kill=zap                # interactive improved pkill

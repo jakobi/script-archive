@@ -109,14 +109,14 @@ regex/\.(3gp|3GP|mp3|MP3|ogg|OGG|wav|WAV|amr|AMR|wma|WMA|flac|mp2)$
 
 
 # include sections, remove any includes in the copied mc.ext file!!!
-#                   then copy these  EOF and defaults
+#                   then place a copy of these  at EOF and null defaults
 include/audio
 	View=mt_playmusic %f
 	Open=mt_playmusic %f
 	Icon=sound.xpm
 
 include/video
-	Open=(smplayer %f >/dev/null 2>&1 &)
+	Open=(smplayer -add-to-playlist %f >/dev/null 2>&1 &)
         #Open=see %f &
         #Open=(mplayer %f >/dev/null 2>&1 &)
 	#Open=(gtv %f >/dev/null 2>&1 &)
@@ -805,7 +805,7 @@ include/audio
 	Icon=sound.xpm
 
 include/video
-	Open=(smplayer %f >/dev/null 2>&1 &)
+	Open=(smplayer -add-to-playlist %f >/dev/null 2>&1 &)
         #Open=see %f &
         #Open=(mplayer %f >/dev/null 2>&1 &)
 	#Open=(gtv %f >/dev/null 2>&1 &)

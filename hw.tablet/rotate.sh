@@ -1,6 +1,8 @@
 #!/bin/sh
 
 #PJ 
+# rotate [normal|right|left|inverted], default is left.
+
 # hopefully, the tablet buttons will get distinct keycodes again...
 
 # kvkbd and the others except cellwriter get the codes from
@@ -14,12 +16,18 @@
 # the lone button as a modifier.
 
 # tip is left, tip+button is right, double click as usual
-xsetwacom set eraser Button1 "button 2" # middle mouse button
+
+# must match the hal generated names: xinput --list | grep '[w|W]acom' / lshal | grep '[w|W]acom'
+eraser="Serial Wacom Tablet eraser"
+stylus="Serial Wacom Tablet"
+
+
+xsetwacom set "$eraser" Button1 "button 2" # middle mouse button
 
 # values for a rotation-surviving skew of the pointer from
 # wacomcpl callibration
-xsetwacom set stylus TopX    1
-xsetwacom set stylus TopY -106
+xsetwacom set "$stylus" TopX    1
+xsetwacom set "$stylus" TopY -106
 
 # for now there seems to be no need to disable things in HAL
 
@@ -33,8 +41,8 @@ fi
 
 if [ "$orientation" = 'normal' ]; then
 	xrandr -o normal
-	xsetwacom set stylus rotate 0
-	xsetwacom set eraser rotate 0
+	xsetwacom set "$stylus" rotate NONE
+	xsetwacom set "$eraser" Rotate NONE
 #       xmodmap /dev/stdin <<EOF
 #           keycode  10 = Up       exclam 1 exclam onesuperior exclamdown      
 #           keycode  11 = Down     at 2 quotedbl twosuperior oneeighth
@@ -68,8 +76,8 @@ elif [ "$orientation" = 'left' ]; then
         #           placed in easystroke
 	# no autostart: xournal (combining text and pdf editing w pen)
 	
-        xsetwacom set stylus rotate 2
-	xsetwacom set eraser rotate 2
+        xsetwacom set "$stylus" Rotate CCW
+	xsetwacom set "$eraser" rotate CCW
         # extra mappings for the joystick key, but
         # the keycode is idx to the number keys,
         # excepting the super_r which i cannot use
@@ -86,11 +94,11 @@ elif [ "$orientation" = 'left' ]; then
 EOF
 elif [ "$orientation" = 'right' ]; then
 	xrandr -o right
-	xsetwacom set stylus rotate 1
-	xsetwacom set eraser rotate 1
+	xsetwacom set "$stylus" rotate CW
+	xsetwacom set "$eraser" rotate CW
 elif [ "$orientation" = 'inverted' ]; then
 	xrandr -o inverted
-	xsetwacom set stylus rotate 3
-	xsetwacom set eraser rotate 3
+	xsetwacom set "$stylus" rotate HALF
+	xsetwacom set "$eraser" rotate HALF
 fi
 

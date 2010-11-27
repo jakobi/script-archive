@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # this toy should try a visual and sonic attack,
-# possibly even starting the audio daemon to
+# possibly even starting the audio daemon
 # get attention (though it probably should also 
-# check volume and possibly even try a remote connect
-# to a known good sound server turned up just for 
+# check volume, un-mute, and possibly even try a remote
+# connect to a known good sound server turned up just for 
 # notifications - monitor speakers may be turned off
 # if the monitor's off or powersaving ...)
 
@@ -28,9 +28,18 @@ time=$(date +%H:%M)
 export bmsg="$tty{$time}${1:+: $*}";
 export msg="ALERT $bmsg";
 
-( echo "Subject: ALERT for $@"; echo "To: $LOGNAME"; echo; echo "$msg" ) | /usr/lib/sendmail -ti
+( echo "Subject: ALERT for $tty - ${@:-<no subject given>}"; echo "To: $LOGNAME"; 
+  echo; echo "$msg" ) | /usr/lib/sendmail -ti
+
+echo
+echo -n "# ALERT:    $tty on $(date)"
 
 if [ "$DISPLAY" != "" ] ; then
+   # echo "# to clear OSD: (1) ALERTOSD or osdctl -s ' ' / zap osdsh or"
+   # echo "#               (2) perl -e 'print qq@\n@x3' >>$l / zap osd_cat"
+   echo -n " / run ALERTCLR to clear OSD"
+
+
    # set a WM hint ON THE CURRENTLY ACTIVE WINDOW - not necessarily 
    # for OUR window (this is indeed correct if the command is wrapped
    # by xurgency). It's likely the one below the xmessage. However
@@ -46,13 +55,16 @@ if [ "$DISPLAY" != "" ] ; then
 :       xmessage -nearmouse -timeout 40000 "$msg" & 
    }
    
-   # display limited to about 10s max with freedesktop-DBUS/galago/ubuntu NotifyOSD
-   # IF it displays
+   # display limited to about 10s max with freedesktop-DBUS/galago/ubuntu 
+   # NotifyOSD -- IF it displays
+   
    perl -e 'use Desktop::Notify;$N=Desktop::Notify->new();
             $n=$N->create(summary=>"ALERT",body=>"$ARGV[0]",timeout=>9000);
-            $n->show()' "$bmsg" 2>/dev/null 
+            $n->show(); 
+           ' "$bmsg" 2>/dev/null 
    # other options:
-   # echo test | wall writes to e.g. one's _login_ shells, not mere interactive shell (root overrides mesg)
+   # echo test | wall writes to e.g. one's _login_ shells, not mere
+   # interactive shell (root overrides mesg)
    # FreeDesktops notification area / systray via e.g. a full Gtk app using 
    #    e.g. Menues and Gtk2::TrayIcon [even worse than wall]
 
@@ -63,27 +75,29 @@ if [ "$DISPLAY" != "" ] ; then
    #    when it no longer fails every 2 seconds
    # libxosd2 / osd_cat 
    # osdsh / osdctl
-   test -x $osd && $osd "ALERT $*";
-
+   test -x $osd && $osd "ALERT $*" 2>/dev/null;
+   
    # to move/focus windows: xdotool
+   :
 fi
 
 echo -ne '\a'; sleep 1 # bash builtin, NOT in ash /bin/sh
 echo -ne '\a'; sleep 1
 echo -ne '\a'; sleep 1
+echo
 
-# any need to fix volume?
+# any need to fix volume / un-mute?
 
 test -x /usr/bin/aplay && { 
    for i in $HOME/images/trek/tos-intercom.au; do
-      aplay $i
+      aplay $i >/dev/null 2>&1
       sleep 1;
    done
 }
 
 test -x /usr/bin/mpg123 && {
    # maybe add a mixed command?
-   echo press ^c to end alert
+   # echo "# ALERT:    press ^c to end mpg123"
    for i in $HOME/.alarm.mp3 $HOME/images/alarm.mp3 /compact/images/alarm.mp3; do
       test ! -f $i && continue
       padsp mpg123 $i >/dev/null 2>&1 && break
@@ -91,9 +105,3 @@ test -x /usr/bin/mpg123 && {
    done
 }
 
-if [ "$DISPLAY" != "" ] ; then
-   echo ""
-   echo "# use ALERTCLR to clear OSD"
-#   echo "# to clear OSD: (1) ALERTOSD or osdctl -s ' ' / zap osdsh or"
-#   echo "#               (2) perl -e 'print qq@\n@x3' >>$l / zap osd_cat"
-fi

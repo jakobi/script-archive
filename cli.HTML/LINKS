@@ -89,15 +89,18 @@ foreach(@files) {
       $url=$_[0]; 
       pos $lines = 1 + pos $lines;
       $url=~s/[\r\n\t ]+/ /g;
-      if ($remote and ( $url=~/$rurl1/oi or $url=~/$rurl2/io)) {
+# type rurl2 can contain type rurl1 patterns - we also call add_url once per type, so get
+# the larger match from the textscrap in question - see lines following this function.
+# fugly.
+      if      ($remote and ( $url=~/$rurl2/oi or $url=~/$rurl1/io)) {
 #print stderr "1: $url\n";
          $url=$3; $url=~s/#[\s\S]*//io   if $url;
 #print stderr "2: $url\n";
          $url="<A HREF=\"$url#source_$_\"></A>" if $url;
 #print stderr "3: $url\n";
-      } elsif ($html and ( $url=~/$rurl1/oi or $url=~/$rurl2/io)) {
+      } elsif ($html   and ( $url=~/$rurl2/oi or $url=~/$rurl1/io)) {
          $url="<A HREF='$3'>$3</A>";
-      } elsif ($list and ( $url=~/$rurl1/oi or $url=~/$rurl2/io)) {
+      } elsif ($list   and ( $url=~/$rurl2/oi or $url=~/$rurl1/io)) {
          $url=$3;
       }
       if ($url) {

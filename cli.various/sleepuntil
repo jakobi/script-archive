@@ -4,6 +4,7 @@
 
 my $version="0.1";
 # 2008XXXX PJ   0.1  jakobi@acm.org initial version
+# 20101115 PJ        obfuscated help
 #
 # copyright:  (c) 2008-2009 jakobi@acm.org, placed under GPL v3 or later 
 # archive:    http://jakobi.github.com/script-archive-doc/
@@ -71,27 +72,38 @@ exit $rc;
 sub usage {
    print <<EOF;
 sleepuntil [OPTIONS] TIMESPEC
-sleepuntil [OPTIONS] -c CMD -t TIMESPEC -c CMD -t TIMESPEC
+sleepuntil [OPTIONS] -c CMD -t TIMESPEC -t TIMESPEC -c CMD -t TIMESPEC ...
+sleepuntil [OPTIONS] -t TIMESPEC -t TIMESPEC -t TIMESPEC ... -C CMD
+
+sleepuntil   -t   sleeps  until  the  specified  TIMESPEC.  For   more
+information  on  TIMESPEC  format,  see  -d  option  of  (GNU)   date.
+Additional valid TIMESPECs are +SECONDS, +MINUTESm, or +HHH:MM(:SS).
+
+On wakeup, a default command may be executed; use option -c CMD to set
+or  redefine  the command for subsequent TIMESPECs. If necessary,  use
+/bin/true  to give a non-empty dummy command - TIMESPECs with  "empty"
+commands  execute the default, i.e. the value of the final -c CMD. The
+command must terminate in advance of the next TIMESPEC.
 
 Options:
-  -DDD      count down in steps of DDD seconds
-  -c CMD    command C is run after sleep
-  -f	    use TIMESPECs without checking and possibly adding 24h
-  -t T      use TIMESPEC T
+  -<NUM>    count down in steps of NUM seconds
+  -c CMD    set command to run for _subsequent_ -t TIMESPECs ("$o_cmd"),
+            as well as earlier TIMESPECs with empty command argument.
+  -f        force TIMESPECs to skip checking/possibly adding 24h
+  -t T      sleeps the difference from the previous TIMESPEC/now until 
+            TIMESPEC T.
 
-Notes:
- - TIMESPEC alias: +SSS or +MMMm or +HHH:MM(:SS) 
- - TIMESPEC alias: HH:MM(:SS) - adds 24h as necessary
- - sleeps  until  TIMESPEC.  For TIMESPEC, see date -d (GNU).
- - a TIMESPEC optionally executes the previously defined CMD,
-   or the value of the last CMD argument in \@ARGV. 
-  
 Examples:
- - TZ=EST sleepuntil 22:00 # sleep until next 22:00 in timezone EST
+ - sleepuntil    -c ALARM -t 17:00 -t 18:00 # run a script called ALARM
+   == sleepuntil -t 18:00 -t 17:00 -c ALARM # at 17:00 and 18:00 o'clock
+ - TZ=EST sleepuntil 22:00 # sleep until next 22:00 in timezone EST,
+                             (in case of HH:MM or HH:MM:SS formats, it will
+                              add 24h if HH:MM is in the past)
+                             see also: TZ=MESZ date -d "1:00pm EST" 
+                             (MET=MEST=MEZ=MEST, as MEZ incl. ST).
  - sleepuntil "fri 22:00"  # sleep until 22:00 on next friday
  - sleepuntil "+4:30"      # translated to "+4 hours 30 minutes" for date
  - sleepuntil "+20s"       # translated to "+20 seconds" for date
- see also: TZ=MESZ date -d "1:00pm EST" (MET=MEST=MEZ=MEST, as MEZ incl. ST).
 
 EOF
 }

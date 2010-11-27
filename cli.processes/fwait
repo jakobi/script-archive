@@ -109,7 +109,7 @@ sub usage {
      pid: for numbers, else file:
      
      Test expressions:
-       testing existance of files and directories:
+       testing existence of files and directories:
        - file:FILENAME
        - dir:DIRECTORYNAME
        - pid:PROCESSID            [ = dir:/proc/PROCESSID]
@@ -131,5 +131,7 @@ sub usage {
        $me -v ps:make           -- wait until make is finished
        $me 'grep:OUT:(?i)DONE'  -- wait until file OUT contains DonE, ...
 
+     See also: 
+       - waitcond (a more powerful condition handling / checking tool)
 USAGE
 }

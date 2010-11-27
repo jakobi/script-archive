@@ -9,10 +9,12 @@
 echo "$*" 2>&1
 
 if echo "$*" | egrep -e '^-P ?PDF$' >/dev/null; then
+   echo "pdf printing" >> $HOME/.lpr.debug
    /usr/bin/lpr "$@"
 else if echo "$ADDON_PATH" | grep -i firefox >/dev/null || 
- set | grep -e MOZ_LAUNCHED_CHILD -e 'MYPSNUPREROUTEALL' >/dev/null ||
- test -f $HOME/.mypsnuprerouteall && [ "$MYSPNUPSKIPREROUTEALL" = "" ] ; then
+        set | grep -e MOZ_LAUNCHED_CHILD -e 'MYPSNUPREROUTEALL' >/dev/null ||
+        test -f $HOME/.mypsnuprerouteall && [ "$MYSPNUPSKIPREROUTEALL" = "" ] ; then
+   echo "rerouting" >> $HOME/.lpr.debug
    opt=${MYPSNUPREROUTEOPT:--2}
    # avoid looping
    export MYPSNUPSKIPREROUTEALL=1
@@ -23,6 +25,7 @@ else if echo "$ADDON_PATH" | grep -i firefox >/dev/null ||
    # maybe pop a requester if DISPLAY seems to work to allow modifications?
    mypsnup $opt
 else
+   echo "final else" >> $HOME/.lpr.debug
    /usr/bin/lpr "$@"
 fi
 fi
