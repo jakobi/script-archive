@@ -6,7 +6,7 @@
 # copyright:   (c) 2009 jakobi@acm.org, GPL v3
 # archive:     http://jakobi.github.com/script-archive-doc/
 # created:     jakobi@acm.org 20090211
-# last change: jakobi@acm.org 20090620
+# last change: jakobi@acm.org 20110419 - for firefox4/sqlite3 3.7.x WAL journaling mode and my too-ancient-DBD
 
 # in addition to the html dumper, we use ::: as delimeter in listing
 # multiple pathes (e.g. due to tags or similar) instead of returning
@@ -27,7 +27,19 @@ use Data::Dumper;
 package bm;
 my($o_tree, $file)=@ARGV;
 
-system(qq!cp '$file.journal' '${file}0.journal' 2>/dev/null; cp '$file' '${file}0'!); $file.="0"; # enforce creation of a lockfree corrupt db copy
+
+## enforce creation of a lockfree corrupt db copy
+#
+# perl -e 'undef $/;$_=<>;s/\A(.{18})../$1\x01\x01/;print' places.sqlite0 > places.sqlite1
+# sqlite3.7: WAL mode: http://www.sqlite.org/wal.html#bkwrds !!
+# sigh - I utterly refuse to code this sqlite3 3.7.x ugliness in perl proper...
+system(qq!cp '$file.journal' '${file}0.journal' 2>/dev/null!);
+system(qq!cp '$file-wal'     '${file}0-wal' 2>/dev/null!); # not that this helps, considering the ugliness below to change \x2\x2 back to \x1\x1 for ancient software
+system(qq!cp '$file-shm'     '${file}0-shm' 2>/dev/null!);
+system(qq!cp '$file' '${file}0'!);
+system(qq!perl -i.bak -e 'undef \$/;\$_=<>;s/\\A(.{18})../\$1\\x01\\x01/;print' '${file}0'!); # and hack/remove the WAL version for old sqlite3 < 3.7 / old perl DBD::SQLite::db
+$file.="0"; 
+
 
 my(%node, %place);
 

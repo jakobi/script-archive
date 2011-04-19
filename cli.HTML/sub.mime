@@ -162,7 +162,7 @@ sub unbase64 {
    local($body)=@_;
    my($len, $len1, $newbody, $tmp, $i);
    $body=~tr#A-Za-z0-9+/##cd;                   # remove non-base64 chars incl. newlines
-   $body=~tr#A-Za-z0-9+/# -_#;                  # convert to uuencoded format
+   $body=~tr#A-Za-z0-9+/# -_#;                  # convert b64 to uuencode form
    $len1=length($body);
    for($i=0;$i<=$len1;$i+=40) {
       $tmp=substr($body,$i,40);                 # HACK I don't care now about the last (possibly incomplete) character...

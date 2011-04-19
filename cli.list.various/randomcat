@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# randomize lines
+# randomize lines (see also: debian: shuf)
 
 my $version="0.1";
 # created     PJ 2002XXXX jakobi@acm.org

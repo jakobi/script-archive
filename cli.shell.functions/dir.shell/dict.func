@@ -1,5 +1,5 @@
 # created     PJ 200907XX jakobi@acm.org
-# copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
+# copyright:  (c) 2009-2011 jakobi@acm.org, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
 
 # translation functions
@@ -17,11 +17,16 @@ function xlatef { # francais
    lynx -width=$COLUMNS -dump -nolist "HTTP://dict.leo.org/?lang=de&lp=frde&search="`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"` | xlate_filter
 }
 # translations D/J (req. netscape): http://bunmei7.hus.osaka-u.ac.jp:591/WadokuJT/search.htm
-function xlatej { # japanese/english
-   lynx -width=$COLUMNS -dump -nolist "HTTP://dict.regex.info/cgi-bin/j-e/tty/dosearch?sDict=on&H=PS&L=J&WC=none&T="`perl -e 'print join "%20", @ARGV;' "$@"` |\
-   perl -e 'undef $/; $_=<STDIN>; $_="" if /Roman?ji Conversion Error|No Matches Found/i; s/\A[\s\S]*?Found//mgoi; s/ *_____[\s\S]*//mgoi; print' | grep .
-   lynx -width=$COLUMNS -dump -nolist "HTTP://dict.regex.info/cgi-bin/j-e/tty/dosearch?sDict=on&H=PS&L=E&WC=none&T="`perl -e 'print join "%20", @ARGV;' "$@"` |\
-   perl -e 'undef $/; $_=<STDIN>; $_="" if /Roman?ji Conversion Error|No Matches Found/i; s/\A[\s\S]*?Found//mgoi; s/ *_____[\s\S]*//mgoi; print' | grep .
+function xlatej { 
+   : japanese/english
+   : typeset url=http://www.gokanji.com/cgi-bin/j-e/dict
+   : "ex. waka AND ENG separate OR understand AND NOT wakare OR wakari (with OR binding MORE TIGHTLY than AND!!)"
+   typeset url=http://enterprise.ottix.net/cgi-bin/j-e/utf8/tty/
+   lynx -width=$COLUMNS -dump -nolist "$url/dosearch?sDict=on&H=PS&L=J&WC=none&IR=on&T="`perl -e 'print join "%20", @ARGV;' "$@"` |\
+   perl -e 'undef $/; $_=<STDIN>; $_="" if /Roman?ji Conversion Error|No Matches Found/i; s/\A[\s\S]*?(Found|First \d+ Matches:)//mgoi; s/ *_____[\s\S]*//mgoi; print' | grep .
+echo ==
+   lynx -width=$COLUMNS -dump -nolist "$url/dosearch?sDict=on&H=PS&L=E&WC=none&IR=on&T="`perl -e 'print join "%20", @ARGV;' "$@"` |\
+   perl -e 'undef $/; $_=<STDIN>; $_="" if /Roman?ji Conversion Error|No Matches Found/i; s/\A[\s\S]*?(Found|First \d+ Matches:)//mgoi; s/ *_____[\s\S]*//mgoi; print' | grep .
    true
 }
 
@@ -37,6 +42,15 @@ function xl_is_latin  {
 function xl_to_ascii { cat ${1+"$@"} | noumlaut | recode -f ..flat ;}
 function xl_to_utf   { cat ${1+"$@"} | recode -f latin1..utf8 ;}
 
+function xlatel {
+   _arg="$(perl -e '$_=join " ", @ARGV; s/([\(\)\[\]\{\}\&\;\+\s])/"%".unpack(H2,$1)/geo; print' "$@")"
+   w3m -dump "http://translate.google.com/translate_t?hl=&ie=UTF-8&sl=la&tl=en&text=$_arg" |\
+   perl -e 'undef $/; $_=<STDIN>; /[\s\S]+?Latin to English.*\n([\S\s]*?)\n.*(contribute a better translation|\Z|View detailed dictionary)/i and $_=$1 or $_=""; print' | grep .
+   echo
+   w3m -dump "http://translate.google.com/translate_t?hl=&ie=UTF-8&tl=la&sl=en&text=$_arg" |\
+   perl -e 'undef $/; $_=<STDIN>; /[\s\S]+?English to Latin.*\n([\S\s]*?)\n.*(contribute a better translation|\Z|View detailed dictionary)/i and $_=$1 or $_=""; print' | grep .
+   true
+}
 function xlatej2 { # japanese/english phrase+romaji translation via google
                    # using w3m for it's utf8 support (lynx doesn't work regardless of -assume*, but that might be google's http headers)
                    # - a local romaji conversion would be e.g.
@@ -47,12 +61,13 @@ function xlatej2 { # japanese/english phrase+romaji translation via google
                    # - see also: http://php.net/manual/en/function.recode-string.php (e.g. romaji to hiragana transliteration)
                    # - detecting non-ascii/non-sane: perl -lne 'exit 1 if not /[^\x20-\x7e]/' # maybe allow for CRLF and TAB or even ESC/CSI
                    # - DEC, EUC, SJIS are older non-compatible kanji encodings
-   arg="$(perl -e '$_=join " ", @ARGV; s/([\(\)\[\]\{\}\&\;\+\s])/"%".unpack(H2,$1)/geo; print' "$@")"
-   w3m -dump "http://translate.google.com/translate_t?hl=&ie=UTF-8&sl=ja&tl=en&text=$arg" |\
-   perl -e 'undef $/; $_=<STDIN>; /[\s\S]+?Japanese to English.*\n([\S\s]*?)\n.*contribute a better translation/i and $_=$1 or $_=""; print' | grep .
+   : use head -1 for romaji
+   _arg="$(perl -e '$_=join " ", @ARGV; s/([\(\)\[\]\{\}\&\;\+\s])/"%".unpack(H2,$1)/geo; print' "$@")"
+   w3m -dump "http://translate.google.com/translate_t?hl=&ie=UTF-8&sl=ja&tl=en&text=$_arg" |\
+   perl -e 'undef $/; $_=<STDIN>; s/Dictionary - View.*\n|Japanese to English.*\n|\[\s+\].*\n//g;/\s+Cancel.*\n([\S\s]*?)\n.*(contribute a better translation|\Z|Google.Translate for)/i and $_=$1 or $_=""; print' | grep .;
    echo
-   w3m -dump "http://translate.google.com/translate_t?hl=&ie=UTF-8&tl=ja&sl=en&text=$arg" |\
-   perl -e 'undef $/; $_=<STDIN>; /[\s\S]+?English to Japanese.*\n([\S\s]*?)\n.*contribute a better translation/i and $_=$1 or $_=""; print' | grep .
+   w3m -dump "http://translate.google.com/translate_t?hl=&ie=UTF-8&tl=ja&sl=en&text=$_arg" |\
+   perl -e 'undef $/; $_=<STDIN>; /[\s\S]+?English to Japanese.*\n([\S\s]*?)\n.*(contribute a better translation|\Z|View detailed dictionary)/i and $_=$1 or $_=""; print' | grep .
    true
 }
 function xlatej_url { # japanese/english via google or babelfish
@@ -93,7 +108,83 @@ function xlate_ref { # www.reference.com
    echo '#lynx "'$url'"'
 }
 
+function xlate_answers {
+   w3m -no-proxy -M "http://www.answers.com/"`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"`
+}
 
+function xlate_idiom {
+   w3m -no-proxy -M "http://idioms.thefreedictionary.com/"`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"`
+}
+
+function xlate_dictw {
+   w3m -no-proxy -M "http://en.wiktionary.org/wiki/"`perl -e 'print join "%20", grep {s/ /%20/g;$_} @ARGV;' "$@"`
+}
+
+
+function xlate_mkpw {
+    : "xlate_pw [-s seed string or url] [length or sample-string]"
+    : "generate a pastable pw of specified length"
+    : "if invoked with -s, always generate the same pw for the same seed,"
+    : "provided Perl's rand is as stable over releases as it should be"
+    : "  probably better:  crypt hash instead of randomizing for -s (think unixpw)"
+    : "                    hash(salt + domain) -> (pw, list of uid suggestions)"
+    perl -lXe '
+             if($ARGV[0] eq "-s"){srand(unpack "%L*",$ARGV[1]);shift;shift}else{srand};
+             $l=$ARGV[0]//=8;$l=length($l) if $l=~/[^0-9]/; $#l=$l-1;
+             $_="abcdefghijklmnopqrstuvwxyz";@c=split "",$_.uc.q!+-_%:0123456789!;
+             print map{$c[int(rand $#c+1)]} @l
+            ' -- ${1:+"$@"}
+    # see also
+    # perl's randpass, String::MkPasswd (unreadable, w constraints)
+    #        Crypt::RandPasswd (readable pw)
+    #        mkname (xlate_mkname, readable names, also acc to word lists)
+    #        language confluxer lc (http://www.ruf.rice.edu/~pound/)
+    #           also there: werd, a tiny grammar-controlled name/language-wordlist generator
+    #        Data::Password (e.g. IsBadPassword()) # dict
+    #        Data::Password::Entropy # usage-freq stats, but ignores dict/qwerty-distances, 
+    #           primitive l=1 style obfuscation, (char/seq)-usage-frequencies
+    # setting PAM to NSA-style pw:
+    #       perl -p -i.prekickstart -e 'BEGIN {print stderr "Configure password quality module\n";};s{(^password\s+requisite\s+)(pam_cracklib.so)(.*)}{$1 pam_passwdqc.so min=disabled,disabled,16,12,8} ;' /etc/pam.d/system-auth
+    # get 100 10-char passwords in ksh: (500 chars to have probably enough 
+    # alphanum chars to make up the password; piping to uue might be better)
+    # - L=10;i=1;while [ $i -le 100 ];do head -c 500 /dev/urandom|tr -dc a-zA-Z0-9|head -c $L;echo;let i+=1;done
+    # get a 18-byte random uue string from 10-byte (+33% cum padding)
+    # - head -c 10 /dev/urandom | perl -e '$_=<>;print pack("u",$_)'
+    # - head -c 10 /dev/urandom | base64 | head -c 12
+    # - head -c 10 /dev/urandom | cat -vet
+    # openssl rand -base64 32 # 45 char pw (32byte thru uue)
+    # date|md5sum 
+}
+function xlate_mkname {
+   : "restricted to about maxsize of word in /u/s/d/words or similar: <=22"
+   : "strip the usual 's used as hint suffix in the wordlist"
+   if [ "$1" != "" ]; then  
+      ~/bin/xlate_mkname -m $1 -M $1;
+   else
+      ~/bin/xlate_mkname 
+   fi
+}
+function xlate_mkpassphrase { 
+    : see xlate_pw, but insteads of password, do generate a passphrase from /usr/share/dict/words
+    : note that word list updates make -s URL -style seeding QUICKLY unstable/unreliable
+    perl -e '
+             if($ARGV[0] eq "-s"){srand(unpack "%L*",$ARGV[1]);shift;shift}else{srand};
+             $l=$ARGV[0]//=8;
+             @c=`cat /usr/share/dict/words|sed "s/[^a-zA-Z].*//"|sort -u`;chomp @c;
+             while(@p<$l){push @p,$c[int(rand $#c+1)]};
+             print join(" ",@p),"\n";' -- ${1:+"$@"}
+}
+function xlate_pwquality {
+   : see also Data::Password::Entropy / xlate_pwentropy
+   : BUG: tests only against 1st readable dictionary file, no dvorak
+   perl -le '
+             use Data::Password qw(:all); 
+             $MAXLEN=2000000; 
+             push @DICTIONARIES, map {s!^!/usr/share/dict/!;$_} map {$_}
+                qw(american-english british-english ngerman ogerman);
+             $_=shift;s/ /_/g;
+             print IsBadPasswordForUNIX("nobody",$_)//"ok"' -- ${1:+"$@"}
+}
 
 # requires ispell, ingerman, iogerman, iamerican
 function ispellwort {
@@ -115,10 +206,6 @@ function ispellword {
 # -------------------------------------------------------------
 
 alias feiertage='gcal -q de_BA -n'
-function answers {
-   w3m -no-proxy -M "http://www.answers.com/$1"
-}
-
 function wikid {
    w3m -no-proxy -M "http://de.wikipedia.org/wiki/$1"
 }
@@ -126,6 +213,7 @@ function wikie {
    w3m -no-proxy -M "http://en.wikipedia.org/wiki/$1"
 }
 alias wiki=wikie
+alias wiki.de=wikid
 
 
 # vim:filetype=sh

@@ -1,4 +1,6 @@
-[# #]
+[#
+ see https://github.com/rtomayko/rdiscount/blob/master/man/markdown.7 for this markup implementation
+ #]
 [- 
    $escmode=0;
 -]

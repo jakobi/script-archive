@@ -52,7 +52,8 @@ if (not $file or not $file=~/:/ and not -r $file) {
 # try find a default in .mozilla
 if (not $file or not $file=~/:/ and not -r $file) {
    # allows for migration from firefox to a hopefully more current firefox-<...>
-   my $firefoxhome=`ls -dr1 ~/.mozilla/firefox{,-*}| head -1`; $firefoxhome=~s/\n//g;
+   my $firefoxhome=`ls -dr1 ~/.mozilla/firefox{-*,} 2>/dev/null | head -1`; $firefoxhome=~s/\n//g;
+## WARNING: ASSUMES THAT OUR PROFILE OF INTEREST ENDS IN *default - use FIREFOXGREPPATH to explicitely set it!
    chomp($file=`ls -dt1 $firefoxhome/*default/bookmarks.html  $firefoxhome/*default/places.sqlite 2>/dev/null | head -1`);
 }
 

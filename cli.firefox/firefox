@@ -89,10 +89,14 @@
 #   unknown options like -P to firefox (or firefox3).
 
 
+# Related:
+# http://www.cs.indiana.edu/~kinzler/webrowse/ - cutbuf / inbrowse / webbrowse
+
+
 # variables with user settings 
 t=thunderbird
-f3=/usr/bin/firefox-3.0
-f=$(which firefox-3.5)
+f3=/usr/bin/firefox-3.6
+f=$(which -a firefox | grep -v -- $0 | head -1)
 [ "$f" = "" ] && f=/usr/bin/firefox
 fs=/usr/bin/mozilla                # 64bit
 #fs=/usr/local/seamonkey/seamonkey # 32bit official build - currently FAIL
@@ -257,8 +261,9 @@ while [ "$1" != "" ]; do
       
       # exit with suitable test status code
       -procall)                    ps -ef | egrep -v egrep | egrep -e 'firefox*/firefox' -e thunderbird -e firefox-bin -e 'firefox.*-bin' -e mozilla; exit $? ;;
-      -proc)                       firefoxversion=${f##*-}; ps -ef | egrep -v egrep | grep "firefox-$firefoxversion/firefox"; exit $? ;;
-      -kill)                       firefoxversion=${f##*-}; $kill "firefox-$firefoxversion/firefox"; exit $? ;;
+      -proc)                       ps -ewwo user,pid,ppid,nice,pri,vsize:7,rssize:7,tty:6,start,pcpu,pmem,time,cmd | grep -E -i 'firefox[-]bin' ; exit $? ;;
+      -watch)                      exec watch --interval=10 "ps -ewwo pid,vsize:7,rssize:7,pmem,time,cmd | grep -E -i 'firefox[-]bin'" ;;
+      -kill)                       killproc firefox-bin ; exit $? ;; 
       -ping)                       $f -remote "ping()"; exit $? ;;
       -ping-tb)                    $t -remote "ping()"; exit $? ;;
 
@@ -304,11 +309,9 @@ while [ "$1" != "" ]; do
    esac
 done
 
-
-   
 [ "$firefox_to_start" = "-1" -a "$#" = "0" ] && checkfirefox
 if [ "$firefox_to_start" = "1" -a "$1" = "" ]; then
-   ( date > $fl.url; nice $nice $f > $fl 2>&1 </dev/null ) &
+   ( date > $fl.url; exec nice $nice $f > $fl 2>&1 </dev/null ) &
    exit 
 fi
 

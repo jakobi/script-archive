@@ -1,5 +1,5 @@
 # created     PJ 200907XX jakobi@acm.org
-# copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
+# copyright:  (c) 2009-2011 jakobi@acm.org, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
 
 function gr_catfile {
@@ -71,6 +71,7 @@ function gr_HELP {
  gr_D, gr_BASEDIR  -- truncate to basedir (implies uniq)
  gr_S, gr_STRIP    -- strip ' :: '-comments from input (e.g. '<filename> :: <ogg tags>+')
  gr_STRIPX1        -- strip \\x01 characters from input
+ gr_ep             -- grep - short for Grep.pm -i -B
  
  # similar, but suppressing already cached lines (-k is case insignificant):
  gr_NEW F          -- uniq, but suppress lines from cache file F, appending new
@@ -115,7 +116,12 @@ function gr_HELP {
  gr_SHORT0         -- magical paren removal + ~~-shorten for long filenames
  gr_MIXED2UTF      -- coping with mixed latin/utf8 pipe content:
                       if line doesn't seem to be utf8, try latin1-to-utf8
+ gr_LS             -- return find -ls output for the given file names
+ gr_PR             -- strip some non-printable chars (tty control codes mostly)
  
+ # list generating
+ gr_(r)dir         -- find (-maxdepth 0) -- * | gr_ep 
+
 Notes: 
  - only gr_UNIQ/gr_NEW* support ignoring case for dupe detection
    (-i or export \$gr_UNIQ_IGNCASE=1). All others are case-significant.
@@ -124,7 +130,21 @@ Notes:
 
 EOF
 }
+
+
+
 # gr_* family of filters for handling reporting lists of files (changed to uniq/unsort, caches all seen entries)
+
+function gr_ep {
+   Grep.pm -i -B ${1:+"$@"}
+}
+function gr_dir {
+   find -- * -maxdepth 0 | gr_ep ${1:+"$@"}
+} 
+function gr_rdir {
+   find -- * | gr_ep ${1:+"$@"}
+}
+
 function gr_STRIP0 { 
    perl -lne 'next if $c{$_}; do{print;$c{$_}++;next} if -e $_; s/ :: +(\S.*|)?$// and do{next if $c{$_};do{print;$c{$_}++;next} if -e $_};'
 }
@@ -171,6 +191,10 @@ function gr_SHORT0 {
           s@( (?:/|\A) [^/]{$m}  [^/]{0,5}? )   (?<=[^\x1b]{5})   [^/]{2,}   (?<=[^\x1b]{5})   ( [^/]{0,5}?  [^/]{$m} )  (?=/|$)@$1~~$2@gx;
           s@~~@$se~~@go;
       }; print if not $c{$_}++'
+}
+function gr_LS {
+   # note that find -ls escapes special chars
+   cat0 | xargs0 sh -c 'find "$@" -maxdepth 0 -ls' find
 }
 
 function gr_SLURP {
@@ -318,6 +342,12 @@ function gr_NEWCLR {
 # assume utf default. if invalid_char, then consider decode from latin1.
 function gr_MIXED2UTF {
    perl -lne 'use Encode; $o=$_; $_=decode("utf8",$_); $_=decode("latin1",$o) if /\x{FFFD}/ and not $o=~/\xef\xbf\xbd/; print encode("utf8",$_)' 
+}
+function gr_PR { # filter non-printable chars (i.e. tty control chars) to avoid display messup
+   perl -lpe 's/[\x0-\x1f\x7f]/?/g' # cannot strip CSI \x9b, etc, as it's part of valid utf8 chars
+}
+function gr_PR2 {
+   perl -lpe 's/[\x0-\x1f\x7f\x80-\x9f]/!/g' 
 }
 
 # schwartzian transform support, allowing for temporary destructive

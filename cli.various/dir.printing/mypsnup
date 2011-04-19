@@ -44,8 +44,8 @@ while(@ARGV) {
    /^\+s3$/        and do{$MYPSNUPBND="-m0.5cm -b-2cm"; shift; next}; # scale mini page up, mini page boundaries
    /^\+s2$/        and do{$MYPSNUPBND="-m1cm   -b-1.5cm"; shift; next}; # scale mini page up, mini page boundaries
    /^\+s1$/        and do{$MYPSNUPBND="-m0.0cm -b-0.7cm"; shift; next}; 
-   /^[-\+]s0?$/    and do{$MYPSNUPBND="-m0.0cm"; shift; next}; # scale final page down - outer page boundary
-   /^-s1?$/        and do{$MYPSNUPBND="-m0.5cm"; shift; next};
+   /^[-\+]s0?$/    and do{$MYPSNUPBND="-m0.0cm"; shift; next}; # don't scale (though note the -b-0.5 or similar as default below)
+   /^-s1?$/        and do{$MYPSNUPBND="-m0.5cm"; shift; next}; # scale final page down - outer page boundary
    /^-s2$/         and do{$MYPSNUPBND="-m0.7cm"; shift; next};
    /^-?-debug$/    and do{$debug=1; shift; next};
    /^-[Pd](.*)$/   and do{$MYPSNUPPRT=$1; shift; $MYPSNUPPRT=shift if not $MYPSNUPPRT; next}; # destination printer

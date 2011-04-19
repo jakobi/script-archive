@@ -23,7 +23,7 @@ else if echo "$ADDON_PATH" | grep -i firefox >/dev/null ||
    unset MYPSNUPREROUTEALL        
    # enter your customized print command below
    # maybe pop a requester if DISPLAY seems to work to allow modifications?
-   mypsnup $opt
+   mypsnup $opt >> $HOME/.lpr.debug
 else
    echo "final else" >> $HOME/.lpr.debug
    /usr/bin/lpr "$@"

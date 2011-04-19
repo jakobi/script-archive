@@ -18,6 +18,7 @@ my $version="0.5.3";
 # 11.09.09 pj         added cpulimit for higher nice values
 # (c) perl artistic licence
 
+# snice/skill is a 1999-era interactive C variant of this theme
 
 #========================================================= Variables 1
 

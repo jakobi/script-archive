@@ -8,7 +8,7 @@
 #  http://translate.google.com/translate?tl=en&sl=de&u=http%3A%2F%2Fwww.pro-linux.de%2Fberichte%2Fappfokus%2Femv%2Femv.html]
 
 
-my $version="2.00pj.4"; 
+my $version="2.00pj.5"; 
 # last changes:
 # 2007XXXX PJ       jakobi@acm.org changed to include line numbers in the editor,
 #                   allowing arbitrary editor commands and reordering (perl scraps)
@@ -22,6 +22,7 @@ my $version="2.00pj.4";
 #                   when unsetting $mv2, --nopathtrack, --todir/--nodir, --perlpostedit
 # 20090826 PJ       fixed emvx bug - when did appending $deltaorg @orgfile change to @newfile!?                  
 # 20090913 PJ       fixed my($_) for older perls       
+# 20110304 PJ       empty target names: skip lines
 # Copyright (c) 2006-2009 jakobi@acm.org placed under GPL v3 and newer
 # archive:  http://jakobi.github.com/script-archive-doc/
 
@@ -63,7 +64,7 @@ my $version="2.00pj.4";
 #   [won't modify for now]
 # ? filenames containing [", ']: works. However I'm less certain
 #   about say utf8 w/wo locale conflicts and invalid chars like e.g.
-#   a latin1 umlaut in filenames - wil the shell accept the command, 
+#   a latin1 umlaut in filenames - will the shell accept the command, 
 #   or return an error (either would be caught correctly)? 
 #   Or worse: will the a questionable shell or mv implementation
 #   irresponsibly silently strip the character in question 
@@ -581,10 +582,12 @@ sub sq{ # escape hack for single-quoting
 }
 
 sub pr { # return printable chars -- protect the tty against control codes below \x80
-         # Q: 9b vs. utf8 - leave alone for now
+         # aso add CSI x9b to be save (added whole range: http://invisible-island.net/xterm/ctlseqs/ctlseqs.html ,
+         #                                                http://en.wikipedia.org/wiki/C0_and_C1_control_codes )
    local($_)=@_;
    # s/[\0-\x1f\x7f]/"%".unpack("H2",$&)/ge;
-   s/[\0-\x08\x0a-\x1f\x7f]/?/go; # emv: still allow tabs (convenience cmd!)
+   # s/[\0-\x08\x0a-\x1f\x7f\x80-\x9f]/?/go; # emv: still allow tabs (convenience cmd!)
+   s/[\0-\x08\x0a-\x1f\x7f]/?/go; # assuming UTF8 host environment, CSI \x9b, etc _IS_ occurring as part of valid utf8 chars
    return $_;
 }
 
@@ -620,7 +623,8 @@ ${commentchar}              emvp [-p|-i] perlop             (without myrename: e
 ${commentchar}              emvs [-r]   (sort keeping dirs and dir-children together)
 ${commentchar}              sed   cut -f 2-  sort -k 2.1   grep . (-l: -f 3-, -k 8.1)
 ${commentchar}      editors like vim complement this: :help range, :help visual-block
-${commentchar}              :set number  :set list    :23,25s/^/#/   [V] + IDir/<ESC> 
+${commentchar}              :set number  :set list            :set fileencoding=utf-8
+${commentchar}              :23,25s/^/#/           visual block mode [V] + IDir/<ESC> 
 ${commentchar}              :sort /\\t/   [V]+:s=\\t=&Dir/=    :%g=X=d  :%g!/./d     gf
 ${commentchar}        (-l)  :sort /#\\t/  :.,\$s=#\\t=&Dir/=  :sort n/\\d\\+ \\d/r   [V]+gf
 ${commentchar}      emv line format is         <WS>* NUMBER                <TAB> NAME
@@ -944,7 +948,8 @@ sub parseeditorresults {
    unshift @lin,""; # 1-base it
    @new=grep /\S/, map {s/^\s+//; s/^["#].*//;                     # skip comments
                         # did strip meta info here
-                        s@/$@@;                                    # strip  dir-/
+                        s@/$@@;                                    # strip final dir-/
+                        s/^\d+\t?$//;                              # strip numbered lines w/w-o tab but without a new filename
                         $_}      @$newref;
 
    conveniencecommands(\@lin,\@new);

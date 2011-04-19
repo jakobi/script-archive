@@ -12,7 +12,7 @@
 ./cli.list.grep/cat0:0.1
 ./cli.list.grep/cat0par:0.1.1
 ./cli.list.grep/expansyn:0.2
-./cli.list.rename/emv:2.00pj.4
+./cli.list.rename/emv:2.00pj.5
 ./cli.list.rename/myrename:0.2
 ./cli.list.rename/myrename.mangle:0.1
 ./cli.list.tagls/tagls:0.2.2

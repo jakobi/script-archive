@@ -76,7 +76,10 @@ foreach(@files) {
 
    # ugly hack: transform option value to bogus href's for reports later on; 
    # keeping linecount intact
-   $lines=~s/(<option[^<>]+?value([^<>]+?)>)/do{$tmp1=$1; $tmp2=$2; $tmp2=~s@[\r\n\j]@ @go; "<a href$tmp2>VALUELINK $tmp1<\/a>"}/geoi if $values;
+   $lines=~s/(<option[^<>]+?value([^<>]+?)>)/do{
+       $tmp1=$1; $tmp2=$2; $tmp2=~s@[\r\n]@ @go; 
+       "<a href$tmp2>VALUELINK $tmp1<\/a>"
+   }/geoi if $values;
 
    # url translations
    $lines=&db_cgi::changeurls($h0, $lines, $_, $rold, $mode) if ($root);

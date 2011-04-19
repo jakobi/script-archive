@@ -15,12 +15,18 @@ function say {
 }
 
 # XV - its about time to avoid this proggy...
-# N:   on save reduced image, consider to removing the 
+# N:   on save reduced image, consider removing the 
 #      save-normal-size-flag set in Xdefaults
 #XV=${XV:--geometry 1000x1000 -fixed}# max size, but always scales
 XV=${XV:--expand .5}                 # just half the size for now
 function xv {
-   /usr/local/bin/xv $XV "${1:+$@}";
+   if [ "$1" == "test" ]; then
+      # monitor test image
+      /usr/local/bin/xv            ~/images/l46a1024.bmp
+      /usr/local/bin/xv -rotate 90 ~/images/l46a1024.bmp
+   else
+      /usr/local/bin/xv $XV "${1:+$@}";
+   fi
 }
 
 function gwenview {

@@ -68,6 +68,10 @@ if [ "$DISPLAY" != "" ] ; then
    # FreeDesktops notification area / systray via e.g. a full Gtk app using 
    #    e.g. Menues and Gtk2::TrayIcon [even worse than wall]
 
+   # see also: notify-send -i icon.gfx 'TITLE' 'MSG'
+   # http://www.thegeekstuff.com/2010/12/ubuntu-notify-send/
+   # https://wiki.ubuntu.com/NotificationDevelopmentGuidelines
+
    # OSD notification, annoying and for a day 
    export tmp=$(echo "$msg" | tr '()' '{}')
    #    however, these don't queue like maybe
