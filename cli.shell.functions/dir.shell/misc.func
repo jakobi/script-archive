@@ -2,10 +2,31 @@
 # copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
 
+alias wget0='wget --retry-connrefused --limit-rate=500k --waitretry=10 --wait=3 --random-wait'
+alias w3mkeys='w3m http://w3m.sourceforge.net/MANUAL' # remember B for back, H for help
+alias smplayer='/usr/bin/smplayer -add-to-playlist'
+alias smplayerclr=': > ~/.config/smplayer/smplayer_files.ini'
+
+# ps aliases
 alias psg0='ps -efww | egrep -i'
 alias psg='ps -ewwo user,pid,ppid,tty,cmd | grep -v grep.-E.-i | grep -E -i'
-alias psgl='ps -ewwo user,pid,ppid,nice,pri,vsize:7,rssize:7,tty:6,start,pcpu,pmem,time,cmd | grep -v grep.-E.-i | grep -E -i'
-alias wget0='wget --retry-connrefused --limit-rate=500k --waitretry=10 --wait=3 --random-wait'
+alias psgl='ps -ewwo user,pid,ppid,pgid,nice,pri,vsize:7,rssize:7,tty:6,start,pcpu,pmem,time,cmd | grep -v grep.-E.-i | grep -E -i'
+
+# getting from port number to command and pty (e.g. as provided in the remote $SSH_CONNECTION)
+function port2pid { typeset i; i="$1"; [ "${i##*/}" = "$i" ] && i="$i/tcp"; fuser "$i" 2>/dev/null|tail -1|sed 's/ //g;s/$/\n/';} 
+function pid2pty  { ps -p "$1" -o tty|tail -1|sed 's/^\?$//;s/^\(..*\)/\/dev\/\1/';} 
+function port2pty { pid2pty $(port2pid "$1");}
+function port2ps  { ps -wwo user,pid,ppid,pgid,nice,pri,vsize:7,rssize:7,tty:6,start,pcpu,pmem,time,cmd -p $(port2pid "$1");}
+function waitcond_idle      { 
+   : use with -l to loop; 
+   perl -e 'exec qw!waitcond -1 -s 20 -r 60 -cs!, q!WHISTLE 2>/dev/null!, @ARGV[0..$#ARGV-1], q!idle!, $ARGV[$#ARGV];' -- "$@";
+}
+function waitcond_idleport  { 
+   : use with -l to loop; 
+   typeset i; eval 'i=$(port2pty $'$#')'; 
+   # bash is a bit too handicapped in dealing with arbitrary array member changes 
+   perl -e 'exec qw!waitcond -1 -s 20 -r 60 -cs!, q!WHISTLE 2>/dev/null!, @ARGV[0..$#ARGV-2], q!idle!, $ARGV[$#ARGV];' -- "$@" "$i";
+}
 
 if [ -n "_IS_BASH" ]; then
    # ksh interpretes '.' as marker for discipline functions

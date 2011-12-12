@@ -1,5 +1,12 @@
 #!/bin/bash
 
+### Q: have it assume -t automatically (-trunk) if there's a trunk
+###    but no other running firefox? (obviates changing firefoxstdin et al
+###    for a new switch)
+###    --> change the is_running check to switch as required
+###        plus it should distinguish between 2 running instances
+###        in choosing the binary to use
+
 # created     jakobi@acm.org 2004xxxx
 # last change jakobi@acm.org 20091128
 # copyright: (c) 2004-2009, jakobi@acm.org, GPL v3 or later
@@ -9,7 +16,7 @@
 # given URLs on ARGV or STDIN ($0 -stdin), load them into firefox.
 #
 # as this script is itself called firefox, be sure to point 
-# $f / $f3 below to your actual firefox.
+# $f / $ft below to your actual firefox.
 #
 # related scripts:
 # - firefoxstdin accepts URLs from stdin and tries to correct
@@ -65,6 +72,10 @@
 
 
 # notes
+# - the new -browser, -new-tab and -new-window options are nice
+#   but beware the change of semantics for -no-remote (still
+#   starting a new browser, but disabling all remote commands
+#   for good)
 # - a better replacement might be replacing this set of scripts
 #   by basing things around a MozRepl-enabled fine-grained-remote controlable
 #   firefox (http://wiki.github.com/bard/mozrepl/)
@@ -93,23 +104,36 @@
 # http://www.cs.indiana.edu/~kinzler/webrowse/ - cutbuf / inbrowse / webbrowse
 
 
+# default profile to rotate
+PROF=$HOME/.firefox
+
 # variables with user settings 
 t=thunderbird
-f3=/usr/bin/firefox-3.6
+# open a suitable profile with -profilemanager (i.e. run firefox-trunk -profilemanager first)
+ft=/usr/bin/firefox-trunk
+ft=$(which -a firefox-trunk | grep -v -- $0 | head -1)
+[ "$ft" = "" ] && ft=/usr/bin/firefox-trunk
 f=$(which -a firefox | grep -v -- $0 | head -1)
 [ "$f" = "" ] && f=/usr/bin/firefox
 fs=/usr/bin/mozilla                # 64bit
 #fs=/usr/local/seamonkey/seamonkey # 32bit official build - currently FAIL
-kill=zap                # interactive improved pkill
+
 fl=$HOME/.firefox.log   # for this session: $fl, $fl.url
-nice=-7
+
+#nice="ionice -c2 -n6 nice -7"
+nice="nice -7"
+test -x $HOME/bin/wrapcgroup && nice="$nice wrapcgroup -std -name browser"
+
+sync="" # "" or "--sync" in case of X issues
 
 export DISPLAY=${DISPLAY:-:0}
 
 # internal variables
 pingcnt=0
-test ! -f $f && f=/usr/local/bin/firefox
-test ! -f $f && f=/usr/local/firefox/firefox
+test ! -f $f  &&  f=/usr/local/bin/firefox
+test ! -f $f  &&  f=/usr/local/firefox/firefox
+test ! -f $ft && ft=/usr/local/bin/firefox-trunk
+test ! -f $ft && ft=/usr/local/firefox/firefox-trunk
 export firefox_to_start=-1;
 export thunderbird_to_start=-1;
 
@@ -119,31 +143,45 @@ export thunderbird_to_start=-1;
 
 function checkfirefox {
    firefox_to_start=1
-   firefoxversion=${f##*-}
-   firefoxversion="-"$firefoxversion'(\.[0-9][0-9]*)?(\.[0-9][0-9]*)?'
-   ps -fu `whoami` | grep -v grep | egrep -e '[ /]firefox-bin' -e "firefox$firefoxversion/firefox" > /dev/null && firefox_to_start=0
+# BUG check fully fails for seamonkey, and trunk version isn't done by the version guessing
+   firefoxversion=${f##*-}; [ "$f" = "$firefoxversion" ] && firefoxversion=""
+   firefoxversion=$firefoxversion'([0-9][0-9]*)?(\.[0-9][0-9]*)?'
+        firefoxps="$(ps -wwfu `whoami` | grep -v grep | egrep -e '[ /]firefox-bin' -e "/usr/lib/firefox[^ /]*/firefox( |$)" -e "firefox-?$firefoxversion/firefox")"
+   firefoxtrunkps="$(ps -wwfu `whoami` | grep -v grep | egrep -e '[ /]firefox-trunk-bin' -e "/usr/lib/firefox[^ /]*/firefox-trunk( |$)" -e "firefox-trunk-?$firefoxversion/firefox")"
+   [ "${firefoxps}" != ""      -a "$f" != "$ft" ] && firefox_to_start=0
+   [ "${firefoxtrunkps}" != "" -a "$f"  = "$ft" ] && firefox_to_start=0
+   [ "${firefoxtrunkps}" != "" -a "$firefoxps" = "" -a "$ft" != "$f" ] && f="$ft" && echo "# switching command to already running firefox-trunk"
+   [ "$firefox_to_start" = "1" ] && echo "# starting $f."
 }
 
 function _f {
    [ "$firefox_to_start" = "-1" ] && checkfirefox
    if [ "$firefox_to_start" = "1" ]; then
-      P=$HOME/.firefox/prefs.js; B=$HOME/.firefox/bookmarks.html
-      ( cp -f $B.1 $B.2; cp -f $B $B.1 ) 2>/dev/null # bookmark backup
-      ( cp -f $P.1 $P.2; cp -f $P $P.1 ) 2>/dev/null # prefs backup
+# BUG rotates wrong profile for seamonkey, trunk and profile use
+      export P=$PROF/prefs.js; export B=$PROF/places.sqlite; export S1=$PROF/session.rdf; export S2=$PROF/sessionstore.js;
+      cp -f  $B.1  $B.2 2>/dev/null; cp -f  $B  $B.1  # bookmark backup
+      cp -f  $P.1  $P.2 2>/dev/null; cp -f  $P  $P.1  # prefs backup
+      cp -f $S1.1 $S1.2 2>/dev/null; cp -f $S1 $S1.1  # sessions
+      cp -f $S2.1 $S2.2 2>/dev/null; cp -f $S2 $S2.1  # sessions
 
       firefox_to_start=0
       echo    $f '"'"${1:+$@}"'"'
-      ( date > $fl.url; nice $nice $f -no-remote "${1:+$@}" > $fl 2>&1 </dev/null ) & # start firefox
-echo "#START  $f -no-remote ${1:+$@}"
-      _sleep 2; _ping $f; _sleep 2
+# removed -no-remote (seems to disable remote access incl. ping, ... from version 9 onwards)
+      ( (echo; date) >> $fl.url; $nice $f ${1:+"$@"} > $fl 2>&1 </dev/null ) & # start firefox
+echo "#START  $f ${1:+$@}"
+      _sleep 8; _ping $f; _sleep 4
    else
       # always ping, there's a problem with resolver timeouts?
       if _ping $f || { _sleep 2; _ping $f ;} ; then # or use mozilla remote?
          # restart the command in case of some strange async X problem 
-echo "#TRY    $f --sync -noraise -remote 'openURL($1,new-tab)'"
+echo "#TRY    $f $sync -noraise -remote 'openURL($1,new-tab)'"
+# FIREFOX 11: this is complemented by -new-tab $1
+# FIREFOX  9: nothing at all is working: X is dead busy bc background tabs,
+#             no -remote at all, cannot find window, cannot do anything
+# FIREFOX  8: worked.
          # and another thank-you to NVIDIA
-         $f --sync -noraise -remote "openURL($1,new-tab)" 2> >(grep -v -e 'Xlib: *extension "RANDR" missing' -e 'GLib-WARNING.* g_set_prgname' -e '^ *$') ||\
-         { _sleep 2;_ping $f && $f --sync -noraise -remote "openURL($1,new-tab)" 2> >(grep -v -e 'Xlib: *extension "RANDR" missing' -e 'GLib-WARNING.* g_set_prgname' -e '^ *$') ;}||\
+         $f $sync -noraise -remote "openURL($1,new-tab)" 2> >(grep -v -e 'Xlib: *extension "RANDR" missing' -e 'GLib-WARNING.* g_set_prgname' -e '^ *$') ||\
+         { _sleep 2;_ping $f && $f $sync -noraise -remote "openURL($1,new-tab)" 2> >(grep -v -e 'Xlib: *extension "RANDR" missing' -e 'GLib-WARNING.* g_set_prgname' -e '^ *$') ;}||\
          echo "#FAILED"
          _sleep 1
       else
@@ -163,7 +201,7 @@ function _t {
    fi
    if [ "$thunderbird_to_start" = "1" ]; then
       # should we open the inbox by default, too?
-      nice $nice $t    "${1:+$@}" >/dev/null 2>&1 </dev/null &
+      $nice $t    "${1:+$@}" >/dev/null 2>&1 </dev/null &
       echo    $t '"'"${1:+$@}"'"'
       thunderbird_to_start=0
       _sleep 2; _ping $t; _sleep 2
@@ -191,8 +229,8 @@ function _ping {
 }
 function _ping2 {
    # gee thanx, for nice and uptodate regular driver updates,  NVIDIA. NOT.
-                                                # set -o pipefail
-   "$1" --sync -remote "ping()" >/dev/null 2> >(grep -v -e 'Xlib: *extension "RANDR" missing' -e 'GLib-WARNING.* g_set_prgname' -e '^ *$')
+   # ? set -o pipefail
+   "$1" $sync -remote "ping()" >/dev/null 2> >(grep -v -e 'Xlib: *extension "RANDR" missing' -e 'GLib-WARNING.* g_set_prgname' -e '^ *$')
 }
 
 function _decode {
@@ -253,7 +291,7 @@ while [ "$1" != "" ]; do
       # should go first...
       -n|-no-exec)                 shift; noexec="-n"; f="/bin/echo No-Exec"; t=$f ;;
 
-      -3)                          f=$f3; pre_opt="-3  $pre_opt"; shift ;;
+      -t)                          f=$ft; pre_opt="-t  $pre_opt"; echo "do consider starting firefox-trunk -profilemanager manually first"; shift ;;
       -sm|-sea|-seamonkey)         f=$fs; pre_opt="-sm $pre_opt"; shift
                                    firefox_to_start=1
                                    ps -u `whoami` | egrep -e seamonkey-bin   -e seamonkey > /dev/null && firefox_to_start=0
@@ -311,14 +349,14 @@ done
 
 [ "$firefox_to_start" = "-1" -a "$#" = "0" ] && checkfirefox
 if [ "$firefox_to_start" = "1" -a "$1" = "" ]; then
-   ( date > $fl.url; exec nice $nice $f > $fl 2>&1 </dev/null ) &
+   ( (echo; date) >> $fl.url; _f; ) & 
    exit 
 fi
 
 
 
 for opt in "$@"; do
-   _browsefile "$opt"
+   _browsefile "${opt##+}"
    # now check if the URL looks like it is pasted from a quoted-printable
    # mail body, and pass a de-mangled version to browsefile once again
    # hint: to avoid this duplication of tabs in case of a valid =3D, etc:

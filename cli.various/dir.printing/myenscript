@@ -1,6 +1,9 @@
-#!/bin/sh
+#!/bin/bash 
+# do not use bin/sh for >() tricks
+{ # prot
 
 # usage e.g. cat README | rsh kefk "cat - | ~jakobi/bin-shared/myenscript" ...
+#       skips PS/PDF unless -f given
 
 PATH="$PATH:/usr/bin:/usr/local/bin:$HOME/bin:$HOME/bin-shared:/home/jakobi/bin:/home/jakobi/bin-shared";
 
@@ -14,10 +17,12 @@ MYENSCRIPTPRT=${MYENSCRIPTPRT:-$PRINTER}
 MYENSCRIPT=enscript
 MYA2PS=a2ps
 job=""
+FORCE=""
 
 CMD=$MYENSCRIPT
 loop=1; while [ "$1" != "" -a "$loop" ]; do
    case "$1" in
+      -f)         FORCE=1 ;;
       -P|-d)      MYENSCRIPTPRT=$2; shift ;;
       -P*)        MYENSCRIPTPRT=${1##-P} ;;
       -d*)        MYENSCRIPTPRT=${1##-d} ;;
@@ -43,28 +48,55 @@ default=""; test "$1" = ""   && default=/dev/stdin
 
 # site specific printer shortcut name remapping -> do this in mypsnup!
 [ "$MYENSCRIPTPRT" = "oj" ] && MYENSCRIPTPRT=ojmono
+   
+export i FORCE job job1;
 
 for i in $default "$@"; do
    test "$i" = "" && continue
    # job is the job title
    # missing: smash UTF-8 if any, add unique-mid-fix (but that's better done by Label=1 in /etc/cups/cups-pdf.conf)
-   job1="$i"; test "$job" != "" && job1="$job"
-   echo "using $CMD with printer $MYENSCRIPTPRT";
+   job1="$i$(LANG=en_US.utf8 ls -l -- "$i" 2>/dev/null|awk '{print "   ("$6" "$7")"}')"; # LANG-depending word format
+
+   test "$job" != "" && job1="$job"
+   echo "myenscript is using $CMD with printer $MYENSCRIPTPRT";
    case $CMD in 
-     *enscript*) $MYENSCRIPT $MYENSCRIPTFMT $MYENSCRIPTOPT -G --mark-wrapped-lines=arrow -MA4dj --pass-through -p - "$i" | mypsnup -1 -P$MYENSCRIPTPRT -J "$job1";;
+     *enscript*) 
+            #1 against utf and borked latin, usually unnecessary
+            #cat "$i" | \
+            #perl -e 'while(<>){s/([^\x8\x9\xA\xC\x20-\x7E\xA0-\xFF])/"&#0x".unpack(H2,$1).";"/ge; print}' | \
+            # ( $MYENSCRIPT $MYENSCRIPTFMT $MYENSCRIPTOPT -G --mark-wrapped-lines=arrow -MA4dj --pass-through -p - /dev/stdin; true ) | mypsnup -1 -P$MYENSCRIPTPRT -J "$job1"
+                 
+            # myenscript closes the output file, but then throws a coredump and leaves the shell confused - truncating/killing the pipe
+            #    q: rewrite to use a2ps instead?
+            # ( $MYENSCRIPT $MYENSCRIPTFMT $MYENSCRIPTOPT -G --mark-wrapped-lines=arrow -MA4dj --pass-through -p - "$i"; true ) | mypsnup -1 -P$MYENSCRIPTPRT -J "$job1"
+            # ( $MYENSCRIPT $MYENSCRIPTFMT $MYENSCRIPTOPT -G --mark-wrapped-lines=arrow -MA4dj --pass-through -p - "$i" )  # shows a core dump
+# 20110505
+# ignore the enscript SEGFAULT message for now: sponge finishes collecting all input and thus mypsnup sees the full postscript data (resulting in actually printing pages)
+# looks like enscript segfaults after explicitely closing the file, thus waiting for sponge to complete
+# >(sponge) {to slurp all input} or even >(mypsnup ...) {same effect in this case} is a bit nicer than breaking the pipe into temp files ...
+            echo please ignore the spurious enscript segfault in lucid 1>&2
+            cat "$i" | \
+            perl -e 'undef $/; $_=<>; die "\n!! looks like pdf / ps - skipping $ENV{job1}\n\n" if /\A%PDF|\A%!PS-Adobe/ and not $ENV{FORCE}; print' | \
+            ( $MYENSCRIPT $MYENSCRIPTFMT $MYENSCRIPTOPT -G --mark-wrapped-lines=arrow -MA4dj --pass-through -b "$job1" -p >(sponge) /dev/stdin ; true ) | mypsnup -1 -P$MYENSCRIPTPRT -J "$job1"
+            ;;
      *a2ps*)
             # a2ps and manpage differ regarding -f and -n, -nP, --center-title, ...
             # at least folding is still implicit default
             # $MYA2PS $MYENSCRIPTFMT $MYENSCRIPTOPT "$i" -b -P $MYENSCRIPTPRT ;;
-	    # -o - : output ps to stdout (instead of -nP)
-	    # enscript does this automatically - possibly also handle BS-embolding and underlining; see a4print4 for deskjets
+	 
+            # -o - : output ps to stdout (instead of -nP)
+	         # enscript does this automatically - possibly also handle BS-embolding and underlining; see a4print4 for deskjets
+
             # protect perl against insecure magic <> idiocy
             cat "$i" | \
+            perl -e 'undef $/; $_=<>; die "\n!! looks like ps or pdf - skipping $ENV{job1}\n\n" if /\A%PDF|\A%!PS-Adobe/ and not $ENV{FORCE}; print' | \
             perl -e 'while(<>){s/([^\x8\x9\xA\xC\x20-\x7E\xA0-\xFF])/"&#0x".unpack(H2,$1).";"/ge; print}' | \
             $MYA2PS "--center-title=$job1" $MYENSCRIPTFMT $MYA2PSOPT -b -o - | mypsnup -1 -P$MYENSCRIPTPRT -J "$job1";;
      *) $CMD ;;
    esac
 done
+
+} # end prot
 
 # to use e.g. highlight: enscript --filter="rcsdiff %s | diffpp %s" -e *.c
 

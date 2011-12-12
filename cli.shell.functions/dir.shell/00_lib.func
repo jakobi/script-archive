@@ -107,11 +107,46 @@ function _pipe {
 }
 
 
-# read a file or pipe into an array
-#    ksh93: find . -print | f2a -a ARGS ; less "${ARGS[@]}"
-#    bash:  f2a -a ARGS <(find . -print); less "${ARGS[@]}"
+# another simple echo helper
+#
+# some sanity in quoting s/hell: the 17char quoting using e.g.
+# args "$(printf "%s" "'a'" "$(printf "%s\n%s" 1 'b "c"' 2)")"
+# NOTE that the final "%s" in printf eats all remaining WORDs
+#
+# simplify this as 7char quoting workaround: "$(p "'a'")" (w/o the newline)
+function p { printf "%s" ${1:+"$@"}; }
+
+
+# read a file or pipe into a shell array (see also readarray / mapfile)
+#
+# ---------
+#    ksh93: find . -print | f2a -a ARGS  ;   less "${ARGS[@]}"
+#           f2a -a ARGS    <(find . -print); less "${ARGS[@]}"
+#           cf. find . -print | while ...;do ... ;done # ksh only
+#           # (still no < <(...) support in ksh)
+#    bash:  f2a -a ARGS  < <(find . -print); less "${ARGS[@]}"  # def f2a
+#           f2a -a ARGS    <(find . -print); less "${ARGS[@]}"  # def f2a
+#    bash4: mapfile ARGS < <(find . -print); less "${ARGS[@]}"  # def MAPFILE
+#           # (still no ...|mapfile in bash...)
+#           # alias: readarray, permits -u FD-NUMBER, but no 
+#           # Advantage: loads line by line w/o IFS mess
+#           filecontent=( `< /etc/passwd`) # this breaks elements on IFS
+#           # so we need to do the standard IFS tango (no "\n", use ^V)
+#           { O="$IFS"; IFS=$'\n'; filecontent=( `cat /etc/passwd`); IFS="$O" ;} 
+#           # as typeset IFS in { ;} is still the shell scope IFS
+#
+#    misc: declare -a unix; unix=("${unix[@]}" "AIX" "HP-UX")
+#          simpler: unix+=( AIX HP-UX)
+#          unset unix[3] # does indeed update indices of subsequent elements 
+#          declare -a nonaix=( ${unix[@]/AIX*/} ) # declare -a optional
+#          # X=5; declare -a X; X now equals ( 5)
+# --------
+# 
 # using the possibly empty array as command arguments:
 #    printf "%s\n" ${f2a:+"${f2a[@]}"}
+#    (bash4 mapfile builtin seems to finally support this idea together 
+#     with its ZERO-BASED! arrays; better yet, ${parameter/ARRAY[@]/...} 
+#     might even be a basic map()! mapfile -t even offers to chomp)
 #
 # note that read without -r considers a trailing \ to join lines
 # for both ksh and bash

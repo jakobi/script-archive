@@ -30,6 +30,12 @@ my $version="0.4.2";
 #          [?fix with a locale-depending charclass as substitute for [a-z] or just \p{Letter} or similar]
 # - some single letter options cannot be combined, as they are handled outside getopts
 #   [lowpri, will only be fixed when switching to an improved getopts module]
+# - detect compressed input w/o suffix, but on magic number
+#   check gr_catfile for a 3-process example using zcat/bzcat 
+#   (anycat example is a whee bit slower at 1/10 the speed)
+# - check whether -b / -B description note the split on ANY whitespace (use \x20 or similar in e.g. [ ].
+# - check / allow use of preloaded function, vars for use in regex and perl scraps as atoms in -B if not yet possible
+# - allow uppercase for AND OR NOT here and in tagls (google OR...)
 #
 # Bugs when used as module (which is still experimental anyway):
 # - example users: moduletest, mt_playmusic, ...

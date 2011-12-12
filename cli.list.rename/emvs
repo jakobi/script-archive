@@ -1,39 +1,65 @@
 #!/usr/bin/perl
 
 # emvs edited mv helper, sorting find output correctly:
+#
 # first the dir, then dir/, then subdirs, then anything
 # longer name than dir --> thus dir-1 is sorted BEHIND 
 # dir/1 and dir (normal naive lex sort places dir-1 
 # BETWEEN dir and dir/, thus renaming basedirs needlessly
 # requires changes in 2 places - even if the dir always
 # comes before any children).
+#
+# extended to allow 
+# - \0 and \n based lines
+# - output a la find -depth suitable for
+#   "... | xargs rm; ... | xargs rmdir" 
+# - reverse sorts (which would also satisfy above usage scenario)
 
+my $version="0.2"; 
+# last changes:
+# 20111119 PJ  0.2  jakobi@acm.org added -depth sorting to allow simple cleanup
+#                                  such as ... | emvs -d | xargs -d \\n rmdir
+
+# BUG:
+# - guessing line number prefixes - there should be an option to turn it off
+# - -d assumes \xff cannot occur in input, but it is SMALL LETTER Y WITH DIAERESIS in latin1
+# - sort doesn't honor locale settings (and \xff in case of -d is an invalid char,
+#   which might lead locale-honoring sort to do interesting things, like replacing
+#   it with the invalid-glyph, etc... - so this is a thorny problem)
+# - for -depth, we have to also strip any trailing / from input for our trick to work
+
+$mapchar="\0";             # free character to map / to
+$mapfileend="\0\xff";      # impossible in input
+$/="\n";
 while($_=shift) {
-   /^-r$/            and do {$reverse=1;next}; # reverse
-   /^-0$/            and do {$/="\0";next};    # IO is \0-based lines
-   /^-h$|^-?-help$/  and do {"$0 [-0] [-r] ... # sort dirtrees"; exit 1};
+   /^-r$/            and do {$reverse=1;next};           # reverse sort
+   /^-0$/            and do {$/="\0";next};              # IO is \0-based lines
+   /^-d$|^-?-depth$/ and do {$depth=1;next};             # depth first sort without -r
+   /^-h$|^-?-help$/  and do {die "$0 [-0] [-r] [-d] ... # sort file name lists correctly\n"};
    /^--$/            and do {last};
    /()/              and do {unshift @ARGV,$_; last};
 }
 
 foreach(@ARGV){s/^(\s+)/.\/$1/;s/^/< /;$_.=qq/\0/}; # MAGIC <> INSECURE MESS
 while(<>) { # SECURE:OK
-$i++;
-   s@$/\z@@g; 
-   while(s@/\./@/@g){;} s@/+@/@g; # cleanup spurious /
-   s@/@\0@g;                     # remap / to \0
+# $i++;
+   s@$/\z@@go; 
+   while(s@/\./@/@go){;} s@/+@/@go; # cleanup some spurious /
+   s@/@$mapchar@g;                  # remap /
+   $depth and s@$mapchar\z@@o;      # for -depth, do strip trailing / at EOF
+   $depth and s@\z@$mapfileend@o;   # for -depth, append a magic string at EOF
    push @files,$_;
 }
 
 
-if ($files[1]=~/^\s*\d\t/) { # skip line numbers?
-   @files=map {$_->[1]} sort {$a->[0] cmp $b->[0]} map {$o=$_;s/^\s*\d+\t//;[$_,$o]} @files;
+if ($files[1]=~/^\s*\d\t/) { # skip emv-style tabbed line number column?
+   @files=map {$_->[1]} sort {$a->[0] cmp $b->[0]} map {$o=$_;s/^\s*\d+\t//o;[$_,$o]} @files;
 } else {
    @files=sort {$a cmp $b} @files;
 }
 @files=reverse @files if $reverse;
 
+grep {s@$mapfileend\z@@o;s@$mapchar@/@go;s@\z@$/@o} @files; # remap to / and add line-end
 
-grep {s@\0@/@g;s@\z@$/@;} @files; # remap \0 to / and add line-end
-print @files;
+print join("",@files);
 exit 0;

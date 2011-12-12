@@ -1,34 +1,84 @@
 #/bin/bash
+{
 
 # intercept lpr (not lp for now)
 # - REROUTEALL has been set
 # - crippled apps that we use often for printing are being used (e.g. firefox3 and bogus gnome printing dialog)
+# - evince issue: cannot detect printing by evince
+#      parent is INIT, session is gnome, nothing in ENV
+#      so with default printing, things go to ~/PDF unchanged, sigh
 
-{ set; echo $$ is own pid; ps -ef; } > $HOME/.lpr.debug
+# try running a resource-friendly cgroup (doesn't catch cupsd pdftopdf :/)
+cgroup=""; which wrapcgroup >/dev/null 2>&1 &&   cgroup='wrapcgroup -low'
+# try supplying a osd notification to avoid surprises
+osdprint=""; which osdprint >/dev/null 2>&1 && osdprint='osd.print LPRWRAPPER'
 
-echo "$*" 2>&1
+function pass {
+   echo "pass thru - possibly check ~/PDF: $1" 1>&2 
+   [ "$osdprint" != "" ] && $osdprint "$1" &
+   (echo; echo "! $1") >> $HOME/.lpr.debug
+   shift
+   $cgroup /usr/bin/lpr "$@"
+   rc=$?
+}
 
-if echo "$*" | egrep -e '^-P ?PDF$' >/dev/null; then
-   echo "pdf printing" >> $HOME/.lpr.debug
-   /usr/bin/lpr "$@"
-else if echo "$ADDON_PATH" | grep -i firefox >/dev/null || 
-        set | grep -e MOZ_LAUNCHED_CHILD -e 'MYPSNUPREROUTEALL' >/dev/null ||
-        test -f $HOME/.mypsnuprerouteall && [ "$MYSPNUPSKIPREROUTEALL" = "" ] ; then
-   echo "rerouting" >> $HOME/.lpr.debug
+function nup {
+   (echo; echo "! $1") >> $HOME/.lpr.debug
+   [ "$osdprint" != "" ] && $osdprint "$1" &
    opt=${MYPSNUPREROUTEOPT:--2}
    # avoid looping
    export MYPSNUPSKIPREROUTEALL=1
-   ADDON_PATH=""                  
-   unset MOZ_LAUNCHED_CHILD       
-   unset MYPSNUPREROUTEALL        
+   ADDON_PATH=""
+   unset MOZ_LAUNCHED_CHILD
+   unset MYPSNUPREROUTEALL
    # enter your customized print command below
    # maybe pop a requester if DISPLAY seems to work to allow modifications?
-   mypsnup $opt >> $HOME/.lpr.debug
-else
-   echo "final else" >> $HOME/.lpr.debug
-   /usr/bin/lpr "$@"
-fi
-fi
+   $cgroup mypsnup $opt >> $HOME/.lpr.debug 2>&1
+   rc=$?
+}
+
+
+
+mv $HOME/.lpr.debug $HOME/.lpr.debug.old 2>/dev/null
+{ date; echo $$; printf "lpr %s\n" "$*"; echo; declare -p|cat -vt; echo; ps -ewwo "user,pid,ppid,pgid,nice,pri,vsize:7,rssize:7,tty:6,start,pcpu,pmem,time,cmd"; echo; } > $HOME/.lpr.debug
+rc=0
+
+
+
+while true; do
+   if [ "$MYSPNUPSKIPREROUTEALL" != "" ];
+   then
+      pass "pass thru due to recursion" "$@"; break
+   fi
+
+   if echo "$*" | egrep -e '^-P ?PDF' >/dev/null; then
+      pass "~/PDF printing - pass thru" "$@"; break
+   fi
+
+   if test -f $HOME/.mypsnuprerouteall && [ "$MYSPNUPSKIPREROUTEALL" = "" ];
+   then
+      nup "global rerouting to mypsnup" "$@"; break
+   fi
+
+   if echo "$ADDON_PATH" | grep -i firefox >/dev/null || 
+      declare -p | grep -e MOZ_LAUNCHED_CHILD -e 'MYPSNUPREROUTEALL' >/dev/null;
+   then
+      nup "firefox rerouting to mypsnup" "$@"; break
+   fi
+   
+   # N1 have us always run nup when lpr is invoked w/o options?
+   
+   # N2 evince e.g. doesn't set any var or pgid of its own
+   #    and thus we cannot detect it with less than say lsof...
+
+   # N3 the default printer is probably the PDF printer !
+   pass "unknown source - pass thru" "$@"; break
+done
+
+
+
+exit $rc; }
+
 
 
 # MOZILLA CUM GNOME IDIOCY PRINTING WORKAROUND

@@ -92,7 +92,7 @@ auto_save_setup_panels=1
 
 [Layout]
 equal_split=1
-first_panel_size=88
+first_panel_size=40
 message_visible=1
 keybar_visible=1
 xterm_title=1
@@ -150,6 +150,8 @@ source_codepage=Other_8_bit
 base_color=
 xterm=
 color_terminals=
+
+screen.linux=
 
 [Panelize]
 Find *.orig after patching=find . -name \\*.orig -print

@@ -47,3 +47,15 @@ announcements  on the system dbus. Or just grep the output of lshal -s
 [ls / debugging/introspection/message-building]
 
 qdbus is a kind of "dbus-ls"; the GUI monitors/debuggers d-feet/qdbusviewer.
+
+
+see also: 
+- Linux Magazin 4/2011: Bus Touristik, p110, 
+  linux-magazin.de/pub/listings/magazin/2011/04/Perl
+  a perl daemon listening to the dbus to backup newly attached usb sticks
+  using Net::DBus, App::Daemon and Log::Log4perl
+- freex 6/2010 eine fahrt mit dem d-bus                        #ENGLISH-OK
+  qdbusview
+  org.freedesktop.DBus -> dbus-daemon, methods include ListNames (connected procs)
+  org.freedesktop.DBus.Introspectable, method Introspect: returns XML lists all IFs, methods, signals of the service
+

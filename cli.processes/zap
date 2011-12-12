@@ -20,6 +20,10 @@ my $version="0.5.3";
 
 # snice/skill is a 1999-era interactive C variant of this theme
 
+# TODO
+# - maybe for higher zap nice values, consider using schedtool -D
+#   or even echo the PID to a suitable cpu and memory limiting cgroup
+
 #========================================================= Variables 1
 
 ($me = $0) =~ s#.*/##;

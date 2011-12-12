@@ -32,6 +32,10 @@ our $VERSION="0.33";
 #   /^1$/ and do {testpre(forkbackgroundflag,perlscrap);$rc=testrun(regex,min,max,arglist);testpost();$rc}
 # - consider setting pscmd as in zap (ps auxww vs. COLUMNS=999 ps -edalf or similar)
 # - CPAN test suite, have dummy scripts call --testsuite...
+# - randomized wait/backoff (thundering herd, anyone...)
+# - print dots while waiting (to avoid idle term)
+# - note idle delay is idle timeout + count * period
+# - note mouse/user-before-keyboard non/idle example...
 
 use warnings;
 use vars;
@@ -101,7 +105,7 @@ while($_=$ARGV[0]){ # OK
    /^--?$/o and do{shift; last};
    last;
 }
-do{print "no arguments to test..."; exit 1} if not @ARGV;
+do{print "no arguments to test...\n"; exit 1} if not @ARGV;
 $do_loop=0 if $test;
 
 
@@ -622,8 +626,38 @@ Examples:
   
   - wait/loop for a tty to become idle and run a noisy ALARM script
     to notify $poor_me of possible @\$!?# requests for user input
+    during lengthy compiles
     (e.g. a debian dist-upgrade running elsewhere over ssh and screen)
+
     waitcond -l -cs ALARM -s 120 -r 120 idle pty/16
+
+    or use these bash functions to play a notification for local or 
+    remote idle ttys:
+
+    function port2pid { typeset i; i="$1"; [ "${i##*/}" = "$i" ] && i="$i/tcp"; fuser "$i" 2>/dev/null|tail -1|sed 's/ //g;s/$/\n/';} 
+    function pid2pty  { ps -p "$1" -o tty|tail -1|sed 's/^\?$//;s/^\(..*\)/\/dev\/\1/';} 
+    function port2pty { pid2pty $(port2pid "$1");}
+    function port2ps  { ps -wwo user,pid,ppid,pgid,nice,pri,vsize:7,rssize:7,tty:6,start,pcpu,pmem,time,cmd -p $(port2pid "$1");}
+    function waitcond_idle { : use with -l to loop; 
+       perl -e 'exec qw!waitcond -1 -s 20 -r 60 -cs!, q!WHISTLE 2>/dev/null!, @ARGV[0..$#ARGV-1], q!idle!, $ARGV[$#ARGV];' -- "$@"; }
+    function waitcond_idleport  { : use with -l to loop; typeset i; eval 'i=$(port2pty $'$#')'; 
+       perl -e 'exec qw!waitcond -1 -s 20 -r 60 -cs!, q!WHISTLE 2>/dev/null!, @ARGV[0..$#ARGV-2], q!idle!, $ARGV[$#ARGV];' -- "$@" "$i"; }
+
+    now check $SSH_CONNECTION in the remote ssh session and
+    use the second word (our own local originating port, e.g. 47711)
+    to wait on the end of a remote compile with simply
+
+    waitcond_idleport -l 47711/tcp # run in a loop
+
+    For remote screen sessions sharing a single pty however, do 
+    consider using a compile transcript file somewhere in an 
+    exported filesystem and using waitcond_idle -l on that. 
+    Or catch an existing compile by running a local
+    waitcond_idle -l not NFS-TIMESTAMP on top of 
+    a suitably modified remote waitcond like e.g.
+    waitcond -l -r 60 -cs "touch TIMESTAMP" idle PTY
+
+    
 
   - to kill a program after a time interval or condition, try
     waitcond.timeout                               300 top
@@ -653,6 +687,10 @@ Examples:
 
   - dbus: have a look at the dbus-monitor-tail hack and waitcond.dbus.README
     on github.com/jakobi/script-archive/cli.processes/
+
+  - other tools of interest: 
+    since (stateful tail), 
+    wtch (www.physics.muni.cz/~polcar/wtch; simplifies on output-change, ...)
 
 EOF
 }

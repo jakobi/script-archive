@@ -2,10 +2,34 @@
 
 # use vi < /dev/tty > /dev/tty within a pipe as xargs/find -exec command
 
+# e.g. cat /disk-WRK/projects/milestone/SDCARD-BORKED/FILES3 | ~jakobi/bin/cat0 | ~jakobi/bin/xargs0 -n 1 -I % cp -p % /disk-WRK/projects/milestone/SDCARD-BORKED/%
+
 # to fake xargs to do something with the shell - note the required dummy for 
 # the shell's own name ($0), which is esp. deadly when using -n 1...
 # ( echo "a b"; echo c ) | xargs bash -c 'echo "$@"' dummy
 #                                bash -c '...'       dummy 'a b' 'c'
+#
+# there's always a race between list creation and program execution
+#
+# -r SHOULD skip on non-empty input (perl -lne '/\S/ and print'). It doesn't for e.g. -I{} ...
+# However gnu xargs at least seems to NOT run the command ONCE 
+# on NO INPUT AT ALL when using -I REPLACESTRING. 
+# (for -n <any number>, only with -r execution is suppressed; the man -r description wrt nonblank
+# input seems bogus. non-zero added names to command invocation is more like it.
+# cat </dev/null | xargs echo indeed still shows the problem without -r)
+#  - only working solution: -I{} CMD -- {} # inefficient
+#  - provide a harmless dummy input line at the beginning # then multiple args per command invocation are permitted
+#  - use -r and hope it indeed does work with your extra xargs options (e.g. -d\\n makes it a no-op).
+#  - CONSIDER use of a sanity grep before xargs to strip empty lines, comments and worse
+# !!! --> watch this issue on possibly hanging or destructive commands <-- !!!
+#    (GNU rm is well-behaved and just exits)
+#
+# to use linefeeds and just ignore filenames with \n, 
+# use xargs itself with -d \\n instead of the cat0|xargs -0 combo
+#
+# use -i / -I{} to specify arg placement 
+# (possibly more than one copy of the same argument string per command 
+# invocation. assumes -n 1 - one input name per invocation)
 #
 # note that find -exec ... \+ should substitute for some xargs uses
 # (if available that is)
@@ -19,6 +43,7 @@
 
 # cat0 should be mostly idempotent for \0 input, modulo trailing \0 at EOF
 # and splitting input in case of records with embedded \n
+PATH="$PATH:"/home/jakobi/bin
 cat0 | exec xargs -0 ${1:+"$@"}
 
-# e.g. find | xargs0 -n 1 -iZ diff Z /mnt1/AVI-ARCHIVE/Z
+# e.g. find | xargs0 -n 1 -I{} diff {} /mnt1/AVI-ARCHIVE/{}

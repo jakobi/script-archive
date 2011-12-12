@@ -3,13 +3,48 @@
 # usage e.g. cat POSTSCRIPT | mypsnup -2 -Poj
 # careful, things like acroread might like to eat ENV
 
-$ENV{PATH}.=":/usr/bin:/usr/local/bin:$ENV{HOME}/bin:$ENV{HOME}/bin-shared:/root/bin:/root/bin-shared";
+# -lv1 / -lv2 attempt to re-raster and enforce grayscale with default RLE encoding of images
 
-open(main::STDOUT,">","/home/jakobi/.mypsnup.debug");
-foreach(sort keys %ENV) {
-   print FH "$_=$ENV{$_}\n";
+$ENV{PATH}.=":/usr/bin:/usr/local/bin:$ENV{HOME}/bin:$ENV{HOME}/bin-shared:/root/bin:/root/bin-shared";
+$LOG=$ENV{HOME}."/.mypsnup.debug";
+system "renice -n 9     -p $$ 1>&2";
+system "ionice -c2 -n 7 -p $$ 1>&2";
+
+# check also: /usr/share/doc/ghostscript/Use.htm
+
+# FIXME capture PDF and convert it ps if provided... (e.g. gimp) -> implemented for simple small cases: mypsnup_pdfguard pipeline stage
+
+# pdfjam contains pdfjoin/pdfnup, based on pdfpages package of pdfLaTeX
+# pdfguard fails on large image-rich pdf input (pdf2ps' gs invocation creates a gb-sized mess), leading to subsequent failures and diskfull errors
+#   (needless to say that such files are above the memory limits of the 4050, regardless of pdftops or the more bloating pdf2ps)
+# --> printing monsters like that:
+#     pdftops  -duplex -paper A4 -level2 a.pdf a-2x1.ps; mypsnup -1 -gs a-2x1.ps # pdftops: poppler-utils, also offering pdftohtml,pdfimages,pdftotext, ...
+#
+# concattenating for printing: 
+# pdf:
+# - gs -dPARANOIDSAFER -sPAPERSIZE=a4 -r600 -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -sOutputFile=- -c 30000000 setvmthreshold -f *-?.pdf *-??.pdf > 1
+# - pdftk / pdfchain
+# - pdfjoin (pdfjam)
+# - pdfsam  (java pdf split and merge)
+# - pdfmanipulate (python, from (de)crypt to info, crop, split, rotate and reverse)
+# (impossible for real generic postscript, not that bad in case of dsc ps)
+
+sub trunclog {
+   open(FH,">",$LOG); close FH;
 }
-close FH;
+sub printlog {
+   open(FH,">>",$LOG); print FH @_; close FH;
+}
+sub printlogerr {
+   if ($ENV{DISPLAY} and $_[0]=~/^# LPR ERROR/) {
+      $ENV{MSG}=join(" ",@_);
+      $ENV{MSG}=~s/\n+\z//;
+      system "ALERTOSD \$MSG"; # annoy me VISIBLY; requires ALERTCLR to cleanup
+   }
+   print main::STDERR @_; printlog(@_);
+}
+trunclog;
+printlog(localtime, join(" :: ", @ARGV), "\n\n", map({"$_=$ENV{$_}\n"} sort keys %ENV), "\n");
 
 # notes: 
 # - lj, oj.* are shortcuts and should be mapped to existing printers on-site
@@ -21,11 +56,14 @@ close FH;
 #
 # - firefox: may require unsetting shrink to fit for readability in 4up
 # - acroread and landscape: autorotate and shrink seems sanest for 4up slides
+# - if output lacks inter-word-spaces, consider using a different converter than the default
+#   pdftops (some primitive ebook pdf generator is bogus (e.g. ABC AmberLITConverter))
 
 # avoid triggering the lpr wrapper
 delete $ENV{MOZ_LAUNCHED_CHILD};
 delete $ENV{ADDON_PATH};
 
+$RAW="";
 $MYPSNUPOPT="-pA4";
 $MYPSNUPBND="";
 $MYPSNUPPRT=$ENV{MYPSNUPPRT};
@@ -38,44 +76,251 @@ $MYPSNUPFMT=-4                if not $MYPSNUPFMT;
 $MYPSNUPOPT=$ENV{$MYPSNUPOPT};
 $MYLPROPT  =$ENV{$MYLPROPT};
 $job="";
+$qdir="$ENV{HOME}/PDF";
+$gsres=600;
+$lvcolor=0; # have lv setting retain original color?
 
 while(@ARGV) {
    $_=$ARGV[0];
-   /^\+s3$/        and do{$MYPSNUPBND="-m0.5cm -b-2cm"; shift; next}; # scale mini page up, mini page boundaries
-   /^\+s2$/        and do{$MYPSNUPBND="-m1cm   -b-1.5cm"; shift; next}; # scale mini page up, mini page boundaries
+   /^\+s3$/        and do{$MYPSNUPBND="-m0.5cm -b-2.0cm"; shift; next}; # zoom in;  scale mini page up, mini page boundaries
+   /^\+s2$/        and do{$MYPSNUPBND="-m1.0cm -b-1.5cm"; shift; next}; #           scale mini page up, mini page boundaries
    /^\+s1$/        and do{$MYPSNUPBND="-m0.0cm -b-0.7cm"; shift; next}; 
-   /^[-\+]s0?$/    and do{$MYPSNUPBND="-m0.0cm"; shift; next}; # don't scale (though note the -b-0.5 or similar as default below)
-   /^-s1?$/        and do{$MYPSNUPBND="-m0.5cm"; shift; next}; # scale final page down - outer page boundary
-   /^-s2$/         and do{$MYPSNUPBND="-m0.7cm"; shift; next};
+   /^[-\+]s0?$/    and do{$MYPSNUPBND="-m0.0cm -b-0.5cm"; shift; next}; # don't scale, but scale up the mini pages (which is also the default below)
+   /^-s1?$/        and do{$MYPSNUPBND="-m0.5cm -b-0.0cm"; shift; next}; # zoom out; scale final page down - outer page boundary
+   /^-s2$/         and do{$MYPSNUPBND="-m0.7cm -b-0.0cm"; shift; next};             # try to protect lj's a4 borders     - also consider acroread 4on1, which...
+   /^-s3$/         and do{$MYPSNUPBND="-m1.0cm -b+0.5cm"; shift; next}; # might cope with borderless text... - ...might better cope with mini page borders
+   /^-s5$/         and do{$MYPSNUPBND="-m2.5cm -b0.2cm"; shift; next};  #
+
+   /^-nopdfguard$/ and do{$pdfguard=0; shift; next};                    # turn off pdf guarding
+   /^-pdftops$/    and do{$ENV{MYPSNUPPDF}="pdftops"; shift; next};     # default pdf guarding is using pdftops standalone, non-gs, slightly faster
+   /^-pdf2ps$/     and do{$ENV{MYPSNUPPDF}="pdf2ps"; shift; next};      #                                       gs
+   /^-(pdf)?acro$/ and do{$ENV{MYPSNUPPDF}="acroread"; shift; next};    #                                       acrobat
+
+   /^-pdf$/        and do{$pdf=1; shift; next};                         # turn off pdf guarding, implies gs must cope with any pdf thrown at it
+
+   /^-lv=?(1|2|1\.5)?$/ and do{$lv=$1; shift; $lv=shift if not $lv; next};# re-distill to gray and specified level (consider -nopdfguard)
+
    /^-?-debug$/    and do{$debug=1; shift; next};
+   /^-?-stdout$/   and do{$stdout=1; shift; next};
+   /^-?-(?:q|out|(?:out)?queue)=?()?$/ and do{$queue=1; $qdir=$1 if $1; shift; next}; # enqueue/preview instead of printing
+
+   /^-((3|6|12)00)$/ and do{$gsres=$1; shift; next};
+   /^-r(.*)$/      and do{$gsres=$1; shift; $gsres=shift if not $gsres; next}; # enforce resolution setting by user for gs (300, 600, 1200 ...)
+
    /^-[Pd](.*)$/   and do{$MYPSNUPPRT=$1; shift; $MYPSNUPPRT=shift if not $MYPSNUPPRT; next}; # destination printer
    /^-([8421])$/   and do{$MYPSNUPFMT=-$1; shift; next}; # number of pages
-   /^-?-(gs|pix)$/ and do{$pix=1; $gsdev=lj5gray if not $gsdev; $gsres=1200 if not $gsres; shift; next}; # pixels instead of ps
-                   # above ignores printer-set duplex defaults and density/quality/..., but at least it prints. somehow.
-                   # however if acroread, first turn off let printer determine colors + lv3,
+   /^-?-(gp|gimp-print|gutenprint)$/ and do{$ppd=1; $gsres=600; shift; next};                               # pixels instead of ps
+   /^-?-(gs|pix|ghostscript)$/ and do{$pix=1; shift; next}; # pixels instead of ps
+                   # or lj5gray instead of lj5mono; pxlmono seems broken, and for both, duplex is ignored
+                   #
+                   # however if acroread, first turn off let printer determine colors and lv3,
                    # then consider trying 'print as image' (q: resolution or is that some kind of vectorized gfx stream format??)
                    # font-DL could also create silent ps memory-issues
+                   #
+                   # is lv1 sufficient to fix these issues?
    /^-[CJT]$/      and do{$job.=qq! $_!; $_=$ARGV[1]; s/[^\x20-\x7e]/./g; s/["']/./g;; $job.=qq! "$_"!; shift; shift; next}; # job title
+   /^-?-help$/     and do{system "grep '^ */' $0"; die}; 
    last;
 }
 $ARGV[0]="/dev/stdin" if  "-" eq $ARGV[0];
 push @ARGV, "/dev/stdin" if not @ARGV;
 
-#$MYPSNUPBND="-m1cm   -b-1.5cm" if not $MYPSNUPBND and $MYPSNUPFMT=~/[48]/; # defaults to +s2 page upscale for 4up/8up
- $MYPSNUPBND="-m0cm   -b-0.7cm" if not $MYPSNUPBND and $MYPSNUPFMT=~/[48]/; # defaults to +s1 page upscale for 4up/8up
+if (($ppd or $pix) and not $ENV{TEMP}) { 
+   -w "/disk-PUB/tmp" and $ENV{GS_TEMP}=$ENV{TEMP}="/disk-PUB/tmp"; # allow for extra huge space for gs (but seems to be ignored)
+}
+
+#$MYPSNUPBND="-m1.0cm -b-1.5cm" if not $MYPSNUPBND and $MYPSNUPFMT=~/[48]/; # defaults to +s2 page upscale for 4up/8up
+ $MYPSNUPBND="-m0.0cm -b-0.7cm" if not $MYPSNUPBND and $MYPSNUPFMT=~/[48]/; # defaults to +s1 page upscale for 4up/8up
+
+# use -0.5 upscale as default, and above 0.7 for 4up
+$psnup      = "cat";     $psnup    = "psnup -b-0.5cm $MYPSNUPFMT $MYPSNUPOPT $MYPSNUPBND" if ($MYPSNUPOPT or $MYPSNUPBND or $MYPSNUPFMT ne "-1"); 
+
+# change for pdf, cannot define minipages boundaries properly
+$psnup      = "cat"                                                                       if ($MYPSNUPOPT or $MYPSNUPBND or $MYPSNUPFMT ne "-1") and $pdf;
+$PDF=$ENV{HOME}; $PDF.="/.mypsnup.$$.pdf";
+$psnup      = "(cat > $PDF; pdfnup --nup 1x2 --outfile $PDF.pdf $PDF 1>&2; echo DONE 1>&2; cat $PDF.pdf; rm $PDF $PDF.pdf)" if ($MYPSNUPFMT eq "-2") and $pdf;
+$psnup      = "(cat > $PDF; pdfnup --nup 2x2 --outfile $PDF.pdf $PDF 1>&2; echo DONE 1>&2; cat $PDF.pdf; rm $PDF $PDF.pdf)" if ($MYPSNUPFMT eq "-4") and $pdf;
+$psnup      = "(cat > $PDF; pdfnup --nup 4x2 --outfile $PDF.pdf $PDF 1>&2; echo DONE 1>&2; cat $PDF.pdf; rm $PDF $PDF.pdf)" if ($MYPSNUPFMT eq "-8") and $pdf;
 
 
-$psnup      = "cat";     $psnup    = "psnup -b-0.5cm $MYPSNUPFMT $MYPSNUPOPT $MYPSNUPBND" if $MYPSNUPOPT or $MYPSNUPBND or $MYPSNUPFMT ne "-1";
-# GS is single-sided and usable for oj/dj and similar printers
-$gsdev      = "lj5gray"; $gsdev    = "cdjcolor" if $MYPSNUPPRT =~ /^oj/;
+# Q: pxlmono instead of lj5gray or ljet3d (scaling error, dpi??)?
+$gsdev      = "pxlmono"; $gsdev    = "cdjcolor" if $MYPSNUPPRT =~ /^oj/;
                          $gsdev    = "cdjmono"  if $MYPSNUPPRT =~ /^ojmono$|^dj$/;
-$gsres      = 1200;      $gsres    = 300 if $MYPSNUPPRT =~ /^(oj(mono|color|)|dj)$/;
+                         # $gsdev="lj5gray";
+
+
+$gsres      = 600   if $ppd and $gsres > 600; # ijs limits
 # just don't ask why 300; 600 just prints the left/top of the page instead
 # i thought it could print 600dpi, but maybe cdjcolor+my hw has restrictions in color??
-$MYPSNUPPRT = "oj"       if $MYPSNUPPRT =~ /^oj(mono|color)$|^dj$/;
-$gs         = "cat";     $gs       = "gs -dSAFER -r$gsres -q -dNOPAUSE -dBATCH -sDEVICE=$gsdev -sOutputFile=- -" if $MYPSNUPPRT eq "oj" or $0=~/pix/i or $pix;
-$MYLPROPT  .=" -l "      if $MYPSNUPPRT eq "oj" or $gs ne "cat";
-$psselect   = "cat";     $psselect = "psselect -r" if $MYPSNUPPRT eq "oj";
+$gsres      = 300   if $MYPSNUPPRT =~ /^(oj(mono|color|)|dj)$/;
+$MYPSNUPPRT = "oj"  if $MYPSNUPPRT =~ /^oj(mono|color)$|^dj$/;
+
+# perf: 4050: 133M Risc 8MB (16+MB for full page 8bit gray)
+#       improve by 600dpi instead of 1200
+#       no sane way to tell gs about printer memory (other hplip's 36MB thresh, which gs never sees)
+#       -c .setpdfwrite / -c 30000000 setvmthreshold -f # 3 and 30mb increased limits for gs
+
+$pix=1 if $pdf;
+# abuse gspdf for memory vmthreshold and pdf survival settings
+$gspdf="-c 30000000 setvmthreshold -f"; $gspdf="-dPDFFitPage -c save pop -f -c 30000000 setvmthreshold -f" if $pdf;
+# $gspdf=""; $gspdf="-dPDFFitPage -c save pop -f" if $pdf;
+
+$gs         = "cat";     
+$gs         = "gs -dPARANOIDSAFER -sPAPERSIZE=a4 -r$gsres -q -dNOPAUSE -dBATCH            -sDEVICE=$gsdev -sOutputFile=- $gspdf -" if $MYPSNUPPRT=~/[do]j/i;
+# lj5gray / lj5mono allow for Duplex=2 to include tumble within a single option, pxlmono does NOT (typecheck in .putdeviceprops error)
+$gs         = "gs -dPARANOIDSAFER -sPAPERSIZE=a4 -r$gsres -q -dNOPAUSE -dBATCH -dDuplex   -sDEVICE=$gsdev -sOutputFile=- $gspdf -" if $MYPSNUPPRT!~/[do]j/i and not $ppd and ( $0=~/pix/i or $pix );  
+#$gs         = "gs -dPARANOIDSAFER -sPAPERSIZE=a4 -r$gsres -q -dNOPAUSE -dBATCH -dDuplex   -sDEVICE=pxlmono -sOutputFile=- -" if $MYPSNUPPRT!~/[do]j/i and not $ppd and ( $0=~/pix/i or $pix );
+
+# gutenprint's way faster than pxlmono, but offers less quality!? maybe ijs is crippled to max 600dpi?? or does gutenprint use lj only for proofing?
+# --> refuses to change anything in output regardless of resolutions whicheverway they were set. BORKED.
+# -sIjsParams="Quality=600x600dpi,InkType=CMYK,MediaType=Plain,MediaSource=Auto,Dither=Adaptive,ImageType=0,Density=1.000000,Brightness=1.000000,Gamma=1.000000,Contrast=1.000000,Saturation=1.000000,Cyan=1.000000,Magenta=1.000000,Yellow=1.000000"
+###
+### worse: gutenprint doesn't support color laser printers and doesn't intend to implement that at all...
+###
+$gs         = "gs -dPARANOIDSAFER -sPAPERSIZE=a4 -r$gsres -q -dNOPAUSE -dBATCH            -sDEVICE=ijs -sIjsServer=ijsgutenprint -sDeviceManufacturer=HP -sDeviceModel=hp-dj_450  -dIjsUseOutputFD -sOutputFile=- $gspdf -" if $MYPSNUPPRT=~/[do]j/i and $ppd;
+$gs         = "gs -dPARANOIDSAFER -sPAPERSIZE=a4 -r$gsres -q -dNOPAUSE -dBATCH -dDuplex   -sDEVICE=ijs -sIjsServer=ijsgutenprint -sDeviceManufacturer=HP -sDeviceModel=hp-lj_4050 -dIjsUseOutputFD -sOutputFile=- $gspdf -" if $MYPSNUPPRT!~/[do]j/i and $ppd;
+
+# hplip / hpijs is crippled to 600x600 for mono or color ... and always goes via ijs/gs !? unsupported a joke it is. -> for more resolution/quality, stick to postscript or pdf
+# the frontend for the sorry mess is hp-* e.g. hp-toolbox
+# bypassing ijs/gs we're upto 1200 using ps
+
+# gimp normal printing: pdf permits resolution setting, to-file however does only allow setting of image size on paper
+# (maybe via toolbox it is possibly for ps / direct printing to printer to choose 1200dpi / changing print quality)
+#
+# CAVEAT: gimp normal printing does result in PDF! Worse: FAIL with acroread.
+#
+# gimpprint is restricted to 6000dpi for 4050, resulting in pcl. however, lucid seems to have issues
+# in reliably setting up gimpprint (tile error DURING printing, forcing use of jpegtopnm|pnmtops|mypsnup
+
+# The following Ghostscript commands are required when using HPIJS.
+#-sDEVICE=ijs
+#-sIjsServer=hpijs
+#-dIjsUseOutputFD
+#-sDeviceManufacturer=x   (x equals: "HEWLETT-PACKARD", "HP", "APOLLO")
+#-sDeviceModel=x          (x equals: "DESKJET 990", "DESKJET 670", etc...)
+#
+#The following Ghostscript commands are optional when using HPIJS.
+#
+#-dDuplex=false -dTumble=false (none)
+#-dDuplex=true  -dTumble=false (book)
+#-dDuplex=true  -dTumble=true  (tablet)
+#
+#-sIjsParams="Quality:Quality=n,Quality:ColorMode=n,Quality:MediaType=n,
+#             Quality:PenSet=n,Quality:FullBleed=n,PS:MediaPosition=n"
+#
+#    Quality equals: 0=normal (default), 1=draft, 2=best, 3=hires, 4=fastdraft
+#    ColorMode equals: 0=grey_k, 1=grey_cmy, 2=color (default)
+#    MediaType equals: 0=plain (default), 1=premium, 2=photo
+#    PenSet equals: 0=black_pen, 1=color_pen, 2=both_pens, 3=mdl_pen, 4=mdl_both
+#    FullBleed equals: 0=no (default), 1=yes
+#    MediaPosition equals: 1=upper_tray, 4=lower_tray, 7=autoselect (default)
+
+# hpijs is crippled to 600dpi for a decade by now
+	# gs -dSAFER -sDEVICE=ijs -sIjsServer=hpijs -sDeviceManufacturer=HEWLETT-PACKARD -sDeviceModel='DESKJET 990' -dIjsUseOutputFD -sOutputFile=/dev/usb/lp1 -dNOPAUSE -- examples/tiger.eps 
+	#
+	# ijs is too ancient a ppd (600dpi only) -- 
+	# gs -sPAPERSIZE=a4 -r1200 -dSAFER -sDEVICE=ijs -sIjsServer=hpijs -sDeviceManufacturer=HP -sDeviceModel='HP LaserJet 4050 Series hpijs' -dDuplex -dIjsUseOutputFD -sOutputFile=OUT -dNOPAUSE -- 4.ps
+	#
+	# extremly alpha - the replacement for hpijs 
+	# gs -dSAFER -sDEVICE=cups -sIjsServer=hpcups
+	# gs -dSAFER -sDEVICE=ijs -sIjsServer=ijsgutenprint # epson mostly
+	#
+	# might results in postscript like "<</Duplex true /Tumble false>> setpagedevice" OR THIS "<</Duplex false>>setpagedevice"
+	#                             possibly with %%BeginFeature: *Duplex None -> DuplexNoTumble
+	#                                  cups options = raw to smb.conf
+	# "@PJL SET DUPLEX=$DUPLEX_MODE
+	#
+	# http://ghostscript.com/doc/current/Devices.htm
+	#
+	# exec gs -q -sDEVICE=cdj970 -sPAPERSIZE=a4 -dQuality=0 -dPapertype=0 -dDuplex=2 -sOUTPUTFILE=- -dNOPAUSE gslp.ps $* quit.ps | lpr & 
+	# lprint e$;"E";e$;"&l1O";        ' reset/portrait
+	# lprint e$;"&l0L";               ' disable perf skip
+	# lprint e$;"&l0E";               ' set top margin to 0
+	# lprint e$;"&l1X";               ' copies
+	# lprint e$;"&l1S";               ' duplex
+	#
+	# As an alternative to FormFeed (and to give more control), you could use the 'Duplex Page Side Selection' sequence:
+	#   <esc>&a#G
+	# where:
+	# # = 0 Select next face
+	# # = 1 Select front face
+	# # = 2 Select rear face   
+	#
+	# Since  I'm using SQR to print DUPLEX maybe the correlation here  might
+	# be  the same: 1. After setting a variable like DUPLEXon to ON <27>&l1S
+	# or....DUPLEXoff   to  off  <27>&l0S  using  either  print  or   encode
+	# statement, I usually put the OFF variable first before the ON variable
+	# in  the  beginning  of the program. This way since the  program  is  a
+	# cycle, it will turned ON on odd pages and off on even pages.
+	
+	# # switch from/to postscript prolog
+	# ^[%-12345X@PJL JOB
+	# @PJL ENTER LANGUAGE = POSTSCRIPT
+	#
+	# and the following epilog
+	#
+	# ^[%-12345X@PJL EOJ
+	# ^[%12345X
+	
+	# ps2ps -dLanguageLevel=1 1.ps 2.ps # smash ps to level 1
+	# (pstops is the booklet distiller)
+	# select pages: psselect -p17- 2.ps 3.ps
+
+
+$MYLPROPT  .= " -l " if $MYPSNUPPRT eq "oj" or $gs ne "cat";
+$psselect   = "cat"; $psselect = "psselect -r" if $MYPSNUPPRT eq "oj" and not $pdf;
+$pspdf      = "cat"; $pspdf      = "mypsnup_pdfguard" if not $pdf or not $pdfguard; # slurps and runs pdf2ps or pdftops if required
+
+# smash level and enforce gray ?
+$pslv      = "cat"; 
+if ($lv and not $pdf) {
+   # actually the first option kind of obviates pdfguard, as it eats anything
+   $pslv= "cat"; $pslv = "gs -dPARANOIDSAFER -sPAPERSIZE=a4 -r$gsres -q -dNOPAUSE -dBATCH -sColorConversionStrategy=Gray -dProcessColorModel=/DeviceGray -sDEVICE=pdfwrite -sOutputFile=- -c 30000000 setvmthreshold -f - | gs -dPARANOIDSAFER -sPAPERSIZE=a4 -r$gsres -q -dNOPAUSE -dBATCH -sDEVICE=pswrite -dDuplex -dPDFFitPage -dLanguageLevel=$lv -sOutputFile=- -c save pop -c 30000000 setvmthreshold -f -" if $lv and not $pdf;
+   $lvcolor and $pslv = "ps2ps -sPAPERSIZE=a4 -dLanguageLevel=$lv /dev/stdin /dev/stdout";
+}
+
+
+#$pspdf     = "cat" if $pdf; # consider combined gs invocation
+#$pspdf      = "pdf2ps  -sPAPERSIZE=a4 -dLanguageLevel=2 /dev/stdin /dev/stdout" if $pdf; # slow via gs
+# actually pdftops is way faster incl. later gs processing (w/o even resolution issues!?), and gs is playing nice with the input, too!?
+#$pspdf      = "(cat > ~/.mypsnup.$$.pdftops; pdftops -duplex -paper A4 -level2 ~/.mypsnup.$$.pdftops /dev/stdout; rm ~/.mypsnup.$$.pdftops)" if $pdf;        # fast via pdftops
+# NOTE that the gspdf string can be left in even for postscript output
+#      it's just some c binaries and few gs ps-scripts that hate pdf on input
+#      still the lj's showing its age and -gs on some memory-eating pdf2ps output is speedier
+#      psnup / pdfnup and psselect usually are FAST stages
+# http://en.wikibooks.org/wiki/PostScript_FAQ
+# 
+# pdf2ps:  gs & pswrite , pdf2ps, pdfps, ps2ps, acroread (gs scripts may allow pdf input and maybe permit pdf output)
+# ps2pdf:  gs & pdfwrite, ps2pdf 
+# pdf2pdf: gs, pdfnup, ...
+# pdf2dsc (ps2dsc?): dsc-compliant postscript (but not all apps might accept that kind of ps)
+# selecting: ps2ps  -dFirstPage#111 -dLastPage#666 input.pdf output.ps 
+# concat: gs -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -sOutputFile=file.pdf -c save pop -f file1.dsc file2.dsc file3.dsc # in general it is IMPOSSIBLE due to side-effects.
+#         %! 
+#         % header
+#         /begin_file { /save_state save def  % save state of PS interpreter 
+#            currentfile
+#            0 (% $$$ EOF Mark $$$) /SubFileDecode filter cvx exec % safequard against flushfile, etc. (fails for e.g. this ps file: systemdict begin (%stdin) (r) file flushfile)
+#         } bind def
+#         /end_file
+#         { clear cleardictstack                                   % clear after the file
+#            save_state restore                                    % restore the state
+#         } bind def
+#         % ...
+#         begin_file
+#         % one of the files
+#         % $$$ EOF Mark $$$
+#         end_file
+#         % ...
+#
+# color 2 grey: replace "setrgbcolor" with "pop pop pop 0 setgray"
+#               or redefine: /setrgbcolor {0.11 mul 3 1 roll 0.59 mul 3 1 roll 0.30 mul add add setgray} def # might skip greying images, though
+#               /UseCIEColor however is PS3 - only!
+# ps2edit: force ps to contain only path operations
+# editing with WYSIAYG: ntaken branches will be discarded by the interpreter leaving no trace in the editor. loss of structure.
+#              pdf editors: acrobat, pdf tuner 
+# 
+# Idiom recognition is an automated technique to patch a PS procedure when it is bound. Although it was designed to add smooth shading to legacy PostScript programs it can be also used to fix bugs.
 $lpr        = "lpr";
 
 # site specific mapping of oj/lj short cuts (in case we're using gs)
@@ -83,29 +328,57 @@ $MYPSNUPPRT = "oj"   if $MYPSNUPPRT =~ /^oj$/;
 $MYPSNUPPRT = "lj"   if $MYPSNUPPRT =~ /^lj$/;
 
 if ($MYPSNUPPRT=~/@/) {
-   $lpr="lprng";
+   $lpr="lprng -k";
 } else {
    $lpr="/usr/bin/lpr";
 }
 $lpr="$lpr -P$MYPSNUPPRT $MYLPROPT $RAW";
 
+#
+$lpr="lprng -P 1\@192.168.10.29 $MYLPROPT $RAW"; # REMOVEME FIXME
+#
+   
+$lpr="cat" if $stdout;
+@time=localtime(time); $time=sprintf "%04d%02d%02d-%02d%02d%02d", $time[5]+1900, $time[4]+1,@time[3,2,1,0];
 
+$i=0;
+$rc=0;
 foreach (@ARGV) {
-   $i++;
-   $lpr="cat > ~/mypsnup-output.$$.$i.ps" if $debug;
    next if not /\S/;
-   print main::STDERR "mypsnup: printing $_\n";
-   s/'/\\'/g;
-   $job1=$ENV{file}=$_;
-   $job1=~s/[^\x20-\x7e]/./g; $job1=~s/["']/./g;
-   $job1=qq!-J "$job1"!;
-   $job1=$job if $job;
-   print main::STDERR "mypsnup: ".     "cat /dev/null \"$_\" | $psnup | $psselect | $gs | $lpr $job1". "\n";
-   system                          "cat /dev/null \"\$file\" | $psnup | $psselect | $gs | $lpr $job1";
+   printlogerr "\n" if $i;
+   sleep 5 if $i and $lpr!~/^cat/ and not $debug and not $queue;
+   $i++; $j=sprintf "%02d", $i; 
+   
+   $job2=$ENV{file}=$_;
+   $job2=~s/[^\x20-\x7e]/./g; $job2=~s/["']/./g; $job2=~s/^-/:-/g;
+   $job1=qq!-J "$job2"!;
+   $job2=~s!/!..!g; $job2=~s/ /_/g;
+   $job1=$job if $job; # allow override
+   $job1="# $job1" if $job1 and ($debug or $stdout);
+
+   # stash debug output (format is either postscript, pcl or pclx/pxl)
+   $lpr="cat > ~/mypsnup-output.$$.$j.ps" if $debug;
+   # stash output after formatting to allow checking borders and manual queueing (format is ps or possibly pdf)
+   if ($queue){
+      $gs="cat";
+      $lpr=qq!cat > "$qdir/mypsnup.$time-$j:$job2.mypsnup-1" #!; # note the # to skip the rest of line
+   }
+
+   @time2=localtime(time); $time2=sprintf "%04d%02d%02d-%02d%02d%02d", $time2[5]+1900, $time2[4]+1,@time2[3,2,1,0];
+
+   printlogerr "mypsnup: $time2: printing $_\n";
+
+   printlogerr "mypsnup: file=\"$_\"; cat /dev/null \"\$file\" | $pspdf | $pslv | $psnup | $psselect | $gs | $lpr $job1". "\n";
+
+   # for now skip logging stderr...
+   system           "set -o pipefail; cat /dev/null \"\$file\" | $pspdf | $pslv | $psnup | $psselect | $gs | $lpr $job1"; # bash!
    if ($?) {
-      print "# lpr err -- in case of wrong printer name, use eg: export MYPSNUPPRT=lj\@kefk.compact\n"
+      printlogerr "# LPR ERROR ". ($?>>8) ." $job1 (in case of wrong printer name, use eg export MYPSNUPPRT=lj\@kefk.compact)\n";
+      $rc++;
    }
 }
+sleep 1 and $lpr!~/^cat/ and not $debug and not $queue;
+exit $rc;
 
 # gs -dNOPAUSE -dBATCH -sDEVICE=lj5mono -sOutputFile=X logging.ps.4ps (see also mypixup)
 #
@@ -139,3 +412,5 @@ foreach (@ARGV) {
 #     viewing or pdf-generating, as it's a lowlevel printer duplex option
 #
 # psnup -4 -m0.5cm $i | gs -dSAFER -r1200 -q -dNOPAUSE -dBATCH -sDEVICE=lj5gray -sOutputFile=- - | lpr -l -P$MYPRINTER
+#
+# images: ... | jpegtopnm | pnmtops | mypsnup -1 -gs

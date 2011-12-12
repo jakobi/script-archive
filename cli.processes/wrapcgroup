@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# $0 [-low|-std] [-name cgroup-suffix] CMD CMDARGS - a cgroup exec wrapper
+
+# limit process+children memory use incl. its use of kernel buffers
+# using two kinds of user-specific cgroups, a low RAM one for
+# find, cpio and the like, and a standard class allowing members 
+# to share upto 75% of physmem, incl. member-attributed page cache
+# and the like (I hope). 
+
+P=$(free 2>/dev/null | head -2 | tail -1 | awk '{print $2}')
+S=$(free 2>/dev/null | head -4 | tail -1 | awk '{print $2}')
+
+DR=/mnt/cgroups/memory
+N=""
+
+# defaults: std class with hard 75% of physmem limit
+T=std
+L=$(( $P * 3 / 4 * 1024 * 1024 ))
+
+
+
+while [ "$1" != "" ]; do
+   case $1 in
+      -low)  T=low;   L=$(( 1048576 * 400 ));            shift; ;;  # 400M 
+      -std)  T=std;   L=$(( $P * 3 / 4 * 1024 * 1024 )); shift; ;;  # 75% of physical memory, as above
+      -name) N=".$2";                             shift; shift; ;;  # use/create a named subgroup: $T.NAME
+      * )    break ;;
+   esac
+done
+DH=$DR/users.$LOGNAME
+D=$DH/$T$N
+
+# mount if necessary, and create the user dir if not yet done
+if ! grep "^cgroup $DR" /proc/mounts >/dev/null; then
+   sudo mkdir $DR 2>/dev/null
+   sudo mount -n -t cgroup -o memory cgroup $DR
+   sudo mkdir $DR/sysdefault
+fi
+if [ ! -d "$DH" ]; then
+   sudo mkdir $DH
+   sudo chown -Rh $LOGNAME $DH
+fi
+
+[ ! -d $D ] && mkdir $D
+
+# NOTE: memory.soft_limit_in_bytes permits allocations
+#       upto the cgroups memory.limit_in_bytes minus the
+#       the memory allocated in other cgroup members, only
+#       then slowly increases memory pressure to restore
+#       its limit. Set memory+swap to memlimit + 0.8 swapsize
+echo -n 1                       > $D/memory.use_hierarchy
+echo -n $L                      > $D/memory.limit_in_bytes
+echo -n $(( $L + 8 * $S / 10 )) > $D/memory.memsw.limit_in_bytes
+
+if [ "$1" != "" ]; then
+   echo $$ > $D/tasks
+   exec "$@"
+else
+   echo to limit running tasks, use echo PIDLIST \> $D/tasks
+   # see: memory.move_charge_at_immigrate, problematic
+   echo NOTE: old task-specific kernel memory is still attrib to the old cgroup!
+fi

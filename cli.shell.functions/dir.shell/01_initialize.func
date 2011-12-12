@@ -41,8 +41,8 @@ fi
 
 
 
-# PATH=$HOME/bin:$PATH
-PATH=$HOME/bin-l:$PATH
+#                 bin            haskell's bin
+PATH=$HOME/bin-l:$HOME/bin:$HOME/.cabal/bin:$PATH
 
 
 

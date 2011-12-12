@@ -1,0 +1,1 @@
+Raw script example to generate nightly per-local-filesystem lists and media-specific sub-lists. Together with the gr_? functions in grep.func, this makes up a simple LAN-wide super-locate.

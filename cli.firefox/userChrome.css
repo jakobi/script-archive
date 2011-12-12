@@ -13,9 +13,12 @@ tree, tooltip {
 
 /* tabs */
 
+/* ff4 / tab mix plus - tab multirow scrolling is borked  - allow for a high number of tabrows instead */
+/* and do NOT place buttons in the tabbar! - disables multirow use */
+
 .tabbrowser-strip {
-   height: 16px !important; /* 12 */
-   border-bottom: 0px !important; }
+   height: 16px !important; /* 12 16 */
+   border-bottom: 0px !important; }  /* 0 */
 #content > tabbox tab { padding: 0px 0px 0px 0px !important; } /* 1 */
 #content > tabbox tab:not([selected="true"]) { padding: 0px 0px 0px 0px !important; } /* 1 1 4 1 */
 tabbox {
@@ -24,9 +27,9 @@ tabbox {
    padding-top: 0px !important; /* Padding betwene Tab-bar and Url field */ }
 tab { /* Individual tab size */
    height: 12px !important;
-   margin-top: -5px !important; /* Space over tabs and under URL-tab */ 
+   margin-top: -3px !important; /* -5 Space over tabs and under URL-tab  -- required for configuration mania menu bar height!??! */ 
    /* !! -5 !! seems to center - maybe setting padding 0 implies use of a stupid default? */
-   margin-bottom: 0px !important; /* -3 */
+   margin-bottom: 3px !important; /* -3 */
    margin-left: 0px !important; }
 
 
@@ -34,7 +37,7 @@ tab { /* Individual tab size */
 /* PJ http://eriwen.com/firefox/howto-tweak-chrome-for-a-cleaner-firefox/ */
 
 /* Add a keyword when adding a bookmark */
-#keywordRow { display: -moz-grid-line !important; }
+/* #keywordRow { display: -moz-grid-line !important; } */
 
 /* Remove extra padding from the Navigation Bar */
 .toolbarbutton-1, .toolbarbutton-menubutton-button {

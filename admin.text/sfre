@@ -135,6 +135,10 @@ our $changetrackcmd='changetrack';
 # - mention the stupidly huge filename issue with changetrack's way of
 #       encoding dirs in file names, which also affects use of such files
 #       via sfre [probably as BUG/won't fix]
+# - have a look at launchpad.net/tangledstrings, a vimball to hesitate
+#       at editing puppet-owned files, and the classical svn warnings
+#       on editing shared / version-controlled system files
+#       (basically allow for plugins checking/grepping against known generated files NOT to edit manually)
 #      
 # Ultimate wishlist:
 #

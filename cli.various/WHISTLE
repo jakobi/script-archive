@@ -1,0 +1,146 @@
+#!/bin/bash
+{ # start prot
+
+# simple alarm sound example, also including some standard waitcond invocations
+version="0.2";
+# last changes:
+# 20111119 PJ  0.2  jakobi@acm.org  progress report on 'sleeping' :)
+
+
+
+shopt -s extglob
+player=/usr/bin/aplay
+# comment out the next line if the player uses options in $player
+test -x "$player" || {  echo "!! WHISTLE: no player $player found"; exit 1; }
+
+
+
+# var=default     # options  description
+# --- ----------- # -------  ----------------------------------------------------
+whistle=$HOME/images/trek/communicator.trekwhst.wav # #e.g. $HOME/images/trek/tos-intercom.au
+                  # -w    S  audio file (not too annoying; space separated list)
+repetitions_per_whistle=1
+                  # -r    N  repetitions of playing sound file per audio event
+msg=""            # -m    S  string to print after event, from user
+verbose=1         # -v | -t  verbose progress
+
+# we have two modes of operation:
+# 1. direct mode, optionally with sleeping or looping and sleeping
+sleep=0           #       S  sleep time, from user (300 or 5m or 5:00) 
+loop=""           # -l       loop the whistle call
+sleepinterval=100 # -n    N  print out remaining time every N seconds
+
+# 2. waitcond idle-file mode - exec waitcond as the parent process to re-invoke us repeatedly
+wcr=""            # -fast/-slow/... waitcond: specify some notion of 'recent'
+wcn=""            # 'not'                     'not' string to insert before idle
+wcf=""            #       S                   idle-file
+
+nl=""             #          newline / message at end of output
+
+
+
+while [ ! -z "$1" ]; do
+   [ "$1" = "-h" -o "$1" = "-help" -o "$1" = "--help" ] && { 
+       echo "#  Usage: WHISTLE [-l (loop)]         [-n LOOPINTERVAL]"                                1>&2
+       echo "#                 [-t | -v]           [-m MESSAGE]"                                     1>&2
+       echo "#                 [-r WHISTLEREPEATS] [-w AUDIOFILE]"                                   1>&2
+       echo "#                 [ [-slow|-fast|] [not]  FILE  (waitcond idle 120/30/60s)]"            1>&2
+       echo "#                 [                       DELAY                    (sleep)]"            1>&2
+       echo "#  see also ALARM, sleepuntil; default interval for delay printing: ${sleepinterval}s"  1>&2
+       exit 1
+   }
+   [ "$1" = "-m" ]                                    && { msg="$2";                     shift; shift;        continue; }
+   [ "$1" = "-fast" -a "$2" = "not" ]                 && { wcr=30;  wcf="$3"; wcn="not"; shift; shift; shift; continue; }
+   [ "$1" = "-slow" -a "$2" = "not" ]                 && { wcr=120; wcf="$3"; wcn="not"; shift; shift; shift; continue; }
+   [                   "$1" = "not" ]                 && { wcr=60;  wcf="$2"; wcn="not"; shift; shift;        continue; }
+   [ "$1" = "-fast" ]                                 && { wcr=30;  wcf="$2"; wcn="";    shift; shift;        continue; }
+   [ "$1" = "-slow" ]                                 && { wcr=120; wcf="$2"; wcn="";    shift; shift;        continue; }
+   [ "$1" = "-l" ]                                    && { loop=1;                       shift;               continue; }
+   [ "$1" = "-n" ]                                    && { sleepinterval="$2";           shift; shift;        continue; }
+   [ "$1" = "-w" ]                                    && { whistle="$2";                 shift; shift;        continue; }
+   [ "$1" = "-r" ]                                    && { repetitions_per_whistle="$2"; shift; shift;        continue; }
+   [ "$1" = "-v" ]                                    && { verbose=1;                    shift;               continue; }
+   [ "$1" = "-t" ]                                    && { verbose="";                   shift;               continue; }
+   [ "$1" != "" -a "" = "${1%%+([0-9:])@(|h|m|s)}" ]  && {
+      # see also ALARM
+      sleep="$1"; 
+      [ "" = "${sleep%%*([0-9])h}" ]         && sleep="${sleep%%h}:00:00"
+      [ "" = "${sleep%%*([0-9])m}" ]         && sleep="${sleep%%m}:00"
+      [ "" = "${sleep%%*([0-9]):+([0-9])}" ] && sleep="00:${sleep}"
+      [ "" = "${sleep%%*([0-9])s}" ]         && sleep="${sleep%%s}"
+      h="${sleep%%:*([0-9]):*([0-9])}"
+      m="${sleep##*([0-9]):}"; m="${m%%:*([0-9])}"
+      s="${sleep##*([0-9]):*([0-9]):}"
+      term=$h\*3600+$m\*60+$s
+      #echo "$sleep - $h - $m - $s -- $term"
+      [ "" = "${sleep%%+([0-9]):+([0-9]):+([0-9])}" ] && let "sleep=$term"
+      shift; continue
+   }
+   # default: assume the argument to be the standard idle file argument for waitcond
+   [ "$wcf" != "" ] && { echo "invalid arguments?"; exit 1; }
+   [ -r "$1" ]      || { echo "#  no such waitcond-idle file '$1' - hope that's ok"; }
+   wcr=60;  wcf="$1"; wcn=""; shift
+done
+
+
+
+# run in a loop via exec waitcond (whistle on file idle)?
+[ "$wcf" != "" ]   && { export msg; w=$0; [ "$msg" != "" ] && w="$0"' -m "$msg"'; 
+                        [ "$verbose" != "" ] && echo "#  running waitcond -l -cs $w -r $wcr $wcn idle $wcf" 1>&2; 
+                        exec          waitcond -l -cs "$w" -r $wcr $wcn idle "$wcf"; }
+
+
+
+cnt=-1; [ "$loop" != "" -a "$sleep" != "0" ] && cnt=1;
+while [ "$cnt" != "0" ]; do 
+   let cnt=cnt+1
+
+   if [ "$sleep" != "0" ]; then
+
+      # 'progress' printing niceties 
+      if [ "$verbose" != "" ]; then
+         format="%10ss ~ ""$(date +%H:%M -d "+ $sleep seconds")" # GNU
+         # format="%10ss"
+         # format="%10ss remaining."
+         update="$(printf "$format" $sleep)"; updatelen=${#update}
+         backspace=""; blank=""
+         i=$updatelen
+         while [ "$i" != "0" ]; do
+            backspace="$backspace"
+            blank="$blank "
+            let i=i-1
+         done
+      fi
+
+      # sleep
+      i=$sleep
+      [ "$verbose" != "" ] && printf "#  sleeping %s/${sleepinterval} - %s" $sleep "$update"
+      while (( $i > 0 )); do
+         [ "$verbose" != "" ] && printf "$backspace$format" $i
+         let j=i%sleepinterval
+         # first sleep sleeps the remainder, subsequent sleep for sleepinterval
+         [ "$j" = "0" ] && j=$sleepinterval
+         sleep $j || exit 42
+         let i=i-j
+         (( i == 0 )) && [ "$verbose" != "" ] && printf "$backspace$blank$backspace"'done.'
+      done
+      [ "$verbose" != "" ] && echo
+   fi
+
+   # blow the whistle
+   for i in $whistle; do
+      j=0; while [[ $j < $repetitions_per_whistle ]]; do 
+         let j=j+1
+         $player "$i" >/dev/null 2>&1
+         [ "$repetitions_per_whistle" != "1" ] && sleep 1 # cope with ending-in-silence issue
+      done
+   done
+
+   [ "$msg" != "" ] && echo "$msg" && nl="" || nl=1
+
+done
+
+
+
+#[ "$nl" = "1" ] && [ "$verbose" != "" ] && echo
+true; } # end prot

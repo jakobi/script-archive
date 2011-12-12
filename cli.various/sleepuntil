@@ -5,63 +5,93 @@
 my $version="0.1";
 # 2008XXXX PJ   0.1  jakobi@acm.org initial version
 # 20101115 PJ        obfuscated help
+# 20111206 PJ        nicer reporting
 #
-# copyright:  (c) 2008-2009 jakobi@acm.org, placed under GPL v3 or later 
+# copyright:  (c) 2008-2011 jakobi@acm.org, placed under GPL v3 or later 
 # archive:    http://jakobi.github.com/script-archive-doc/
 
-#use Date::Parse; # use GNU date -d for now, allows more natural specs
-$debug=" on "; # noexec nosleep whatever
+# BUG
+# - how to permit arbitrary localized date strings or worse, e.g. mixed German/English dates
+
+#use Date::Parse; # use GNU date -d instead, this allows more natural specs
+$debug=" on "; # noexec nosleep, whatever
+
 
 $NOW=time;
+$warnings=0;
 while($ARGV[0]){
    if ($ARGV[0]=~/^(-h|--help|-\?)$/) {&usage; exit 1}; 
-   if ($ARGV[0]=~/^-f$/)              {shift; $o_force=1;                   next}; 
-   if ($ARGV[0]=~/^-c$/)              {shift; $o_cmd=shift;                 next};
-   if ($ARGV[0]=~/^-t$/)              {shift; &add_timespec(shift, $o_cmd); next };
-   if ($ARGV[0]=~/^-(\d+)$/)          {shift; $o_countdown=$1;              next};
-   if ($ARGV[0]=~/^--?$/)             {shift;                               last};
+   if ($ARGV[0]=~/^-f$/)              {shift; $o_force=1;                    next}; 
+   if ($ARGV[0]=~/^-c$/)              {shift; $o_cmd=shift;                  next};
+   if ($ARGV[0]=~/^-A$/)              {shift; $o_cmd="ALARM";   $o_cmd.=" -m ".quotemeta(shift) if $ARGV[0]!~/^[\-\+]/; next};
+   if ($ARGV[0]=~/^-W$/)              {shift; $o_cmd="WHISTLE"; $o_cmd.=" -m ".quotemeta(shift) if $ARGV[0]!~/^[\-\+]/; next};
+   if ($ARGV[0]=~/^-O$/)              {shift; $o_cmd="ALERTOSD "              .quotemeta(shift);next};
+   if ($ARGV[0]=~/^-t$/)              {shift; 
+                                       $tmp=shift; # permit vargs use
+                                       while($ARGV[0] and $ARGV[0]!~/^[\+\-]/){$tmp.=" ".shift};
+                                       &add_timespec($tmp, $o_cmd); 
+                                       next };
+   if ($ARGV[0]=~/^-(\d+)$/)          {shift; $o_countdown=$1;               next};
+   if ($ARGV[0]=~/^--?$/)             {shift;                                last};
    last;
 }
 
 do{ &add_timespec(shift, $o_cmd); } if @ARGV and not %event;
-do{ &usage; die "ERROR: illegal or missing arguments" } if not %event or @ARGV;
+do{ &usage; die "ERROR: extra or missing arguments" } if not %event or @ARGV;
 
-
-printf "#%12d\n", $NOW if $debug;
+print "\n" if $warnings;
+printf "# %-10s  %-21s  %-24s  %s\n", "epoch", "time argument", "corresponding date", "command"; # if $debug;
+print "# ", "-"x10, "  ", "-"x21, "  ", "-"x24, "  ", "-"x16 , "\n" ; # if $debug;
+printf "# %-10d  %-21s  %-24s  -\n",$NOW,"-","NOW" if $debug;
 foreach(sort keys %event) {
-   $CMD=$event{$_}->{cmd}; $CMD=$o_cmd if not $CMD;
-   printf main::STDERR "#%12d %20s %20s %30s %20s\n", $_, $event{$_}->{timespec}, $event{$_}->{time}, localtime($_)."", $CMD #if $debug;
+   $CMD=$event{$_}->{cmd}; $CMD=$o_cmd if not $CMD; 
+   $CMD1=$CMD; $CMD1=~s!ALERTOSD!O!; $CMD1=~s!ALARM -m!A!; # shorten usual commands for printing?
+   printf main::STDERR "# %-10d  %-21s  %-24s  %s\n", $_, $event{$_}->{timespec}, localtime($_)."", $CMD1 #if $debug;
 }
+print "\n" if %event; # and $debug;
+printf "# %-33s  %-24s  %s\n", "action", "subsequent date and", "command" if %event; # and $debug;
+print "# ", "-"x33, "  ", "-"x24, "  ", "-"x16 , "\n" if %event; # and $debug; 
 
 
 foreach(sort keys %event) {
    $UNTIL=$_;
    $DELTA=$UNTIL-time;
    $CMD=$event{$_}->{cmd}; $CMD=$o_cmd if not $CMD;
+   $CMD1=$CMD; $CMD1=~s!ALERTOSD!O!; $CMD1=~s!ALARM -m!A!; # shorten usual commands for printing
 
    if ($DELTA>0) {
+      printf main::STDERR "# sleep   %-10d                 %-24s  %s\n", $DELTA, scalar localtime($UNTIL), $CMD1;
       if ($o_countdown) {
+         $len=0;
          while ($DELTA) {
+            # due to accumulated delays, the final sleep might be shorter than ORIGINAL_DELTA - n * o_countdown
             $DELTA=$UNTIL-time;
             last if $DELTA<1;
-            if ($DELTA<900) {
-               printf main::STDERR "%d\n", $DELTA;
+
+            $s=$o_countdown; 
+            $s=$DELTA % $o_countdown if not $len;
+            $s=$DELTA if $DELTA < $o_countdown;
+            
+            if ($DELTA<300) { 
+               $tmp=sprintf "# (still ~ %d to go, sleeping %d)", $DELTA, $s; # use seconds below 300s else h:mm:ss
             } else {
-               printf main::STDERR "%d:%02d\n", $DELTA/3600, $DELTA/60%60;
+               $tmp=sprintf "# (still ~ %d:%02d:%02d to go, sleeping %d)", $DELTA/3600, $DELTA/60%60, $DELTA%60, $s;
             }
-            $DELTA=$o_countdown if $DELTA>$o_countdown;
-            sleep $DELTA if not $debug=~/nosleep/;
+            print main::STDERR "\x08"x$len, $tmp;
+            $len=length($tmp);
+
+            sleep $s if not $debug=~/nosleep/;
          }
+         print main::STDERR "\n" if $len;
       } else {
-         print main::STDERR "#sleep $DELTA # until ", scalar localtime($UNTIL), "\n";
          sleep $DELTA if not $debug=~/nosleep/;
       }
    }
 
-   print main::STDERR "#system \"$CMD\"\n";
+   print main::STDERR "# system  \"$CMD\"\n";
    system $CMD if $CMD and not $debug=~/noexec/;
    $trc=$?>>8;
-   print main::STDERR "#return: $trc\n" if $trc;
+   print main::STDERR "# returns $trc\n" if $trc;
    $rc+=$trc;
 }
 
@@ -73,25 +103,34 @@ sub usage {
    print <<EOF;
 sleepuntil [OPTIONS] TIMESPEC
 sleepuntil [OPTIONS] -c CMD -t TIMESPEC -t TIMESPEC -c CMD -t TIMESPEC ...
-sleepuntil [OPTIONS] -t TIMESPEC -t TIMESPEC -t TIMESPEC ... -C CMD
 
 sleepuntil   -t   sleeps  until  the  specified  TIMESPEC.  For   more
 information  on  TIMESPEC  format,  see  -d  option  of  (GNU)   date.
 Additional valid TIMESPECs are +SECONDS, +MINUTESm, or +HHH:MM(:SS).
 
 On wakeup, a default command may be executed; use option -c CMD to set
-or  redefine  the command for subsequent TIMESPECs. If necessary,  use
-/bin/true  to give a non-empty dummy command - TIMESPECs with  "empty"
-commands  execute the default, i.e. the value of the final -c CMD. The
-command must terminate in advance of the next TIMESPEC.
+or  redefine the previously defined command for subsequent  TIMESPECs.
+If  necessary,  use  /bin/true  to give a non-empty  dummy  command  -
+TIMESPECs with "empty" commands execute the default, i.e. the value of
+the  final  -c CMD. The command must terminate in advance of the  next
+TIMESPEC.
+
 
 Options:
-  -<NUM>    count down in steps of NUM seconds
   -c CMD    set command to run for _subsequent_ -t TIMESPECs ("$o_cmd"),
             as well as earlier TIMESPECs with empty command argument.
-  -f        force TIMESPECs to skip checking/possibly adding 24h
   -t T      sleeps the difference from the previous TIMESPEC/now until 
-            TIMESPEC T.
+            TIMESPEC T. T auto-extends until the next option or argument
+            starting with +.
+
+Further options:
+  -SEC      count down in steps of SEC seconds (fairly verbose)
+  -f        force TIMESPECs to skip checking/possibly adding 24h
+
+  -A [MSG]  -c "ALARM -m '...'"    - a loud and long alarm + OSD
+  -O MSG    -c "ALERTOSD '...'"    - a rather intrusive OSD annoyance
+  -W [MSG]  -c "WHISTLE -m '...'"  - audible 'ping'
+
 
 Examples:
  - sleepuntil    -c ALARM -t 17:00 -t 18:00 # run a script called ALARM
@@ -111,26 +150,58 @@ EOF
 sub add_timespec {
    my ($timespec, $cmd) = @_;
    my ($time, $offset);
-   $time=$timespec;
-   if    ($time=~/^\d?\d:\d\d(:\d\d)?$/)      { $offset=24*3600 }
-   elsif ($time=~/^\+?(\d+)s?$/)              { $time="+$1 seconds" }
+
+   # fix both computer time and original input
+   $timespec=~s!\.\s| *, *! !g;                                                    # strip dot and comma (also in print)
+   $timespec=~s! (\d\d(?:\d\d)?)(\d\d?):! $1 $2:!;                                 # missing sep between year and hour
+
+   # fix computer time only
+   $time=lc $timespec;
+   $time=~s! +! !g;
+   $time=~s/(^| ):/${1}00:/; $time=~s/:( |$)/:00$1/; $time=~s/:(\d):/:0$1:/;       # cleanup single digit or incomplete time
+   $time=~s!(januar|februar|juni|juli)!$1y! and $time=~s/iy//;                     # translate German month names, incl.
+   $time=~s!dez(ember)?!dec!; $time=~s!okt(ober)?!oct!; $time=~s!mai!may!; $time=~s/m[äÄ]rz?/mar/; # but enough f GNU date
+   
+   if ($time=~/[^a-z0-9:,\-\.\+ ]/i) {
+      die "ERROR: invalid char in timespec $time";
+   }
+
+   # year is missing, guess it, possibly add a year if otherwise event is in the past
+   if ($time=~m!^ *(\d+) *(\D+) +(\d+:)!) {
+      $time2=$time; $time2=~s!^ *(\d+) *(\D+) +(\d+:)!do{"$1 $2 ".((localtime)[5]+1901)." $3"}!e;
+                     $time=~s!^ *(\d+) *(\D+) +(\d+:)!do{"$1 $2 ".((localtime)[5]+1900)." $3"}!e;
+      $epoch=`date -d "$time" +\%s`; chomp($epoch); $epoch="" if $?; 
+      if ($epoch and 0 < $NOW - $epoch) {
+         $time=$time2;
+         $warnings++;
+         warn "WARN:   added one year to $timespec / $cmd: $time\n"
+      }
+   }; 
+
+   # if it's a pure time string, compute epoch time instead
+   if    ($time=~/^\d?\d:\d\d(:\d\d)?$/)      { $offset=24*3600 }                  # day is missing: add 1d to past events (unless force)
+   elsif ($time=~/^\+?(\d+)s?$/)              { $time="+$1 seconds" }              # further timespecs are relative hh:mm:ss values
    elsif ($time=~/^\+(\d+)m$/)                { $time="+$1 minutes" }
    elsif ($time=~/^\+(\d+)h$/)                { $time="+$1 hours" }
    elsif ($time=~/^\+(\d+):(\d{2})$/)         { $time="+$1 hours $2 minutes" }
    elsif ($time=~/^\+(\d+):(\d{2}):(\d{2})$/) { $time="+$1 hours $2 minutes $3 seconds"};
-   if ($time=~/[^a-z0-9:,\-\.\+ ]/i) {
-      die "ERROR: invalid char in timespec $time";
-   }
-   #$epoch=str2time($time); # too weak, use gnu date -d instead
+
+   #$epoch=str2time($time); # too weak, use gnu date -d instead (permits lc zones, etc)
+   # GNU date also handles things like 'next week', ...
    $epoch=`date -d "$time" +\%s`; chomp($epoch); $epoch="" if $?;
    if (not $epoch) {
-      die "ERROR: timespec invalid $time / $timespec";
+      die  "ERROR:  timespec invalid:   $time / $timespec";
    } elsif ($offset and $NOW-$epoch>0 and not $o_force) {
+      warn "WARN:   added one day to  $timespec / $cmd: $time\n";
+      $warnings++;
       $epoch+=$offset
    } 
+
    if ($NOW-$epoch>5) {
       # 5 sec grace period for busy systems
-      die "ERROR: timespec $timespec is in the past: $time"
+      $warnings++;
+      warn "ERROR: skipping past event $timespec / $cmd: $time\n";
+      return
    }
    $event{$epoch}->{timespec}=$timespec;
    $event{$epoch}->{time}=$time;

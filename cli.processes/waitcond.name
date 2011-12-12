@@ -1,2 +1,3 @@
-waitcond - generic condition waiter: boolean expression over regexes, pids, files, idleness 
+waitcond - generic condition waiter: boolean expression over regexes, pids, files, idleness. 
+Helps to retain sanity in dealing with long running jobs suddenly requiring needless user interaction.
 (Note: 0.32 := 0.2.2 + cpan-related sugar-coating)

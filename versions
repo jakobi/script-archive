@@ -13,6 +13,7 @@
 ./cli.list.grep/cat0par:0.1.1
 ./cli.list.grep/expansyn:0.2
 ./cli.list.rename/emv:2.00pj.5
+./cli.list.rename/emvs:0.2
 ./cli.list.rename/myrename:0.2
 ./cli.list.rename/myrename.mangle:0.1
 ./cli.list.tagls/tagls:0.2.2
@@ -31,6 +32,8 @@
 ./cli.processes/fwait:0.1
 ./cli.processes/waitcond:0.33
 ./cli.processes/zap:0.5.3
+./cli.various/ALARM:0.1
+./cli.various/WHISTLE:0.2
 ./cli.various/append.p:0.2
 ./cli.various/mt_dir:0.1
 ./cli.various/rr:0.1.2

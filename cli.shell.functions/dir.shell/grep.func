@@ -2,32 +2,155 @@
 # copyright:  (c) 2009-2011 jakobi@acm.org, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
 
-function gr_catfile {
+#################################################################################
+
+function gr_catfile0 {
    for i in ${1:+"$@"}; do
+      # translate \0 to \n as required, possibly unzipping input
       # actually we should also differentiate between 
       # {latin1,utf8} x {nl,\0-terminated} x {plain/compressed}
       # [\0 currently only used for /FIND during backup; and there are
       #   wide char issues already in /FIND]
       test -f "$i" || continue;
-      perl -lne 'BEGIN{
+      perl -e   'BEGIN{
                    $ENV{i}=$ARGV[0]; 
+# there is also the slow /usr/share/doc/libio-compress-perl/examples/io/anycat
+# as does zegrep .  for our purposes. /lib/uncompress.so (zlibc) is currently broken
+# zcat/.../... hates raw format
                    $cat="cat   -- \$i |"; # dd bs=262144 improves about 0-3% wrt cat
                                           # nor does slurping change much
                    $cat="zcat  -- \$i |"  if $ENV{i}=~/\.gz$/o;
                    $cat="bzcat -- \$i |"  if $ENV{i}=~/\.bz(ip)?2?$/o;
                    open(STDIN,"$cat") and read(STDIN,$_,1000) and /\0/ and do{ $/="\0"; };
-                   seek(STDIN,0,0);       # may fail when used with pipes 
+                   @l=split(m!(?<=${/})!, $_);
+                   $_=<STDIN>;
+                   if ($l[$#l]=~m!$/\z!) { push @l, $_ } else { $l[$#l].=$_ };
+                   foreach(@l){s!$/\z!\n!o; print if not m!^/*(\./)?[^/]*/(SYSTEM-BACKUPS|automated-backup)/!io;};
+# !! a seek back would have allowed to use -lne for regular files
+#    (thus the remnants of BEGIN and STDIN)
+#
+#    however for pipes it will fail, at least if seeking back > already read in the buffer 
+#          (seek should throw away buffered stuff!? tell at least exists only for buffered files
+#           and does take position in buffer in account (relate to the sysseek(FH,0,1) for the next read)
+#    side note: dup() does clone the kernels fp, but not the buffered input and snafu
+#    changing buffer size: use IO:Handle; ... ; $handle->setvbuf($buffer, _IOLBF, 0x10000);
                 };
-                print if not m!^/*(\./)?[^/]*/(SYSTEM-BACKUPS|automated-backup)/!io;
+                while(<STDIN>) {
+                   s!$/\z!\n!o; print if not m!^/*(\./)?[^/]*/(SYSTEM-BACKUPS|automated-backup)/!io;
+                }
       ' "$i"
    done
 }
 
-function gr_x { 
-   for i in /*FIND* /data*/FIND /disk*/FIND.disk*([^.])?(.gz|.bz|.bz2); do
-      gr_catfile "$i";
-   done | Grep.pm -h -i -B "$@" | sort -u
+# more elegant, more unportable, more transparent, and more inefficient by a factor of 10
+function gr_catfile1 {
+   for i in ${1:+"$@"}; do
+      test -f "$i" || continue;
+      perl -MIO::Uncompress::AnyInflate -e '
+         foreach $f (@ARGV){
+            $skip=0;
+            $fh = new IO::Uncompress::AnyInflate $f or die "! cannot open $f\n";
+            $_=""; read($fh,$_,1000) or $skip=1;
+            do{$/="\0";$null=1} if /\0/;
+            @l=split(m!(?<=$/)!, $_);
+            if (not $skip) { $_=<$fh>; $skip=1 if $_ eq "" };
+            if (not $skip and $l[$#l]=~m!$/\z!) { push @l, $_ } else { $l[$#l].=$_ };
+            foreach(@l){
+               s!$/\z!\n!o;
+               print if not m!^/*(\./)?[^/]*/(SYSTEM-BACKUPS|automated-backup)/!io;
+            }
+            @l=();
+            while(not $skip and $_=<$fh>) {
+               s!$/\z!\n!o;
+               print if not m!^/*(\./)?[^/]*/(SYSTEM-BACKUPS|automated-backup)/!io;
+            }
+            close $fh;
+         }
+      ' "$i"
+   done
 }
+
+function gr_catfile { 
+   # transparently cat/zcat/... a file with line end conversion, allowing for patterns
+   # and files to avoid (e.g. hardlinked rsync backup generations), using 
+   # one to three processes to deal with input
+
+   # - speed and flushing of buffers while in IPC isn't a concern for this case
+   # - the perl data mover process adds about 30% slow down
+   # - see also e.g. perl's anycat example, but the layering results in a 10* slowdown
+
+   # the only remaining thing is hiding incorrect mixed encodings in concattenated files, 
+   # magically guessing the user's use case and charset wishes at each point in time
+   perl -e  'use IPC::Open2;
+             @ARGV=("-") if not @ARGV;
+             $SKIPFIL=q!/disk2/FIND.disk2$!;
+             $SKIPPAT=q!^/*(\./)?[^/]*/(SYSTEM-BACKUPS|automated-backup)/!;
+             $ERRPT  =q% || (echo -n "!! "; ls -l $file 1>&2 && echo 1>&2 && false) %;
+             foreach my $file (@ARGV) {
+                my ($_,$dec,$fh_in,$fh_dec_in,$fh_dec_out);
+                $file="/dev/stdin" if $file eq "-";
+                $ENV{file}=$file;
+                next if $file=~/$SKIPFIL/io;
+                do{warn "!! cannot read $file\n" if $verbose;next} if not -r $file;
+                $dec=1 if $file=~/\.(gz|bz(ip)?2?)$/o;
+                if (not $dec) {
+#warn "main - stdio";
+                   open($fh_in,"<",$file) or do{warn "!! cannot open $file\n" if $verbose; next};
+                } else {
+                   # avoid the 30% overhead of content guessing/data mover child if we have the 
+                   # _likely_ contents stated by a known suffix
+                   $cmd=q!zcat  -- $file!.$ERRPT;
+                   $cmd=q!bzcat -- $file!.$ERRPT if $file=~/\.(bz(ip)?2?)$/o;
+#warn "main - $cmd";
+                  open($fh_in,$cmd." |") or do{warn "!! cannot open $file\n" if $verbose; next};
+                  $dec=0; # set to -1 to skip /etc/magic and relatives
+                } 
+                $dec>0 or read($fh_in,$_,1000);
+                if($dec>0 or /\A\037\213/ or /\ABZh/) {
+                   $cmd="zcat$ERRPT";
+                   $cmd="bzcat$ERRPT" if $dec>0 and $file=~/\.bz(ip)?2?$/ or /\ABZh/;
+#warn "chld - $cmd";
+                   $pid_dec=open2($fh_dec_out, $fh_dec_in, $cmd);
+                   if(not fork) {
+                      # data mover child process
+                      # changing to setvbuf or similar might provide a speedup?
+                      close($fh_dec_out);
+                      print $fh_dec_in $_ if $_ ne "";
+#$l=0; $l+=length($_);
+                      while(read($fh_in,$_,8192)) {
+                         print $fh_dec_in $_;
+                      }
+                      close($fh_in); close($fh_dec_in);
+#warn "child bytes written $l\n"; 
+                      exit 0;   
+                   }
+                   close($fh_in); close($fh_dec_in);
+                   $fh_in=$fh_dec_out;
+                   $_="";read($fh_dec_out,$_,1000);
+                }
+                if(/\0/) {
+                   $/="\0";
+                   @l=split(m!(?<=${/})!, $_);
+                   $_=""; $_=<$fh_in>;
+                   if ($l[$#l]=~m!$/\z!) { push @l, $_ } else { $l[$#l].=$_ };
+                   foreach(@l){s!$/\z!\n!o; print if not m!$SKIPPAT!io;};
+                   while(<$fh_in>) {
+                      s!$/\z!\n!o; print if not m!$SKIPPAT!io;
+                   }
+                } else {
+                   @l=split(m!(?<=${/})!, $_);
+                   $_="";$_=<$fh_in>;
+                   if ($l[$#l]=~m!$/\z!) { push @l, $_ } else { $l[$#l].=$_ };
+                   foreach(@l){print if not m!$SKIPPAT!io;};
+                   while(<$fh_in>) {
+                      print if not m!$SKIPPAT!io;
+                   }
+                }
+                close($fh_in);
+             }
+            ' -- ${1:+"$@"}
+}
+
 
 
 
@@ -57,6 +180,7 @@ function gr_HELP {
    cat <<EOF 
  # gr_* family of filename filters:
  gr_H, gr_HELP
+ gr_catfile ...    -- read (compressed) inputs
  gr_SLURP  ...     -- read all input at once, then print
  gr_TRIM [-t|-h] [<TAIL|HEAD-OPT>] -- gr_TRIM -h -12 F: trim file to first 12 lines
                       -t       tail with tail options (default)
@@ -121,6 +245,13 @@ function gr_HELP {
  
  # list generating
  gr_(r)dir         -- find (-maxdepth 0) -- * | gr_ep 
+
+ # examples using nightly pre-generated lists
+ FIND.gen          -- generate lists and topical sublists on each host (plus /FIND)
+ gr_x              -- gr_ep|sort -u above lists
+ <similar gr_* mini functions for checking more specific sublists, e.g. images, ...>
+ gr_local          -- gr_ep|sort -u in /FIND
+ gr_home           -- gr_ep|sort -u in /FIND, restricted to ~ and /data
 
 Notes: 
  - only gr_UNIQ/gr_NEW* support ignoring case for dupe detection
@@ -198,6 +329,8 @@ function gr_LS {
 }
 
 function gr_SLURP {
+   : "or use with e.g. dd ibs=1 obs=100m"
+   : "perl -0pe : do the trick for the SINGLE input case (e.g. for all pipes)"
    perl -0ne 'use ARGV::readonly;$x.=$_; END{print $x}' ${1:+"$@"}
 }
 function gr_SLURP2 {
@@ -450,5 +583,71 @@ function gr_MAPORDER {
    ' -- ${1:+"$@"}
 }
 
+
+#################################################################################
+
+# simple gr_? aliases against pre-build filelist 
+# LAN-wide "locate" with more powerful REGEXes
+
+# local stuff
+function gr_local {
+   gr_catfile /FIND | Grep.pm -h -i -B "$@" | sort -u
+}
+function gr_home {
+   gr_catfile /FIND | egrep -e "^$HOME" -e '^/data' | Grep.pm -h -i -B "$@" | sort -u
+}
+
+# LAN files (gr_x incl. local /FIND)
+function gr_x { 
+   for i in /*FIND* /data*/FIND /disk*/FIND.disk*([^.])?(.gz|.bz|.bz2|); do
+      gr_catfile "$i";
+   done | Grep.pm -h -i -B "$@" | sort -u
+}
+
+function gr_c {
+   : add tagls lists, too?
+   gr_catfile /disk*/FIND.disk*CAP    | Grep.pm -h -i -B "$@" | sort -u
+}; alias gr_C=gr_c
+function gr_c0 {
+   gr_catfile /disk*/FIND.disk*CAP0   | Grep.pm -h -i -B "$@" | sort -u
+}
+
+# media type files
+function gr_v {
+   gr_catfile /disk*/FIND.disk*VIDEO  | Grep.pm -h -i -B "$@" | sort -u
+}; alias gr_V=gr_v
+function gr_v0 {
+   gr_catfile /disk*/FIND.disk*VIDEO0 | Grep.pm -h -i -B "$@" | sort -u
+}
+function gr_e {
+   gr_catfile /disk*/FIND.disk*EBOOK  | Grep.pm -h -i -B "$@" | sort -u
+}; alias gr_E=gr_e
+function gr_e0 {
+   gr_catfile /disk*/FIND.disk*EBOOK0 | Grep.pm -h -i -B "$@" | sort -u
+}
+function gr_m {
+   gr_catfile /disk*/FIND.disk*MUSIC  | Grep.pm -h -i -B "$@" | sort -u
+}; alias gr_M=gr_m
+function gr_m0 {
+   gr_catfile /disk*/FIND.disk*MUSIC0 /disk*/TAGS.MUSIC* | Grep.pm -h -i -B "$@" | sort -u
+}
+function gr_i {
+   gr_catfile /disk*/FIND.disk*IMAGE  | Grep.pm -h -i -B "$@" | sort -u
+}
+function gr_i0 {
+   gr_catfile /disk*/FIND.disk*IMAGE0 | Grep.pm -h -i -B "$@" | sort -u
+}
+
+# remaining non-media files 
+function gr_o { 
+   : stuff not found by other gr_? functions, takes about 60sec in 2011       # pre-compute?
+   ( gr_x "$@"; gr_i "$@"; gr_m "$@"; gr_v "$@"; gr_e "$@" ) | sort | uniq -u # permit gr_e?
+}; alias gr_O=gr_o
+
+#################################################################################
+
+function sortdepth {
+   emvs -d ${1:+"$@"}
+}
 
 # vim:filetype=sh

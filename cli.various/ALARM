@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# ALARM [[secs]] [message_word] ... # simple OSD + sound alarm example, 
+#                                     see also WHISTLE
+
+version="0.1";
+# last changes:
+# 20111115 PJ  0.1  jakobi@acm.org such as ... | emvs -d | xargs -d \\n rmdir
+
+
 # this toy should try a visual and sonic attack,
 # possibly even starting the audio daemon
 # get attention (though it probably should also 
@@ -8,8 +16,11 @@
 # notifications - monitor speakers may be turned off
 # if the monitor's off or powersaving ...)
 
-# also a scrapboard of all things visual annoyance, 
-# from OSD to xdialog ...
+# Also a scrapboard of changing things visual annoyance, 
+# from OSD to maybe xdialog and evil mouse / focus catching
+
+# Can be run from cron. To include OSD annoyances, 
+# prefix a DISPLAY=... to the invocation
 
 # example usage: 
 # - ssh HOST waitcond not recent /dev/pts/foo; ALARM text
@@ -17,27 +28,55 @@
 # - make; echo RC is $?; ALERT
 # - sleepuntil 16:00; ALERT
 
+sendmail=1 # "" to skip sending mail if MESSAGE specified
+echo "# Usage: $0 [DELAY [[-m] MESSAGE]] # -> sleepuntil" 1>&2
+
+# note: - bash finally supports =~ and the array var BASH_REMATCH for parens (egrep-style)
+#       - eval "" avoidance / indirect expansion / symbolic var names: ${!VAR} looks up the variable named in $VAR itself
+#       - substring ${::} and ${//} pattern substitution (s/// style; superset of the anchored % and # variants, 
+#                          with % and # still being used for anchoring, and / for global (s///g case))
+#                          [there is NO minimal/greedy spec for general // patterns, there's just ## and %%]
+#       - case changes: {^} / {,}
+#       - shopt extglob -> allows using ?()/*()/+()/@()/!() bash nonstd regex in patterns 
+#       -                  ("glob style") {m,} word enumeration alternatives are NOT valid in patterns, use @(|) instead
+#       - let in lists: rc is 1 if argument is numerically 0
+# see also WHISTLE
+shopt -s extglob
+[ "-m" = "$1" ] && shift
+if [ "$1" != "" -a "" = "${1%%+([0-9:])@(|h|m|s)}" ]; then
+   sleep="$1"; shift
+   [ "" = "${sleep%%*([0-9])h}" ]                  && sleep="${sleep%%h}:00:00"
+   [ "" = "${sleep%%*([0-9])m}" ]                  && sleep="${sleep%%m}:00"
+   [ "" = "${sleep%%*([0-9]):+([0-9])}" ]          && sleep="00:${sleep}"
+   [ "" = "${sleep%%*([0-9])s}" ]                  && sleep="${sleep%%s}"
+   h="${sleep%%:*([0-9]):*([0-9])}"
+   m="${sleep##*([0-9]):}"; m="${m%%:*([0-9])}"
+   s="${sleep##*([0-9]):*([0-9]):}"
+   term=$h\*3600+$m\*60+$s
+#echo "$sleep - $h - $m - $s -- $term"
+   [ "" = "${sleep%%+([0-9]):+([0-9]):+([0-9])}" ] && let "sleep=$term"
+   echo -n "sleeping ${sleep}s ~ $(date +%H:%M -d "+ $sleep seconds")"; sleep "$sleep"; echo
+fi
+[ "-m" = "$1" ] && shift
 
 cd
 
 test -f $HOME/.profile && . $HOME/.profile
-xurgency=$(which xurgency)
+xurgency=$(which xurgency)    # warning: might busy wait
 osd=$(which ALERTOSD)
 tty=$(tty|sed 's@/dev/@@')
 time=$(date +%H:%M)
-export bmsg="$tty{$time}${1:+: $*}";
+export bmsg="$(echo "$tty{$time}${1:+: $*}" | sed 's/^not a tty//')"; 
 export msg="ALERT $bmsg";
 
-( echo "Subject: ALERT for $tty - ${@:-<no subject given>}"; echo "To: $LOGNAME"; 
-  echo; echo "$msg" ) | /usr/lib/sendmail -ti
+[ "$1" != "" -a "$sendmail" != "" ] && ( echo "Subject: ALERT for $bmsg"; echo "To: $LOGNAME"; echo; echo "$bmsg" ) | /usr/lib/sendmail -ti
 
-echo
-echo -n "# ALERT:    $tty on $(date)"
+echo "# ALERT:    $tty on $(date): $msg"
 
 if [ "$DISPLAY" != "" ] ; then
    # echo "# to clear OSD: (1) ALERTOSD or osdctl -s ' ' / zap osdsh or"
    # echo "#               (2) perl -e 'print qq@\n@x3' >>$l / zap osd_cat"
-   echo -n " / run ALERTCLR to clear OSD"
+echo "#           (run ALERTCLR to clear OSD)"
 
 
    # set a WM hint ON THE CURRENTLY ACTIVE WINDOW - not necessarily 
@@ -46,25 +85,21 @@ if [ "$DISPLAY" != "" ] ; then
    # that window's hint is displayed even after switching. Hint is
    # not displayed if that window REMAINS active.
    # xurgency needs about a cmd runtime of about 10s to register(?).
-   test -x "$xurgency" && { nohup xurgency sleep 10 2>/dev/null & } 
-   test -x /usr/bin/xmessage && { 
-        # or xdialog; but that's focused unless helped by a
-        # REAL wm (not metacity) or xdotool, which btw
-        # can also send mouse, keys, moves, focus, ...
-        # (though probably not workspace switching)
-:       xmessage -nearmouse -timeout 40000 "$msg" & 
-   }
+#   test -x "$xurgency" && { nohup xurgency sleep 10 2>/dev/null & } 
+#   test -x /usr/bin/xmessage && { 
+#        # or xdialog; but that's focused unless helped by a
+#        # REAL wm (not metacity) or xdotool, which btw
+#        # can also send mouse, keys, moves, focus, ...
+#        # (though probably not workspace switching)
+#:       xmessage -nearmouse -timeout 40000 "$msg" &  # also steals focus
+#   }
    
    # display limited to about 10s max with freedesktop-DBUS/galago/ubuntu 
-   # NotifyOSD -- IF it displays
-   
-   perl -e 'use Desktop::Notify;$N=Desktop::Notify->new();
-            $n=$N->create(summary=>"ALERT",body=>"$ARGV[0]",timeout=>9000);
-            $n->show(); 
-           ' "$bmsg" 2>/dev/null 
+   # NotifyOSD -- IF it displays (simple black background messages)
+   perl -e 'use Desktop::Notify;$N=Desktop::Notify->new(); $n=$N->create(summary=>"ALERT",body=>"$ARGV[0]",timeout=>9000); $n->show(); ' "$bmsg" 2>/dev/null 
+
    # other options:
-   # echo test | wall writes to e.g. one's _login_ shells, not mere
-   # interactive shell (root overrides mesg)
+   # echo test | wall writes to e.g. one's _login_ shells, not mere interactive shells (root overrides mesg)
    # FreeDesktops notification area / systray via e.g. a full Gtk app using 
    #    e.g. Menues and Gtk2::TrayIcon [even worse than wall]
 
@@ -72,7 +107,7 @@ if [ "$DISPLAY" != "" ] ; then
    # http://www.thegeekstuff.com/2010/12/ubuntu-notify-send/
    # https://wiki.ubuntu.com/NotificationDevelopmentGuidelines
 
-   # OSD notification, annoying and for a day 
+   # OSD notification using ALERTOSD , annoying and for a day 
    export tmp=$(echo "$msg" | tr '()' '{}')
    #    however, these don't queue like maybe
    #    the real notifier might do in karmic,
@@ -93,7 +128,7 @@ echo
 # any need to fix volume / un-mute?
 
 test -x /usr/bin/aplay && { 
-   for i in $HOME/images/trek/tos-intercom.au; do
+   for i in $HOME/images/trek/communicator.trekwhst.wav; do # $HOME/images/trek/tos-intercom.au; do
       aplay $i >/dev/null 2>&1
       sleep 1;
    done

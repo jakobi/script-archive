@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# display or cancel a rather visible OSD ALERT 
+# an example to display or cancel a rather visible OSD ALERT 
 
 # see also: notify-send to use the ubuntu notification system
 
 osdsh=$(which osdsh)
 osdctl=$(which osdctl)
 osdcat=$(which osd_cat)
-tty=$(tty|sed 's@/dev/@@')
+tty=$(tty|sed 's@/dev/@@'|grep -v '^not a tty')
 time=$(date +%H:%M)
 
 export tmp=$(echo "$msg" | tr '()' '{}')
@@ -36,9 +36,10 @@ export l=/tmp/osd_log
 test -x "$osdcat" && 
 test '!' -L $l -a '!' -d $l && touch $l && test '!' -L $l -a '!' -d $l && 
 {
-   ps -ef | egrep "osd[_]cat -o 30 -i 10 -l 3 -O 2 -d 40001" >/dev/null || { 
-      echo "# ALERTOSD: (btw text appended to $l is also displayed)" 1>&2
-      tail -f $l | $osdcat -o 30 -i 10 -l 3 -O 2 -d 40001 -f '-*-lucidatypewriter-bold-*-*-*-*-240-*-*-*-*-*-*' &
+   ps -efww | egrep "osd[_]cat -o 30 -i 10 -l 3 -O 2 -d 40001" >/dev/null || { 
+      echo "# ALERTOSD: staring osd_cat (from now on, just append text to $l)" 1>&2
+# note that killing osd_cat also clears the text; osd_cat also offers a scrollbar and sticks around
+      tail -f $l |   $osdcat -o 30 -i 10 -l 3 -O 2 -d 40001 -f '-*-lucidatypewriter-bold-*-*-*-*-240-*-*-*-*-*-*' &
       # sleep 3 - no race b/c tail -f
    }
    { echo "$msg" >> $l ;} &

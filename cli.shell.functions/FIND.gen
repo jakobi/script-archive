@@ -1,0 +1,288 @@
+#!/bin/bash
+{ # protect things against script editing
+
+
+pat=${pat:-${1:-.}}     # allow a grep to restrict find itself
+
+# usage $0 [-c config] [PATTERN]    
+# last change: 20111114
+
+# updatedb part for lan-wide filelists for a simplified "super-locate" 
+# using Grep.pm and the gr_* functions/aliases. Processes only top-level
+# local non-nfs _mountpoints_ named /disk* by default. Further configuration
+# can be stashed into the -c config file or a file called $0.`hostname`.
+
+# NOTES
+# - host /FIND is generated as part of the backup script set, but
+#   also may be used in gr_* aliases
+# - add mountpoints to updatedb.conf to prunepaths, exports and fstab
+# - accessing the lists should be done with gr_catfile, which
+#   allows for gzip, etc
+# - to create only plain text lists (to allow simple cat/grep to work),
+#   define a simple function called gzip { shift; cat ;} within this script
+
+# TODO
+# - consider lockfile and lock breaking
+# - should probably add protections against remote fs other than nfs, too
+
+
+
+id | grep root >/dev/null || exit 42
+# hostname | egrep '^disk$|^disk\.compact$' || exit 43
+
+
+
+# configuration variables
+
+COPYTARGET=""       # disk to copy ARCDISKS lists to
+DISKS=""
+DISKS_ADD=""        # additional disks / top-level mountpoints
+ARCDISKS=""
+ARCDISKS_ADD=""
+
+# permit to skip a single disk for speed
+RSYNCDISK=disk2     # disk containing e.g. hardlinked rsync trees
+opt_rsyncdisk=2     # set to 1 or higher to process 
+
+opt_copiedlists=1   # "" to skip grepping for copied lists
+opt_find=1          # "" to skip finding files
+t=""                # "time" to time some commands
+
+# avoid some things during debugging, also consider supplied a pattern as arg 1
+#opt_find=""
+#opt_copiedlists=""
+#opt_rsyncdisk=0
+#t=time
+
+
+
+renice       8 -p $$
+ionice -c2 -n6 -p $$
+c=""
+if [ "$1" = "-c" ]; then
+   c="$2"; shift; shift;
+else
+   [ -r "$0.$(hostname)" ] && c="$0.$(hostname)";
+fi
+if [ "$c" ]; then
+   [ -r "$c" ] && echo "#  sourcing $c" && . "$c" || echo "!! cannot source configuration $c" && exit 43
+fi
+self=$0; [ "${self##/}" = "$self" ] && self="$PWD/$self"
+cd /
+
+
+
+echo
+echo "recreating the /disk\*/FIND\* files for pattern /$pat/"
+echo "do go to lunch in the meantime (>1h on idle box) ..."
+echo
+
+
+
+# collect _local_ disks to process
+   DISKS0=$DISKS
+ARCDISKS0=$ARCDISKS0
+for i in disk1 disk2 disk3 disk4 disk5 disk-*; do
+      [ "$opt_rsyncdisk" -lt 1 -a "$i" = "$RSYNCDISK" ] && continue
+      test -d $i/. || continue
+      if grep -v -i nfs /proc/mounts | grep "$i " | egrep -i "$pat" >/dev/null; then
+         [ "$DISKS0" = "" ]                         &&       DISKS=$DISKS" "$i
+      fi
+      # permit remote ARCDISK and COPYTARGET, untested
+      [ "$ARCDISKS0" = "" -a "${i##*ARC*}" = "" ]   &&    ARCDISKS=$ARCDISKS" "$i 
+      [  "$COPYTARGET" = "" -a -f "$i/COPYTARGET" ] && COPYTARGETS=$COPYTARGETS" "$i
+done
+   DISKS=$DISKS" "$DISKS_ADD
+ARCDISKS=$ARCDISKS" "$ARCDISKS_ADD
+
+for i in $COPYTARGETS; do
+   for j in $ARCDISKS; do
+      [ "$i" = "$j" ] && break 2
+   done
+   COPYTARGET=$i
+done
+if [ ! -d "$COPYTARGET" -o "$COPYTARGET" = "" ]; then
+   opt_copiedlists=""
+   COPYTARGET=""
+fi
+
+
+
+echo
+echo "#  DISKS ONLINE:  $DISKS"
+echo "#  ARCHIVE DISKS: $ARCDISKS"
+echo "#  COPYING / REFRESHING ARCHIVE DISKS LISTS: $COPYTARGET / ${opt_copiedlists:-SKIPPING}"
+echo
+
+
+
+# remove and recreate filelists
+if [ "$opt_find" != "" ]; then
+   for i in $DISKS; do
+      echo find on $(date) for disk $i
+      test -f $i/FIND.$i && rm $i/FIND.$i
+      test -d $i/. && df -k /$i/. > $i/DF.$i && find /$i/. -depth | sed "s@/$i/\\./@/$i/@" | sort | gzip -1 | dd ibs=4096 obs=262144 of=$i/FIND.$i status=noxfer 2>&1 | egrep -v '^[0-9]*(\+[0-9]*)? records (in|out)$' 1>&2
+   done
+else
+   echo "!! currently debugging -- skipping generation of find lists"
+   echo
+fi
+
+
+
+echo
+echo find finished $(date)
+echo
+
+
+
+# remove symlinks and sublists
+for i in $DISKS; do
+   for j in $i/FIND $i/FIND.EBOOK $i/FIND.EBOOK.md5 $i/FIND.MUSIC $i/FIND.IMAGE $i/FIND.VIDEO $i/FIND.CAP; do 
+      test -L $j    && rm -f $j 
+      test -L ${j}0 && rm -f ${j}0
+   done
+   for j in $i/FIND.disk*.EBOOK $i/FIND.disk*.EBOOK.md5 $i/FIND.disk*.MUSIC $i/FIND.disk*.IMAGE $i/FIND.disk*.VIDEO $i/FIND.disk*.CAP; do 
+      test -f $j    && rm -f $j
+      test -f ${j}0 && rm -f ${j}0
+   done
+done
+
+
+
+# refresh the list copies on $COPYTARGET only as necessary on changes of this script
+# otherwise, they're only updated on their own disk when available, to be copied
+# below (final keep copies step)
+COPIEDLISTS=""
+if [ "$opt_copiedlists" != "" ]; then
+   for i in $ARCDISKS; do
+      if [ -d "$i" -a ! -f $i/FIND.$i -a -f "$COPYTARGET/FIND.$i" ]; then
+         if [ ! "$COPYTARGET/FIND.$i.done" -o "$self" -nt "$COPYTARGET/FIND.$i.done" ]; then
+            COPIEDLISTS=$COPIEDLISTS" "$COPYTARGET/FIND.$i
+         fi 
+      fi
+   done
+else
+   echo
+   echo "!! skipping grepping in copied lists"
+   echo
+fi
+
+
+LISTS="" # only one list per disk 
+# consider just skipping $RSYNCDISK
+for i in $DISKS; do
+   [ -f "$i/FIND.$i" ] || continue
+   LISTS=$LISTS" "$i/FIND.$i
+done
+
+
+
+echo
+echo "COPIEDLISTS TO BE UPDATED: $COPIEDLISTS"
+echo "LISTS TO BE UPDATED (PAT): $LISTS"   
+echo
+
+
+
+for j in $LISTS $COPIEDLISTS; do 
+# avoid ZEGREP !! Bogus wrapper, mishandling arguments with spaces, missing options and worse
+   echo running grep on $(date) for $j 
+   ZIP='DIRTREE|\.tar|\.zip|\.exe|\.tbz|\.tgz'
+   GZP='(\.gz|\.bz2|)'
+   #
+   MSC='\.mp[123]|\.ogg|\.aac|\.fla?c?|\.wav|\.m4a|\.mpc|\.r[am]|\.sid|\.midi|\.au|\.radio|\.m3u|\.mod|\.it|\.xm|\.fl[av]|\.mp[g4]|\.wmv|\.wma|\.swf|\.ogm' # a subset from mt_playmusic, with some youtube-ish video formats, excl. amr, etc
+   IMG='\.png|\.jpe?g|\.jfif|\.gif|\.bmp|\.xcf'
+   VID='\.swf|\.avi|\.mkv|\.ogm|\.ogg|\.mpe?g|\.mp4|\.flv|\.fla'
+   EB0='\.lit|\.epu?b|\.mobi|\.prc|\.mht|\.chm|\.pdf|\.djvu?|\.txt|\.url|\.ps|\.dvi|\.doc|\.rtf|\.html?' # gr_e0 also includes html files
+   EBK='\.lit|\.epu?b|\.mobi|\.prc|\.mht|\.chm|\.pdf|\.djvu?|\.txt|\.url|\.ps|\.dvi|\.doc|\.rtf'
+   #
+$t egrep -i -e "^/[^/]*/(IN/MUSIC|media/(|audio/)music|resources/music)/"                                                                      \
+            -e "^/[^/]*/(media|resources|projects?)/(.*$MSC)$GZP"'$'                                                                           \
+            <(zcat $j 2>/dev/null||cat $j)                                           | gzip -1 > $j.MUSIC0
+$t egrep -i -e "^/[^/]*/(media|resources)/(|audio/)music/(.*$MSC)"'$'                                                                          \
+            -e "^/[^/]*/(media|resources)/(cd-image[^/]*|courseware)/.*($MSC)$GZP"'$'                                                          \
+            <(zcat $j.MUSIC0 2>/dev/null||cat $j.MUSIC0) | egrep -v 'JUST[-_]LISTEN' | gzip -1 > $j.MUSIC
+$t egrep -i -e "^/[^/]*/(IN/MANGA|media/(manga|photo|foto)|resources/(photo|foto|art|anime|manga|anime.manga))/"                               \
+            -e "^/[^/]*/(media|resources|projects?)/(.*$IMG|.*(cd-image[^/]*|courseware|photo|foto|art|anime|manga|anime.manga).*$ZIP)$GZP"'$' \
+            <(zcat $j 2>/dev/null||cat $j)                                           | gzip -1 > $j.IMAGE0
+$t egrep -i -e "^/[^/]*/(media|resources)/(photo|foto|art|anime|manga|anime.manga).*($IMG|$ZIP)$GZP"'$'                                        \
+            <(zcat $j.IMAGE0 2>/dev/null||cat $j.IMAGE0) | egrep -v 'JUST[-_]READ'   | gzip -1 > $j.IMAGE
+$t egrep -i -e "^/[^/]*/(IN/VIDEO|media/video|resources/(video))/"                                                                             \
+            -e "^/[^/]*/(media|resources|projects?)/(.*$VID|.*(cd-image[^/]*|courseware|video|art|anime|manga|anime.manga).*$ZIP)$GZP"'$'      \
+            -e "^/[^/]*/(media|resources|projects?)/(cd-image[^/]*|courseware|video)/.*($MSC)$GZP"'$'                                          \
+            <(zcat $j 2>/dev/null||cat $j)                                           | gzip -1 > $j.VIDEO0
+$t egrep -i -e "^/[^/]*/(media|resources)/(anime|video|cd-image|courseware).*($VID|$ZIP)$GZP"'$'                                               \
+            -e "^/[^/]*/(media|resources)/(cd-image[^/]*|courseware|video)/.*($MSC)$GZP"'$'                                                    \
+            <(zcat $j.VIDEO0 2>/dev/null||cat $j.VIDEO0) | egrep -v 'JUST[-_]VIEW'   | gzip -1 > $j.VIDEO
+$t egrep -i -e "^/[^/]*/(IN/E?BOOKS?|media/e?books?|resources/e?books?)/"                                                                      \
+            -e "^/[^/]*/(media|resources|projects?)/(.*$EB0|.*(cd-image[^/]*|courseware|e?books?|art|anime|manga|anime.manga).*$ZIP)$GZP"'$'   \
+            <(zcat $j 2>/dev/null||cat $j)                                           | gzip -1 > $j.EBOOK0
+$t egrep -i -e "^/[^/]*/(IN/E?BOOKS?|media/ebooks?|resources/e?books?)/.*($EBK|$ZIP)$GZP"'$'                                                   \
+            <(zcat $j.EBOOK0 2>/dev/null||cat $j.EBOOK0) | egrep -v 'JUST[-_]READ'   | gzip -1 > $j.EBOOK
+$t egrep -i -e '\[md5:'                                                                                                                        \
+            <(zcat $j.EBOOK 2>/dev/null||cat $j.EBOOK)                               | gzip -1 > $j.EBOOK.md5
+$t egrep -i -e "^/[^/]*/(IN/(TO_)?)?(arc|(pre)?capture|projects?|resources|DISTRO|HW|SW)/"                                                     \
+            -e '/capture|[/\.]NOTES(/|$|-|\.)|/bin(/|$|-|\.)'                                                                                  \
+            <(zcat $j 2>/dev/null||cat $j)                                           | gzip -1 > $j.CAP0
+$t egrep -i -e "^/[^/]*/(IN/(TO_)?)?((pre)?capture)/"                                                                                          \
+            -e '[/\.]NOTES(/|$|-|\.)'                                                                                                          \
+            <(zcat $j.CAP0 2>/dev/null||cat $j.CAP0)                                 | gzip -1 > $j.CAP
+   #
+   for k in $j.MUSIC0 $j.MUSIC $j.IMAGE0 $j.IMAGE $j.VIDEO0 $j.VIDEO $j.EBOOK0 $j.EBOOK $j.EBOOK.md5 $j.CAP0 $j.CAP; do 
+       # test -s $k || ( test -f $k && rm -f $k ); 
+       # fails if things are gzipped: headers of emptyness are 20 bytes...
+       # wc -c however short circuits for regular files and returns the inode information quickly
+       [ -f $k -a $(wc -c $k|sed -e 's/ .*//') -lt 21 ] && rm -f $k
+   done
+   touch $j.done
+done
+
+
+
+# recreate simplified filename symlinks (not for copied find lists)
+for j in $LISTS; do
+   i=$(dirname $j)
+   ( cd $i && ( 
+                test -f FIND.$i           && ln -sf FIND.$i           FIND              2>/dev/null
+                test -f FIND.$i.EBOOK0    && ln -sf FIND.$i.EBOOK0    FIND.EBOOK0       2>/dev/null 
+                test -f FIND.$i.EBOOK     && ln -sf FIND.$i.EBOOK     FIND.EBOOK        2>/dev/null 
+                test -f FIND.$i.EBOOK.md5 && ln -sf FIND.$i.EBOOK.md5 FIND.EBOOK.md5    2>/dev/null 
+                test -f FIND.$i.MUSIC0    && ln -sf FIND.$i.MUSIC0    FIND.MUSIC0       2>/dev/null 
+                test -f FIND.$i.MUSIC     && ln -sf FIND.$i.MUSIC     FIND.MUSIC        2>/dev/null 
+                test -f FIND.$i.IMAGE0    && ln -sf FIND.$i.IMAGE0    FIND.IMAGE0       2>/dev/null 
+                test -f FIND.$i.IMAGE     && ln -sf FIND.$i.IMAGE     FIND.IMAGE        2>/dev/null 
+                test -f FIND.$i.VIDEO0    && ln -sf FIND.$i.VIDEO0    FIND.VIDEO0       2>/dev/null 
+                test -f FIND.$i.VIDEO     && ln -sf FIND.$i.VIDEO     FIND.VIDEO        2>/dev/null 
+                test -f FIND.$i.CAP0      && ln -sf FIND.$i.CAP0      FIND.CAP0         2>/dev/null 
+                test -f FIND.$i.CAP       && ln -sf FIND.$i.CAP       FIND.CAP          2>/dev/null 
+   ))
+done
+
+
+
+echo
+
+
+
+# keep copies of FIND.<disk> for archive disks on disk-CLS
+# [these will be left alone, unlike the EBOOK and similar subsets]
+# ! must be run BEFORE sub list creation !
+if grep -v -i nfs /proc/mounts | grep "$COPYTARGET " >/dev/null; then
+   for i in $ARCDISKS; do
+      if grep -v -i nfs /proc/mounts | grep "$i " | egrep -i "$pat" >/dev/null; then
+         echo "copying FIND and sublists for $i"
+         cp -p $i/DF.$i $i/FIND.$i* $COPYTARGET/. 2>/dev/null 
+      fi
+   done
+fi
+
+
+
+echo
+echo grep/rebuild finished on $(date)
+echo
+
+
+exit 0
+} # end of protection from editing

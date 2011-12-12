@@ -547,8 +547,9 @@ if ($op_log) {
    @stat=lstat $dir or die "tmpdir: cannot create";
    $stat[4] == $< or die "tmpdir: not owner";
    chmod 0700, $dir;
-   system q@find "@ . $dir . q@" $logmaxage -name "???.*"  -exec rm {} 2>/dev/null \; ;@ .
-          q@find "@ . $dir . q@" $logmaxage -name "????.*" -exec rm {} 2>/dev/null \;  @ ;
+   my $cmd= q@find "@ . $dir . q@"@ . $logmaxage . q@ -name "???.*"  -exec rm {} 2>/dev/null \; ;@ .
+            q@find "@ . $dir . q@"@ . $logmaxage . q@ -name "????.*" -exec rm {} 2>/dev/null \;  @ ;
+   system $cmd;
    $logname="$dir/undo.$date.$$";
    open(LOGFH,">",$logname) or die "cannot open log $logname";
    print LOGFH "# you may need to edit and reverse the commands" if $o_noexec;

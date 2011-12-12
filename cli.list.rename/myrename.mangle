@@ -20,10 +20,24 @@ my $version="0.1";
 #      illogical, but avoids some extra quotes
 # to use: use (?x) modifier; re_line requires stripping IRS and \n
 #
-# BUG  this cannot really parse things like j="$(echo "$i")", nor
+# BUG
+# - shell multi-line stuff, see above
+# - this cannot really parse things like j="$(echo "$i")", nor
 #      does it handle ` at all. both of which seem to add a level of 
 #      nesting for  at least ", and with recursion in case of
-#      $($())... 
+#      $($())... . Even though "$(...)" is actually the only
+#      way to re-embed the same character within the string
+#      without visual insanity and quoting s/hell ensuing 
+#
+#      consider: args "$(printf "%s" "'a'" "$(printf "%s\n%s" 1 'b "c"' 2)")"
+#      and this prints in bash, ksh93, and dash(!!) indeed as it should
+#         0 /home/jakobi/bin/args
+#         1 'a'1<NEWLINE>b "c"2
+#      without having to switch quoting, double characters, etc, pp
+#      at the cost of 17 measly chars per argument to protect
+#      (I've defined p as a function alias to printf "%s"...)
+#
+#      keyword shell quoting issues.
 #
 #      (NOTE: &recode encodes ` later on, so there's neither 
 #             real harm nor a security issue)

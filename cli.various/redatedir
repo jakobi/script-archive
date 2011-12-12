@@ -1,0 +1,54 @@
+#!/usr/bin/perl
+
+# recursively update dir mtime timestamp (bottom up) to the most recent contents' mtime 
+#
+# $0 DIR ...
+
+use File::Find;
+use strict;
+
+my $starttime=time;
+my %latest=();
+my $verbose=1;     # warnings and report
+my $noexec=0;      # do not touch, just report suggested changes
+my $incl_ctime=0;  # new mtime = max(mtime_of__children, ctime)
+
+print ("# FILE               OLD           NEW(DIR)     NEW PARENTDIR TIMESTAMP\n") if $verbose;
+finddepth ({wanted=>\&wanted, no_chdir=>1}, @ARGV); 
+exit 0;
+
+# ------------------------------------------------------------------------------
+
+sub wanted {
+   my($atime,$mtime,$ctime) = (lstat)[8,9,10];
+   my($time,$d,$touched);
+   $d=$File::Find::dir;
+   $time=$mtime;
+   $incl_ctime and $time = ($time<$ctime) ? $ctime : $time;
+   ; printf("%-20s $time", $_) if $verbose;
+
+   # skip links, ignore dir time but honor the most recent time of their contents
+   if (-l _) { $time=0; }
+   if (-d _) {
+      if ($latest{$_}) {
+         if ($time != $latest{$_}) {
+             $noexec or utime $starttime, $latest{$_}, $_ or $verbose and warn "cannot touch $_\n";
+             ; printf(" -> %10d", $latest{$_}) if $verbose;
+             $time=$latest{$_};
+             delete $latest{$_};
+             ; $touched=1;
+         }
+      } else {
+         $time=0;
+      }
+   }
+
+   ; print  (" " x 14) if not $touched and $verbose;
+   ; printf ("   %10d", $latest{$d}) if $verbose;
+   if ( $time and $latest{$d} < $time )  {
+      ; print " -> $time" if $verbose;
+      $latest{$d}=$time;
+   }
+   ; print "\n" if $verbose;
+}
+
