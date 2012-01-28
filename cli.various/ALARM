@@ -29,7 +29,6 @@ version="0.1";
 # - sleepuntil 16:00; ALERT
 
 sendmail=1 # "" to skip sending mail if MESSAGE specified
-echo "# Usage: $0 [DELAY [[-m] MESSAGE]] # -> sleepuntil" 1>&2
 
 # note: - bash finally supports =~ and the array var BASH_REMATCH for parens (egrep-style)
 #       - eval "" avoidance / indirect expansion / symbolic var names: ${!VAR} looks up the variable named in $VAR itself
@@ -40,11 +39,18 @@ echo "# Usage: $0 [DELAY [[-m] MESSAGE]] # -> sleepuntil" 1>&2
 #       - shopt extglob -> allows using ?()/*()/+()/@()/!() bash nonstd regex in patterns 
 #       -                  ("glob style") {m,} word enumeration alternatives are NOT valid in patterns, use @(|) instead
 #       - let in lists: rc is 1 if argument is numerically 0
-# see also WHISTLE
 shopt -s extglob
-[ "-m" = "$1" ] && shift
-if [ "$1" != "" -a "" = "${1%%+([0-9:])@(|h|m|s)}" ]; then
-   sleep="$1"; shift
+
+if [ "$1" = "-h" -o "$1" = "--help" ]; then 
+   echo "# Usage: $0 [DELAY [[-m] MESSAGE]] # -> sleepuntil" 1>&2
+   exit
+fi
+
+[ "-m" = "$1" ] && shift  # skip -m, as this is the default anyway
+
+if [ "$1" != "" -a "" = "${1%%*(\+)+([0-9:])@(|h|m|s)}" ]; then
+   # see also WHISTLE
+   sleep="${1##\+}"; # eat leading + sign, argument is relative anyway
    [ "" = "${sleep%%*([0-9])h}" ]                  && sleep="${sleep%%h}:00:00"
    [ "" = "${sleep%%*([0-9])m}" ]                  && sleep="${sleep%%m}:00"
    [ "" = "${sleep%%*([0-9]):+([0-9])}" ]          && sleep="00:${sleep}"

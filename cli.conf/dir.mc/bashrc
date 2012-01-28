@@ -12,6 +12,7 @@ PROMPT_COMMAND_TITLE_PREFIX="mc - "
 export PS1="#(\$?) \\t \\u@\\h:\\w\n#mc-\\s$SHNEST (\$?) > "
 
 
+# (android 2.3.6: no longer required?)
 # somehow I must fill a buffer with EXTERNAL COMMAND OUTPUT,
 # for ... ; do COMMAND; done isn't sufficient...
 # but now at least in 4.6.0, the prompt prints AFTER the first command

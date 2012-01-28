@@ -10,10 +10,21 @@ my $version="0.1";
 # copyright:  (c) 2008-2011 jakobi@acm.org, placed under GPL v3 or later 
 # archive:    http://jakobi.github.com/script-archive-doc/
 
-# BUG
-# - how to permit arbitrary localized date strings or worse, e.g. mixed German/English dates
+# NOTES
+# - can cope with the missing space when copying rendered ebay dates
+# - instead of use Date::Parse we use GNU date -d, which allows more
+#   natural TIMESPECs, and seems both more powerful and more inline
+#   with the intended use of $0 as a shell command.
 
-#use Date::Parse; # use GNU date -d instead, this allows more natural specs
+# BUGS
+# - [SKIP]  how to permit arbitrary localized date strings or worse, e.g. 
+#           mixed German/English dates; currently we just convert
+#           month names, but not e.g. YY-MM-DD vs MM/DD/YY et al.
+#           or worse, assuming dates are from the user provided in
+#           his current locale. Usually wrong if pasted from his browser.
+# - [Q]     should -s SEC and -SEC should handle arbitrary timespecs?
+
+
 $debug=" on "; # noexec nosleep, whatever
 
 
@@ -21,23 +32,30 @@ $NOW=time;
 $warnings=0;
 while($ARGV[0]){
    if ($ARGV[0]=~/^(-h|--help|-\?)$/) {&usage; exit 1}; 
+   if ($ARGV[0]=~/^--?$/)             {shift;                                last};
    if ($ARGV[0]=~/^-f$/)              {shift; $o_force=1;                    next}; 
-   if ($ARGV[0]=~/^-c$/)              {shift; $o_cmd=shift;                  next};
-   if ($ARGV[0]=~/^-A$/)              {shift; $o_cmd="ALARM";   $o_cmd.=" -m ".quotemeta(shift) if $ARGV[0]!~/^[\-\+]/; next};
-   if ($ARGV[0]=~/^-W$/)              {shift; $o_cmd="WHISTLE"; $o_cmd.=" -m ".quotemeta(shift) if $ARGV[0]!~/^[\-\+]/; next};
-   if ($ARGV[0]=~/^-O$/)              {shift; $o_cmd="ALERTOSD "              .quotemeta(shift);next};
+   if ($ARGV[0]=~/^-s$/)              {shift; $o_countdown=shift;            next};
+   if ($ARGV[0]=~/^-(\d+)$/)          {shift; $o_subtract=$1;                next};
    if ($ARGV[0]=~/^-t$/)              {shift; 
                                        $tmp=shift; # permit vargs use
                                        while($ARGV[0] and $ARGV[0]!~/^[\+\-]/){$tmp.=" ".shift};
                                        &add_timespec($tmp, $o_cmd); 
                                        next };
-   if ($ARGV[0]=~/^-(\d+)$/)          {shift; $o_countdown=$1;               next};
-   if ($ARGV[0]=~/^--?$/)             {shift;                                last};
+   if ($ARGV[0]=~/^-c$/)              {shift; 
+                                       $tmp=shift; # permit vargs use
+                                       while($ARGV[0] and $ARGV[0]!~/^[\+\-]/){$tmp.=" ".shift};
+                                       $o_cmd=$tmp; 
+                                       $o_cmd="/bin/true" if $o_cmd eq ":"; # bash builtin, thus not in the path w/o bash -c shanigans
+                                       next };
+   if ($ARGV[0]=~/^-A$/)              {shift; $o_cmd="ALARM";    $o_cmd.=" -m ".quotemeta(shift) if $ARGV[0]!~/^[\-\+]/; next};
+   if ($ARGV[0]=~/^-W$/)              {shift; $o_cmd="WHISTLE";  $o_cmd.=" -m ".quotemeta(shift) if $ARGV[0]!~/^[\-\+]/; next};
+   if ($ARGV[0]=~/^-O$/)              {shift; $o_cmd="ALERTOSD ". ( $ARGV[0]!~/^[\-\+]/ ? quotemeta(shift) : $0 ); next};
    last;
 }
-
-do{ &add_timespec(shift, $o_cmd); } if @ARGV and not %event;
-do{ &usage; die "ERROR: extra or missing arguments" } if not %event or @ARGV;
+while($ARGV[0]) {
+   &add_timespec(shift, $o_cmd);
+}
+do{ &usage; die "\n!!ERROR: extra or missing arguments!!\n" } if not %event or @ARGV;
 
 print "\n" if $warnings;
 printf "# %-10s  %-21s  %-24s  %s\n", "epoch", "time argument", "corresponding date", "command"; # if $debug;
@@ -101,36 +119,42 @@ exit $rc;
 
 sub usage {
    print <<EOF;
-sleepuntil [OPTIONS] TIMESPEC
+sleepuntil [OPTIONS] TIMESPEC+
+    or
 sleepuntil [OPTIONS] -c CMD -t TIMESPEC -t TIMESPEC -c CMD -t TIMESPEC ...
 
 sleepuntil   -t   sleeps  until  the  specified  TIMESPEC.  For   more
 information  on  TIMESPEC  format,  see  -d  option  of  (GNU)   date.
-Additional valid TIMESPECs are +SECONDS, +MINUTESm, or +HHH:MM(:SS).
+Additional  valid  relative  TIMESPECs  are  +SECONDS,  +MINUTESm,  or
++HHH:MM(:SS).  For TIMESPECs missing day or year part, one day or year
+is added if otherwise the event would be in the past.
 
 On wakeup, a default command may be executed; use option -c CMD to set
-or  redefine the previously defined command for subsequent  TIMESPECs.
-If  necessary,  use  /bin/true  to give a non-empty  dummy  command  -
-TIMESPECs with "empty" commands execute the default, i.e. the value of
-the  final  -c CMD. The command must terminate in advance of the  next
-TIMESPEC.
+or  redefine  the command for subsequent TIMESPECs. If necessary,  use
+/bin/true  to give a non-empty dummy command - TIMESPECs with  "empty"
+commands  execute the default, i.e. the value of the final -c CMD. The
+command must terminate in advance of the next TIMESPEC.
+
+Options  -c and -t auto-extend until the next argument starting with +
+or  -. Any remaining arguments after option processing are assumed  to
+be one full TIMESPEC per argument. 
 
 
 Options:
   -c CMD    set command to run for _subsequent_ -t TIMESPECs ("$o_cmd"),
-            as well as earlier TIMESPECs with empty command argument.
+            the final CMD is also used for any earlier TIMESPECs without
+            associated command.
   -t T      sleeps the difference from the previous TIMESPEC/now until 
-            TIMESPEC T. T auto-extends until the next option or argument
-            starting with +.
+            TIMESPEC T.
 
 Further options:
-  -SEC      count down in steps of SEC seconds (fairly verbose)
+  -s SEC    count down in steps of SEC seconds (fairly verbose, global)
+  -SEC      subtract SEC seconds from all subsequent TIMESPEC events
   -f        force TIMESPECs to skip checking/possibly adding 24h
 
-  -A [MSG]  -c "ALARM -m '...'"    - a loud and long alarm + OSD
-  -O MSG    -c "ALERTOSD '...'"    - a rather intrusive OSD annoyance
-  -W [MSG]  -c "WHISTLE -m '...'"  - audible 'ping'
-
+  -A [MSG]  -c ALARM    / -c "ALARM -m '...'"   - loud alarm incl. -O
+  -O MSG    -c ALERTOST / -c "ALERTOSD '...'"   - sticky OSD message
+  -W [MSG]  -c WHISTLE  / -c "WHISTLE -m '...'" - an audible 'ping'
 
 Examples:
  - sleepuntil    -c ALARM -t 17:00 -t 18:00 # run a script called ALARM
@@ -166,11 +190,12 @@ sub add_timespec {
       die "ERROR: invalid char in timespec $time";
    }
 
-   # year is missing, guess it, possibly add a year if otherwise event is in the past
+   # year offset if year is missing: guess it, possibly add a year if otherwise event is in the past
    if ($time=~m!^ *(\d+) *(\D+) +(\d+:)!) {
       $time2=$time; $time2=~s!^ *(\d+) *(\D+) +(\d+:)!do{"$1 $2 ".((localtime)[5]+1901)." $3"}!e;
                      $time=~s!^ *(\d+) *(\D+) +(\d+:)!do{"$1 $2 ".((localtime)[5]+1900)." $3"}!e;
-      $epoch=`date -d "$time" +\%s`; chomp($epoch); $epoch="" if $?; 
+      $epoch=`date -d "$time" +\%s`; chomp($epoch); $epoch=0 if $?; 
+      $epoch-=$o_subtract;
       if ($epoch and 0 < $NOW - $epoch) {
          $time=$time2;
          $warnings++;
@@ -179,6 +204,7 @@ sub add_timespec {
    }; 
 
    # if it's a pure time string, compute epoch time instead
+   # day offset if day is missing and non-relative (no + prefix)
    if    ($time=~/^\d?\d:\d\d(:\d\d)?$/)      { $offset=24*3600 }                  # day is missing: add 1d to past events (unless force)
    elsif ($time=~/^\+?(\d+)s?$/)              { $time="+$1 seconds" }              # further timespecs are relative hh:mm:ss values
    elsif ($time=~/^\+(\d+)m$/)                { $time="+$1 minutes" }
@@ -189,6 +215,7 @@ sub add_timespec {
    #$epoch=str2time($time); # too weak, use gnu date -d instead (permits lc zones, etc)
    # GNU date also handles things like 'next week', ...
    $epoch=`date -d "$time" +\%s`; chomp($epoch); $epoch="" if $?;
+   $epoch-=$o_subtract;
    if (not $epoch) {
       die  "ERROR:  timespec invalid:   $time / $timespec";
    } elsif ($offset and $NOW-$epoch>0 and not $o_force) {

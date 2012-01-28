@@ -139,6 +139,21 @@ our $changetrackcmd='changetrack';
 #       at editing puppet-owned files, and the classical svn warnings
 #       on editing shared / version-controlled system files
 #       (basically allow for plugins checking/grepping against known generated files NOT to edit manually)
+# - for larger file single files / large number of files
+#       add a second question on whether to actually change track these files or skip changetrack
+#       (also/complement with 'magic' keywords at beginning of 
+#       description string: SKIP / NOTRACK). Making sfre see all
+#       edits is useful. However using vi to view /var/log/messages
+#       and CHANGETRACK the log is a bit overkill)
+#       (esp. make it ask again on HUGE/slow-to-changetrack files!)
+#       (optionally make it ask/skip asking depending on path patterns 
+#        on /etc we should changetrack, on /var/log or on /usr/src/linux 
+#        we probably should not, depending on site conventions and where
+#        exactly things like master copies for e.g. site-specific
+#        sendmail.cf sources are stashed away)
+# - Q make sfre see the vi -r flag and skip changetrack those entries?
+#       (but the readonly state can be changed - I'd rather only use the
+#       previous trick !?)
 #      
 # Ultimate wishlist:
 #

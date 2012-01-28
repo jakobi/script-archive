@@ -1,5 +1,6 @@
 ./admin.text/selectlines:0.2
 ./admin.text/sfre:0.1.1
+./android/android.twlauncher.decode:0.1
 ./cli.HTML/COLLECT:0.2
 ./cli.HTML/DIFF:0.2
 ./cli.HTML/DIFFTREE:0.2
@@ -38,6 +39,7 @@
 ./cli.various/mt_dir:0.1
 ./cli.various/rr:0.1.2
 ./cli.various/sleepuntil:0.1
+./cli.various/watch_delta:0.1
 ./cli.various/watchfloat:0.1
 ./vim/pipe.vim:0.1.2
 ./vim/vimscript:1.2pj

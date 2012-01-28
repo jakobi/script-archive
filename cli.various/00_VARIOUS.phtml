@@ -16,7 +16,8 @@
 
 
 <ul>
-   <li><B>ALARM</B> (mostly acoustic environmental damage, for use with waitcond)
+   <li><B>ALARM/WHISTLE</B> (acoustic notification, with optional specification
+        of date, alert messages, etc; e.g. for use with waitcond)
    <li><B>ALERTOSD</B> (using the on-screen display to print an alert)
    <li><B>append.p</b> (append files to similar named files in another dir, knows gzip;
         though mostly I just use mc for moving files into an archive dir and 
@@ -44,13 +45,15 @@
        some of the noise from script's typescript sessions logs; tries to strip
        e.g. vi sessions from the logs to increase their usability)
    <li><b>watchfloat</b> (write background command output to a floating region of a tty)
+   <li><b>watch_delta</b> (repeatedly run a command and just continuously report
+       lines or GNU diff sections)
 </ul>
 
 <p>See also:</p>
 <ul>
    <li><B>addcr/foldlf/remcr</B> - adding/removing umlauts or cr from files, (placed into
      the <a href="../cli.HTML/00_HTML-PROCESSING.html">html section</a>
-     due to the use of sub.mime)
+     due to the use of sub.mime; prehistoric coding style :))
    <li>some notes on a work-around for using <b>fdupes</b> for duplicate detection and relinking
    <li>some helper for <B>printing</b> and coping with gnome-gtk print making a mess of
      Unix basics like the possibility of printing via pipelines.

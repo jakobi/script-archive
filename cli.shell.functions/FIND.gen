@@ -192,10 +192,10 @@ for j in $LISTS $COPIEDLISTS; do
    GZP='(\.gz|\.bz2|)'
    #
    MSC='\.mp[123]|\.ogg|\.aac|\.fla?c?|\.wav|\.m4a|\.mpc|\.r[am]|\.sid|\.midi|\.au|\.radio|\.m3u|\.mod|\.it|\.xm|\.fl[av]|\.mp[g4]|\.wmv|\.wma|\.swf|\.ogm' # a subset from mt_playmusic, with some youtube-ish video formats, excl. amr, etc
-   IMG='\.png|\.jpe?g|\.jfif|\.gif|\.bmp|\.xcf'
+   IMG='\.png|\.jpe?g|\.jfif|\.gif|\.bmp|\.xcf|\.cbr|\.pnm|\.pgm|\.ppm|\.pbm|\.ilbm'
    VID='\.swf|\.avi|\.mkv|\.ogm|\.ogg|\.mpe?g|\.mp4|\.flv|\.fla'
-   EB0='\.lit|\.epu?b|\.mobi|\.prc|\.mht|\.chm|\.pdf|\.djvu?|\.txt|\.url|\.ps|\.dvi|\.doc|\.rtf|\.html?' # gr_e0 also includes html files
-   EBK='\.lit|\.epu?b|\.mobi|\.prc|\.mht|\.chm|\.pdf|\.djvu?|\.txt|\.url|\.ps|\.dvi|\.doc|\.rtf'
+   EBK='\.lit|\.epu?b|\.mobi|\.prc|\.cht|\.opf|\.azw|\.mht|\.chm|\.pdf|\.djvu?|\.txt|\.url|\.ps|\.dvi|\.docx?|\.odf|\.rtf|\.fub|\.imp|\.kml|\.pbd|\.rb|\.stk'
+   EB0="$EBK"'|\.html?' # gr_e0 also includes html files
    #
 $t egrep -i -e "^/[^/]*/(IN/MUSIC|media/(|audio/)music|resources/music)/"                                                                      \
             -e "^/[^/]*/(media|resources|projects?)/(.*$MSC)$GZP"'$'                                                                           \

@@ -1,6 +1,10 @@
 #/bin/bash
 {
 
+#echo >> ~/.debug1 
+#exec >> ~/.debug1 2>&1
+#set -x
+
 # intercept lpr (not lp for now)
 # - REROUTEALL has been set
 # - crippled apps that we use often for printing are being used (e.g. firefox3 and bogus gnome printing dialog)
@@ -11,20 +15,28 @@
 # try running a resource-friendly cgroup (doesn't catch cupsd pdftopdf :/)
 cgroup=""; which wrapcgroup >/dev/null 2>&1 &&   cgroup='wrapcgroup -low'
 # try supplying a osd notification to avoid surprises
-osdprint=""; which osdprint >/dev/null 2>&1 && osdprint='osd.print LPRWRAPPER'
+# however note that osd.print uses the head with the mouse.
+# worse, it doesn't trunc the osd location to the physically
+# visible display of the display head in question
+osdprint=""; which osd.print >/dev/null 2>&1 && osdprint='osd.print LPRWRAPPER'
 
 function pass {
-   echo "pass thru - possibly check ~/PDF: $1" 1>&2 
-   [ "$osdprint" != "" ] && $osdprint "$1" &
-   (echo; echo "! $1") >> $HOME/.lpr.debug
+   if [ "$1" != "" ]; then
+      echo "pass thru - possibly check ~/PDF: $1" 1>&2 
+      [ "$osdprint" != "" ] && $osdprint "$1" &
+      (echo; echo "! $1") >> $HOME/.lpr.debug
+   fi
    shift
    $cgroup /usr/bin/lpr "$@"
    rc=$?
 }
 
-function nup {
-   (echo; echo "! $1") >> $HOME/.lpr.debug
-   [ "$osdprint" != "" ] && $osdprint "$1" &
+function nup { # ignore all options given to us and use mypsnup instead
+   if [ "$1" != "" ]; then
+      (echo; echo "! $1") >> $HOME/.lpr.debug
+      # encomment the next line to reduce osd noise?
+      [ "$osdprint" != "" ] && $osdprint "$1" &
+   fi 
    opt=${MYPSNUPREROUTEOPT:--2}
    # avoid looping
    export MYPSNUPSKIPREROUTEALL=1
@@ -51,8 +63,8 @@ while true; do
       pass "pass thru due to recursion" "$@"; break
    fi
 
-   if echo "$*" | egrep -e '^-P ?PDF' >/dev/null; then
-      pass "~/PDF printing - pass thru" "$@"; break
+   if echo " $* " | egrep -e ' -P ?PDF ' >/dev/null; then
+      pass "printing to ~/PDF(?) - pass thru" "$@"; break
    fi
 
    if test -f $HOME/.mypsnuprerouteall && [ "$MYSPNUPSKIPREROUTEALL" = "" ];
@@ -72,7 +84,12 @@ while true; do
    #    and thus we cannot detect it with less than say lsof...
 
    # N3 the default printer is probably the PDF printer !
-   pass "unknown source - pass thru" "$@"; break
+   
+   if echo " $* " | egrep -e ' -P' -e ' -d' >/dev/null; then
+      pass "unknown source - pass thru (w queue? maybe evince?)" "$@"; break
+   else
+      pass "unknown source - pass thru (w/o queue, maybe evince?) " "$@"; break
+   fi
 done
 
 

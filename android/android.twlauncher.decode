@@ -1,0 +1,76 @@
+#!/usr/bin/perl -w
+
+# hack to extract twlauncher 'folder' notion and help me in mapping app titles to packages
+
+my $version="0.1";
+# 20120110 PJ   0.1  jakobi@acm.org initial version based on android 2.3 gingerbread / galaxy note 7000
+#
+# copyright:  (c)2011 PJ, GPL v3 or later
+# archive:    http://jakobi.github.com/script-archive-doc/
+
+
+use strict 'vars';
+use Data::Dumper;
+use Encode;
+$|=1;
+
+my($file,$verbose);
+
+do{$verbose=1;shift @ARGV} if $ARGV[0] eq "-v";
+$file=shift if $ARGV[0];
+# try using a relative path instead?
+$file = "data/data/com.sec.android.app.twlauncher/databases/launcher.db" if not $file and -r $file;
+$file = "data/com.sec.android.app.twlauncher/databases/launcher.db"      if not $file and -r $file;
+$file = "launcher.db" if not $file and -r $file;
+die "no twlauncher database file (original gingerbread location:\nandroid:/data/data/com.sec.android.app.twlauncher/databases/launcher.db)\naborting\n" if not $file or not -f $file;
+
+# sigh - I utterly refuse to code this sqlite3 3.7.x ugliness in perl proper...
+system(qq!cp '$file.journal' '${file}0.journal' 2>/dev/null!);
+system(qq!cp '$file-wal'     '${file}0-wal' 2>/dev/null!); 
+system(qq!cp '$file-shm'     '${file}0-shm' 2>/dev/null!);
+system(qq!cp '$file' '${file}0'!);
+system(qq!perl -i.bak -e 'undef \$/;\$_=<>;s/\\A(.{18})../\$1\\x01\\x01/;print' '${file}0'!); 
+$file.="0"; 
+
+# get menu-item encapsulated into $apps::apps->{menu_item}
+package apps;
+use base 'Class::DBI';
+apps->connection("dbi:SQLite:$file");
+foreach (qw/menu_item
+           /) {
+   my($eval);
+   $eval=
+   qq!
+      package apps::$_; 
+      use base 'apps';
+      apps::$_->table('$_');
+      apps::$_->columns(All=>qw/*/);
+      \$apps::apps{$_}=\\\%apps::$_;
+      my \@tmp = ();
+      \@tmp=apps::$_->retrieve_all;
+      foreach(\@tmp) { 
+         \$apps::! . $_  . '{$_->{_id}}=$_; 
+      } ';
+    eval $eval;
+}
+
+package main;
+my ($c,$t,@c,%f);
+
+foreach (sort keys %{apps::apps->{menu_item}}) { # first get folders (android twlauncher is non-recursive)
+   $c=\%{apps::apps->{menu_item}->{$_}};
+   if ( $c->{parent_id} == -1 and not $c->{component_name}) {
+      $f{$c->{_id}}=$c->{title};
+   }
+}
+foreach (sort keys %{apps::apps->{menu_item}}) { # the get other items and print them
+   $c=\%{apps::apps->{menu_item}->{$_}};
+   if ( $c->{parent_id} == -1 and not $c->{component_name}) {
+      ;
+   } else {
+      my $format=$verbose ? "%-20s :: %-40s :: %s\n" : "%s::%s::%s\n";
+      # wide chars in terminal output still mess up printf columns, sigh
+# looks like apk name is somewhat similar to the component name upto the first slash
+      print encode("UTF-8",sprintf $format,  ($f{$c->{parent_id}} ? $f{$c->{parent_id}} : ""), decode("UTF-8",$c->{title}), $c->{component_name})
+   }
+}

@@ -1,8 +1,52 @@
 #!/bin/bash
 
-# an example to display or cancel a rather visible OSD ALERT 
+# an example to display or cancel a really visible On-Screen-Display
+# (aka OSD) ALERT on top left of X11 head 0 in a fairly large font
+# accross all desktops using the "text display tool/daemon" osd_cat. 
+#
+# Use ALERTCLR to clear the display (or just kill osd_cat). Currently 
+# used for a scrolling 3 line display of width ~ 1800px in a huge font
+
+# Useful to e.g. alert the user of finished long make runs (see also 
+# waitcond/WHISTLE/ALARM), cron reminders or to display sender/subject
+# for _VERY_ important incoming boss mails from within a procmailrc:
+#
+# # re-join the lines of the last recipe if required ("\\n" -> " ")
+# :0 # copy 1st line of the relevant mail header into ENV
+# * Subject:[ \t]*\/[^ \t].*
+# {
+#    SUBJECT=$MATCH
+# }
+# :0
+# * From:[ \t]*\/[^ \t].*
+# {
+#    FROM=$MATCH
+# }
+# :0
+# * 1^0 <FILTER PATTERN GOES HERE> # osd alert w stripped address
+# | ( cat > ~/Mail/URGENT; \
+#     SFROM="$(echo "$FROM" | sed 's/<[^<>]*>//g; s/  */ /g; s/ *$//')"; \
+#     DISPLAY=:0 ALERTOSD "MSG $SFROM: $SUBJECT"; \
+#     WHISTLE )
 
 # see also: notify-send to use the ubuntu notification system
+#
+#   Note however that notify-send chooses the current "focused" head 
+#   to display the bubble, and for my rotated and scrolling head 1 
+#   (to fully display long pages of text) of my multi-head twinview/xinerama
+#   setup I can't even see the notification most of the time. And there's
+#   no way to nail the notification to a specific display head.
+#   Plus I really prefer having a small number of "sticking" notifications
+#   to manually clear for _important_ stuff. Though most automatic
+#   uses of notify-send wouldn't qualify, and indeed ubuntu uses 
+#   the gnome notification widget in the panel for more persistant alert 
+#   issues like e.g. package install trouble or the need to restart firefox.
+
+font='-*-lucidatypewriter-bold-*-*-*-*-240-*-*-*-*-*-*'
+maxlen=94 # adjust this value to main monitor size
+lines=3   # no of messages/lines to display
+
+PATH=$PATH:$LOGNAME/bin
 
 osdsh=$(which osdsh)
 osdctl=$(which osdctl)
@@ -14,6 +58,8 @@ export tmp=$(echo "$msg" | tr '()' '{}')
 
 msg="$*";
 [ "$msg" != "" ] && msg="$tty{$time}${1:+: $*}";
+[ "$msg" = "" ] && msg="~";
+msg=${msg:0:$maxlen}
 
 
 # moved here from ALERT in each case
@@ -39,7 +85,7 @@ test '!' -L $l -a '!' -d $l && touch $l && test '!' -L $l -a '!' -d $l &&
    ps -efww | egrep "osd[_]cat -o 30 -i 10 -l 3 -O 2 -d 40001" >/dev/null || { 
       echo "# ALERTOSD: staring osd_cat (from now on, just append text to $l)" 1>&2
 # note that killing osd_cat also clears the text; osd_cat also offers a scrollbar and sticks around
-      tail -f $l |   $osdcat -o 30 -i 10 -l 3 -O 2 -d 40001 -f '-*-lucidatypewriter-bold-*-*-*-*-240-*-*-*-*-*-*' &
+      tail -f $l |   $osdcat -o 30 -i 10 -l $lines -O 2 -d 40001 -f "$font" &
       # sleep 3 - no race b/c tail -f
    }
    { echo "$msg" >> $l ;} &

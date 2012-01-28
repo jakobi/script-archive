@@ -244,6 +244,7 @@ sub init {
            filemax=>0,            # from -M
            offset=>0,             # --byte-offsets
            lineoffset=>0,
+           icasekeyword=>1,       # ignore case for and/or/not keywords
            show1=>0,
            shown=>0,
            H=>0,
@@ -324,7 +325,9 @@ substrings  are  used  as regular expressions. Finally  everything  is
 compiled  into a matcher. The scope of the boolean regular expressions
 is  limited  to  the  current  record, just  as  with  normal  regular
 expressions.  -B  skips the splitting and instead uses  all  arguments
-until the next option argument, otherwise until the next filename.
+until  the  next option argument, otherwise until the  next  filename.
+(Currently  and/or/not  may also be written in upper case  for  google
+victims)
 
 To  embed  a  perl scrap in the matcher, use "do{...}" in place  of  a
 regex match expression m{REGEX}. In both cases, the expression's value
@@ -829,7 +832,7 @@ sub parse_args {
     do{&usage; mydie("# $Me expression missing\n")} if not defined $EXPR or $EXPR eq "";
     $EXPR='not ( ' . $EXPR . ')' if $opt{v};
     
-    # PERL BUG: use strict vars warnings leads leads to a spurious warning
+    # PERL BUG: use strict vars warnings leads to a spurious warning
     #   5.10    when invoked with do FILE and functions invoked from outside 
     #           our namespace, unless I use the value just before the eval? 
     #           "variable is not available"
@@ -1480,7 +1483,11 @@ sub parsestring {
    # that's an interesting optimization effect NOT done by using standard \G or /m
    # pattern matching
     
-   @args=split /(?:\A|\s+)([\(\)]|and|or|not)(?=\s+|\z)/o, $_[2]; 
+   if ($opt{icasekeyword}) {
+      @args=split /(?:\A|\s+)([\(\)]|and|or|not)(?=\s+|\z)/oi, $_[2]; 
+   } else {
+      @args=split /(?:\A|\s+)([\(\)]|and|or|not)(?=\s+|\z)/o,  $_[2]; 
+   }
    @args=grep {s/\A\s+//; /./} @args;
    return parsearray($_[0],$_[1],@args);
 }
@@ -1495,6 +1502,7 @@ sub parsearray {
    while(@_){
       $_=shift;
       /^$/o         and do {mydie("# $Me illegal operator/argument in expression\n")};
+      s/^(and|or|not)$/lc($1)/ieo if $opt{icasekeyword};
       # syntactic sugar
       /^not$/o      and do {$expr.=$and  ."not "; $and=""; next};
       /^and$/o      and do {$expr.="and ";        $and=""; next};

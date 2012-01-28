@@ -1,12 +1,24 @@
 #!/bin/bash
 
-# $0 [-low|-std] [-name cgroup-suffix] CMD CMDARGS - a cgroup exec wrapper
+# wrapcgroup [-low|-std] [-nice|-rt] [-name cgroup-suffix] CMD... 
+# wrapcgroup ... '$$'        # wraps the invoking process instead
+#
+#   A cgroup (low/std memory class + suffix; creates missing cgroup)
+#   and nice wrapper: -n 14 / c3 (-rt: -n -1 / c1).
+#
+#   Use wrapcgroup -nice -low to limit buffer/cpu/io effects of 
+#   e.g. (local) backup jobs.
 
 # limit process+children memory use incl. its use of kernel buffers
-# using two kinds of user-specific cgroups, a low RAM one for
+# using several user-specific cgroups, e.g. a low RAM one for
 # find, cpio and the like, and a standard class allowing members 
 # to share upto 75% of physmem, incl. member-attributed page cache
 # and the like (I hope). 
+#
+# for convenience, some nice/ionice is thrown in.
+
+# TODO:
+# - permit PID to renice/recgroup pre-existing processes
 
 P=$(free 2>/dev/null | head -2 | tail -1 | awk '{print $2}')
 S=$(free 2>/dev/null | head -4 | tail -1 | awk '{print $2}')
@@ -22,27 +34,35 @@ L=$(( $P * 3 / 4 * 1024 * 1024 ))
 
 while [ "$1" != "" ]; do
    case $1 in
-      -low)  T=low;   L=$(( 1048576 * 400 ));            shift; ;;  # 400M 
-      -std)  T=std;   L=$(( $P * 3 / 4 * 1024 * 1024 )); shift; ;;  # 75% of physical memory, as above
-      -name) N=".$2";                             shift; shift; ;;  # use/create a named subgroup: $T.NAME
-      * )    break ;;
+      -nice) NC=1;                                                     shift; ;;  # include high nice/ionice, too
+      -rt)   NC=-1; T=std; L=$(( $P * 3 / 4 * 1024 * 1024 ));          shift; ;; # the opposite for some soft real time aspects
+      -low)  T=low;   L=$(( 1048576 * 400 ));                          shift; ;;  # 400M 
+      -std)  T=std;   L=$(( $P * 3 / 4 * 1024 * 1024 ));               shift; ;;  # 75% of physical memory, as above
+      -name) N=".$2";                                          shift;  shift; ;;  # use/create a named subgroup: $T.NAME
+
+      -h|-help|--help) sed -ne 's/^# //; 2,/^$/{/./p}' < $0;                   exit 1; ;;
+      * )                                                              break; ;;
    esac
 done
 DH=$DR/users.$LOGNAME
 D=$DH/$T$N
+newgroup=""
 
 # mount if necessary, and create the user dir if not yet done
 if ! grep "^cgroup $DR" /proc/mounts >/dev/null; then
+   newgroup=1
    sudo mkdir $DR 2>/dev/null
    sudo mount -n -t cgroup -o memory cgroup $DR
    sudo mkdir $DR/sysdefault
 fi
 if [ ! -d "$DH" ]; then
+   newgroup=1
    sudo mkdir $DH
    sudo chown -Rh $LOGNAME $DH
 fi
 
-[ ! -d $D ] && mkdir $D
+[ ! -d $D ] && newgroup=1 && mkdir $D
+[ "$newgroup" != "" ] && sleep 1
 
 # NOTE: memory.soft_limit_in_bytes permits allocations
 #       upto the cgroups memory.limit_in_bytes minus the
@@ -53,7 +73,37 @@ echo -n 1                       > $D/memory.use_hierarchy
 echo -n $L                      > $D/memory.limit_in_bytes
 echo -n $(( $L + 8 * $S / 10 )) > $D/memory.memsw.limit_in_bytes
 
+shopt -s extglob 
+if [ "$#" = "1" ]; then
+   if [ "${1%%*([0-9])}" = "" -o "$1" = "\$\$" ]; then
+      # note that this shortcut might fail depending on the parent's forking misbehaviour
+      _PPID=$(ps -o ppid -p $$ | tail -1)
+      if [ "${_PPID%%*([0-9])}" = "" -a "$_PPID" != "1" ]; then
+         
+         if [ "$NC" = "1" ]; then
+            ionice -c3   -p $_PPID >/dev/null 2>&1
+            renice -n 14 -p $_PPID >/dev/null 2>&1
+         fi
+         if [ "$NC" = "-1" ]; then
+            sudo ionice -c1 -n4 -p $_PPID
+            sudo renice -n -1   -p $_PPID 
+         fi
+         echo $_PPID > $D/tasks
+         exit 0
+      fi
+      exit 1
+   fi
+fi
+
 if [ "$1" != "" ]; then
+   if [ "$NC" = "1" ]; then
+      ionice -c3   -p $$ >/dev/null 2>&1
+      renice -n 14 -p $$ >/dev/null 2>&1
+   fi
+   if [ "$NC" = "-1" ]; then
+      sudo ionice -c1 -n4 -p $$ 
+      sudo renice -n -1   -p $$
+   fi
    echo $$ > $D/tasks
    exec "$@"
 else

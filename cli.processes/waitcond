@@ -202,6 +202,7 @@ sub newfile { # remember and number files/globs - side effects: @file
    local($_);
    my ($flags);
    ($_,$flags)=@_;
+   $flags="" if not $flags;
    # allow user to omit the /dev/ prefix when just pasting
    # a tty name from say top or ps -edalf
    $_="/dev/$_" if /^pts\/\d+$/ and $flags=~/\bdev\b/ and not -e $_;
@@ -523,6 +524,10 @@ Example running a remote upgrade and watching out for hangs / input requests
   # iterate with sleep 60s and checking for >= 120s idle time of the pty
   term2\$ waitcond -l -cs "mpg123 LOUD.mp3" -s 60 -r 120 idle /dev/pts/18
 
+  # wait for a freshly started command in another pty to finish
+  # (avoid immediately returning non-idle; using 10 instead of ${recent}sec)
+  d=10; sleep \$(( \$d+1 )); waitcond -r \$d not idle pts/10; WHISTLE 
+
 
 For further raw notes and examples, try --examples.
 See also: sleepuntil, waitcond.timeout
@@ -623,6 +628,9 @@ Examples:
     [use who / who am i / or ps -ef to get the associated tty / or this one:]
     # perl -e 'split(/\s+/,$_=`ps -fp 24408|tail -n -1`);print "/dev/$_[5]\n"'
     waitcond not recent /dev/pts/13
+
+    careful of mc: mc forks a bash with a different pty, but we need 
+    the parent one to see output of mc proper
   
   - wait/loop for a tty to become idle and run a noisy ALARM script
     to notify $poor_me of possible @\$!?# requests for user input

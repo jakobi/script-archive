@@ -61,9 +61,9 @@ while [ ! -z "$1" ]; do
    [ "$1" = "-r" ]                                    && { repetitions_per_whistle="$2"; shift; shift;        continue; }
    [ "$1" = "-v" ]                                    && { verbose=1;                    shift;               continue; }
    [ "$1" = "-t" ]                                    && { verbose="";                   shift;               continue; }
-   [ "$1" != "" -a "" = "${1%%+([0-9:])@(|h|m|s)}" ]  && {
+   [ "$1" != "" -a "" = "${1%%*(\+)+([0-9:])@(|h|m|s)}" ]  && {
       # see also ALARM
-      sleep="$1"; 
+      sleep="${1##\+}"; # eat leading +, timespec is relative 
       [ "" = "${sleep%%*([0-9])h}" ]         && sleep="${sleep%%h}:00:00"
       [ "" = "${sleep%%*([0-9])m}" ]         && sleep="${sleep%%m}:00"
       [ "" = "${sleep%%*([0-9]):+([0-9])}" ] && sleep="00:${sleep}"

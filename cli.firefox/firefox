@@ -1,4 +1,41 @@
 #!/bin/bash
+{
+
+### Q: relink .firefox each and every time???
+
+
+# HMMMMM after firefox8, things were slow and X11 was stressed by firefox, even for bg tabs!?
+# cgroups? but that was later on?
+# cleaning abp filter subscriptions might have been the trick and removing the abp hider?
+export MOZ_DISABLE_IMAGE_OPTIMIZE=1
+unset  MOZ_DISABLE_IMAGE_OPTIMIZE
+# ???
+# nvidia-settings -a InitialPixmapPlacement=2 -a GlyphCache=1
+# and in X11
+# Option "PixmapCacheSize" "300000"
+# Option "OnDemandVBlankInterrupts" "True"
+#
+#     Section "Device"
+#    Identifier "Device0"
+#    Driver "nvidia"
+#    VendorName "NVIDIA Corporation"
+#    BoardName "GeForce 9600M GT"
+#    Option "UseEvents" "On"              <- ?
+#    EndSection
+#
+# for ATI we might have
+# Option "AccelMethod" "EXA"
+# Option "AccelDFS" "true"
+
+# trying trunk:
+# - unsetting MOZ_DISABLE_IMAGE_OPTIMIZE
+# - disable ghostery and a slew of similar stuff
+# - reconf abp, disable helper
+# - hmmm. maybe the tiling apps and their X interaction as culprit??? [to test]
+# - javascript as issue: kleinanzeigen.ebay.de is horrible with a dozen or more tabs
+#   80% Xorg, 20% firefox-trunk, even when the tab in question isn't visible or
+#   displayed at all - same effect on reload
+# - still trunk's way better wrt memory
 
 ### Q: have it assume -t automatically (-trunk) if there's a trunk
 ###    but no other running firefox? (obviates changing firefoxstdin et al
@@ -122,7 +159,7 @@ fl=$HOME/.firefox.log   # for this session: $fl, $fl.url
 
 #nice="ionice -c2 -n6 nice -7"
 nice="nice -7"
-test -x $HOME/bin/wrapcgroup && nice="$nice wrapcgroup -std -name browser"
+test -x $HOME/bin/wrapcgroup && wrapcgroup -std -name browser $$
 
 sync="" # "" or "--sync" in case of X issues
 
@@ -150,7 +187,7 @@ function checkfirefox {
    firefoxtrunkps="$(ps -wwfu `whoami` | grep -v grep | egrep -e '[ /]firefox-trunk-bin' -e "/usr/lib/firefox[^ /]*/firefox-trunk( |$)" -e "firefox-trunk-?$firefoxversion/firefox")"
    [ "${firefoxps}" != ""      -a "$f" != "$ft" ] && firefox_to_start=0
    [ "${firefoxtrunkps}" != "" -a "$f"  = "$ft" ] && firefox_to_start=0
-   [ "${firefoxtrunkps}" != "" -a "$firefoxps" = "" -a "$ft" != "$f" ] && f="$ft" && echo "# switching command to already running firefox-trunk"
+   [ "${firefoxtrunkps}" != "" -a "$firefoxps" = "" -a "$ft" != "$f" ] && f="$ft" && echo "# switching command to already running firefox-trunk" && firefox_to_start=0
    [ "$firefox_to_start" = "1" ] && echo "# starting $f."
 }
 
@@ -374,3 +411,4 @@ for opt in "$@"; do
 done
 
 exit 
+}
