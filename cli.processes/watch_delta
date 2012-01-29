@@ -393,13 +393,13 @@ sub sortfield {
    if ($sort_skip=~/^\d+$/) {
       my $n=$sort_skip;
       if ($o_netstat and $sort_skip==5) { # don't do this if user changed sort fields
-		 # if we make a mess of this code for the sake of --netstat, then do it properly:
-		 # sort processes acc. to proto-type / name / pid / fullproto / connections 
+         # if we make a mess of this code for the sake of --netstat, then do it properly:
+         # sort processes acc. to proto-type / name / pid / fullproto / connections 
          $n-=2;
          return(sort{my($aa,$bb)=map{my $c=$_; $c=~s/^(...)(..) ((?:\S+\s+){$n})(\d+\s+)(.*)/do{"$1\~\~$5\~\~".(sprintf "%06d",$4)."\~\~$1$2\~\~$3"}/e;chomp $c;"$c"}($a,$b); $aa cmp $bb} @_);
       } else {
          return(sort{my($aa,$bb)=map{my $c=$_; $c=~s/^((?:\S+\s+){$n})(.*)/$2\~\~$1/;                        chomp $c;"$c"}($a,$b); $aa cmp $bb} @_);
-	  }
+      }
    } 
    if ($sort_skip=~/^(\d+)[bc]$/o) {
       my $n=$1;
@@ -418,9 +418,9 @@ sub manglenetstat {
    if ($ENV{ANDROID_ROOT}) {
       # make busybox netstat output a bit shorter
       s!::ffff:(\S+)!$1       !go; 
-	  s! {31}! !go;
+      s! {31}! !go;
       $l=72; 
-	  s!State       PID/!State             PID  !o; 
+      s!State       PID/!State             PID  !o; 
    }
    
    s!(.*) - *$!sprintf "%-${l}s  %6s",$1,"-"!e; # same as below
@@ -431,23 +431,23 @@ sub manglenetstat {
    # inject long process name and arguments into netstat output
    s!(.*\S) +(-|\d+/.*)\s*\z!do{
       my($f,$pc)=($1,$2);
-	  my($p,$c)=($pc,"  -");
-	  ($p,$c)=($1,$2) if $pc=~m/^(\d+)(\/\S+)/o;
-	  # supply a dummy field in case of udp
+      my($p,$c)=($pc,"  -");
+      ($p,$c)=($1,$2) if $pc=~m/^(\d+)(\/\S+)/o;
+      # supply a dummy field in case of udp
       $f=sprintf "%-".($l-12)."s -",$f if length($f)<$l-10 and not $f=~/^tcp/;
-	  sprintf("%-${l}s  %6s%s\n", $f, $p, $c);
+      sprintf("%-${l}s  %6s%s\n", $f, $p, $c);
    }!eo;
    s!(.*\S) +(\d+)(/.*)\s*\z!do{
       my($f,$p,$c,$c0,$ce,$ca)=($1,$2,$3,"","","");
       # $ce=readlink("/proc/$p/exe"); $ce="" if not $ce; $ce=~s/\s*\z//o;
-	  if ($opt=~/ long /) {
+      if ($opt=~/ long /) {
          open(F,"<","/proc/$p/cmdline") and $ca=<F> and $ca=~s/\0+/ /go; close F; $ca="" if not $ca; $ca=~s/\s*\z//o; 
          $c="  $ca" if $ca;
       } else {
          open(F,"<","/proc/$p/comm") and $c0=<F>; close F; $c0="" if not $c0; $c0=~s/\s*\z//o; 
-	     $c="  $c0" if $c0;
-	  }
-	  $c=~s/ *$//o;
-	  sprintf("%-${l}s  %6d%s\n", $f, $p, $c);
+         $c="  $c0" if $c0;
+      }
+      $c=~s/ *$//o;
+      sprintf("%-${l}s  %6d%s\n", $f, $p, $c);
    }!eo
 }
