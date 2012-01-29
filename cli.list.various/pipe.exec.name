@@ -1,1 +1,1 @@
-slurp input and exec command if input exists; w/o command print or return false
+slurp input and exec command if input exists; w/o command print or return false; includes grep-based conditional execution. Also works as a stdin-to-tempfile wrapper to work with programs incapable of using stdin or <() constructs.
