@@ -2,50 +2,57 @@
 
 # ... | $0 [OPTIONS] [COMMAND ...]
 # conditional tests and command execution on pipe contents, optionally
-# with using tempfiles instead of stdin for more obnoxious commands
+# using tempfiles instead of stdin for more obnoxious commands
 
 my $version="0.1.2";
 # created     PJ 200908XX jakobi@acm.org
-# last change PJ 20120129 added grep-conditions (-e/-i/-v), use of useless cat,
-#                         and -I{} tempfile injection for programs unable to
-#                         use stdin / <(...) constructs
+# last change PJ 20120129 added grep-conditions (-e/-i/-v) and -I{} tempfile 
+#                         injection for programs unable to use stdin or <(...)
 #
 # copyright:  (c) 2009 jakobi@acm.org, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/
 
-# for use in pipes / conditional execution if data available
-# type 1) $0 [options] command...  -- slurp stdin AND pipe-execute command (w/o intervening shell)
-#                                     (substitute 'command ...' by 'cat' if grep condition is specified
-#                                     and fails. Love those useless uses of the cat...
-# type 2) $0 [options]             -- cat   stdin  OR false (test data in pipe)
-#
+
+# for use in pipes / conditional execution if data available:
+# type 1) $0 [options] command...  -- conditionally pipe-execute command (w/o intervening shell) EXOR just forward contents
+# type 2) $0 [options]             -- conditionally set return-code AND forward contents
 #
 # usage examples:
 # - grep foo LOG |   pipe.exec         mutt -s "ALERT - log contains matching terms" $LOGNAME  # example 1 type 1 - mail on match
 # - grep foo LOG | { pipe.exec || echo "no matches"; } | mutt -s "daily log summary" $LOGNAME  # example 2 type 2 - mail always (also: inject data in empty pipe)
 # - ... | (echo "# please check these lines"; echo; cat - ) | pipe.exec --ignore-header gvim - # example 3 type 1 - display data in editor if any
-# - cat LOG | pipe.exec -i -e httpd cat - /var/log/apache | gzip > ARCHIVED_LOG.$(date +%s)    # example 4 type 1 - append the apache log to the
-#                                                                                              #          pipe contents IF we see the string httpd                 
-#
-#
-# options are:
-# -ih  -ignore-headers             data availability is determined after stripping initial
-#                                  whitespace and #-comment lines. No output (suppressing 
-#                                  initial whitespace and initial #-comment lines) nor 
-#                                  command execution if no real data
-# -ip  -ignore-headers-but-print   similar, but in case of no-data/suppressing command execution,
-#                                  we still print initial whitespace and #-comment-lines to stdout
-# -i / -e / -v                     specify a grep condition to run command (otherwise substitue cat)
-# -I... / -I ...                   for type 1 commands, use a tempfile and substitue any sequence
-#                                  ... with the name of the tempfile for each @ARGV.
-#                                  (BUG: this includes the command itself :))
+# - cat LOG | pipe.exec -e httpd && cat   /var/log/apache   | gzip > ARCHIVED_LOG.$(date +%s)  # example 4 type 2 - pass thru content and use of grep return code to inject a file
+# - cat LOG | pipe.exec -e httpd    cat - /var/log/apache   | gzip > ARCHIVED_LOG.$(date +%s)  # example 5 type 1 - conditional program execution to inject a file (same result as above)
+# - ... | pipe.exec -I{} OBNOXIOUS_COMMAND {} {}.OUT                                           # example 6 tipe 1 - using tempfiles a la find -exec / xargs -I{}
+
+
+# options:
+# --help
+
+# mutually exclusive options are:
+# -ih aka -ignore-headers           data availability is determined after stripping initial
+#                                   whitespace and #-comment lines. No output (suppressing 
+#                                   initial whitespace and initial #-comment lines) nor 
+#                                   command execution if no real data
+# -ip aka -ignore-headers-but-print similar, but in case of no-data/suppressing command execution,
+#                                   we still print initial whitespace and #-comment-lines to stdout
+# -i / -e / -v                      specify a grep condition to run command (otherwise substitue cat)
+#                                   or filter input to determine "no_data"-status
+
+# additional options if a command is specified:
+# -I... / -I ...                    for type 1 commands, use a tempfile and substitute any sequence
+#                                   ... with the name of the tempfile for each command argument.
+#                                   (replacement string must occur at least once)
+
+
+# BUGS
+# - DEL/QQQ what's to be the expected output for the combination of -e and one of -ih|-ip?
 
 
 $ARGV[0]=~/^-?-help/o and die <<EOF;
-...|{ pipe.exec [-ih|-ip]    &&    COMMAND ...    ||    COMMAND ...    ;}|...
-...|  pipe.exec [-ih|-ip][-i/-e RE/-v][-I{}] COMMAND ..."nl {} > {}.o"   |...
-      a conditional pipe-injection/-rc/-command and stdin2tempfile wrapper
-                     use your love for your useless cat
+...|  pipe.exec [-ih|-ip|-e RE/-v/-i] [[-I{}] COMMAND ..."nl {} > {}.o"] |...
+...|{ pipe.exec ... && ... || ... ;}                                     |...
+    a conditional pipe- injection/-rc/-command and stdin2tempfile wrapper
 EOF
 
 undef $/; 
@@ -76,32 +83,32 @@ do{pop @ARGV; warn "# pipe.exec -I$o_tmpfile: trailing ';' stripped - we are NOT
    if $#ARGV>1 and $ARGV[$#ARGV] eq ';' and $o_tmpfile;
 
 
-# grep filter / replace command with failure-affine feline
-if (@ARGV) {
-   if (/(?$o_cond_igncase:$o_cond_expr)/o) {
-      do{@ARGV=("cat"); $o_tmpfile=undef} if $o_cond_negate;
+# grep filter (resets results of -ih/-ip)
+if ($o_cond_expr) {
+   $matching=/(?$o_cond_igncase:$o_cond_expr)/o;
+   if ($matching and $o_cond_negate or not $matching and not $o_cond_negate) {
+      $print=$no_data=1; 
    } else {
-      do{@ARGV=("cat"); $o_tmpfile=undef} if not $o_cond_negate;
+      $no_data=0; # reset flag
    }
 }
 
 
 # forward pipe contents / run command
-                                   #  type / input     - output                               - return code
-                                   # -----------------   -----------------------------------    -----------
-if      (not @ARGV and $no_data) { # 2 - test: no data - none (or -ip: just headings if any)  - false
+                                   #  type/cmd:input   - output on stdout                     - return code - note
+                                   # -----------------   -----------------------------------    -----------   ----
+if      (not @ARGV and $no_data) { # 2 -       no data - none (or -ip: just headings if any)  - false         both -e and -ih/-ip can set the no_data flag (options mutually exclusive)
    print $_ if $print; exit 1;
-} elsif (not @ARGV) {              # 2 - test: data    - print data on stdout                 - true
+} elsif (not @ARGV) {              # 2 -       data    - print data on stdout                 - true
    print $_;           exit 0;
-} elsif ($no_data) {               # 1 -  cmd: no data - none (or -ip: just headings if any)  - true  
-#                                  # (skip command run; see example 2 on executing / modifying contents on empty pipe)
+} elsif ($no_data) {               # 1 -  cmd  no data - none (or -ip: just headings if any)  - true          skip command run; see example 2 on executing / modifying contents on empty pipe
    print $_ if $print; exit 0;
-} else {                           # 1 -  cmd: data    - pipe data to cmd                     - cmd rc
+} else {                           # 1 -  cmd  data    - pipe data to cmd                     - cmd rc
    if (defined $o_tmpfile) {
       $tmpfile=`tempfile -p pipx.`; $tmpfile=~s/\s*\z//;                   # safe and official or
       do{$tmpfile="/tmp/pipeexec.$$";unlink $tmpfile} if not $tmpfile;     # home cooking if no debianutils
       die "# pipe.exec: cannot get tempfile - dying.\n" if $? or not $tmpfile;
-      map{s!$o_tmpfile!$tmpfile! and $cnt++,$_}@ARGV;
+      $cmd=shift @ARGV; map{s!$o_tmpfile!$tmpfile!go and $cnt++,$_}@ARGV; unshift @ARGV,$cmd;
       die join(" ","# pipe.exec: cannot substitute $o_tmpfile patterns for command", @ARGV, "- dying.\n") if not $cnt;
       open(FH,">",$tmpfile) and print FH $_ or do{unlink $tmpfile; die "# pipe.exec: cannot open file $tmpfile - dying.\n"}; close FH;
       warn join(" ","# pipe.exec: running", @ARGV,"\n") if $verbose;

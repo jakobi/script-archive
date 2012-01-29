@@ -25,12 +25,18 @@
        a history of the commands is already part-way to creating an UNDO log
        for basic editing actions.
    <li>a modified version of <b>pfind</b> (find with regex)
+   <li><b>pipe.exec</b>: pipe helper
+   <ul>
+      <li>set return code according to pipe contents (data/no data/grep)
+      <li>conditionally execute a command depending on contents (data/no data/grep) and return the programs return code
+      <li>tempfile wrapper: copy stdin to tempfile, edit non-stdin-friendly programm arguments and invoke it as part of a pipe (tempfile substituion a la xargs -I{})
+   </ul>
    <li><b>pipe.select.curses, pipe.select.gtk2</b> (examples to select lines within pipes)
    <li><b>range</b> (yet another command to print numeric ranges, with/without leading 0)
    <li><b>randomecho</b>, <b>randomcat</b>
    <li><b>revdatesort</b>
    <li><b>sort.ip4</b>
-   <li><b>teefork</b> (slightly modified version of the old process-capable perl tee script)
+   <li><b>teefork</b> (slightly modified version of the old process-fork-capable perl tee script; forking a pipe into multiple short pipes)
    <li>tailing files: <b>USR1tail</b>, <b>busythreadtail</b>
    
 </ul>
