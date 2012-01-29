@@ -31,7 +31,8 @@
 ./cli.lock/lock.pl:0.2.1
 ./cli.mail/mygrepmail:5.30.33pj
 ./cli.processes/fwait:0.1
-./cli.processes/waitcond:0.33
+./cli.processes/waitcond:0.34alpha
+./cli.processes/watch_delta:0.1.1
 ./cli.processes/zap:0.5.3
 ./cli.various/ALARM:0.1
 ./cli.various/WHISTLE:0.2
@@ -39,7 +40,6 @@
 ./cli.various/mt_dir:0.1
 ./cli.various/rr:0.1.2
 ./cli.various/sleepuntil:0.1
-./cli.various/watch_delta:0.1
 ./cli.various/watchfloat:0.1
 ./vim/pipe.vim:0.1.2
 ./vim/vimscript:1.2pj

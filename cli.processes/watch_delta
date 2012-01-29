@@ -1,0 +1,453 @@
+eval 'exec perl -Sx $0 ${1:+"$@"}'
+   if 0;
+#!perl
+
+# I'm really unhappy about busybox's missing -c option
+# for netstat on android. So here's something to cope
+# with this situation and still permit to 'roughly'
+# track ongoing connections. If this also adds a difference
+# mode to waitcond, so much the better...
+
+# $0 [-v] [-i] [-e pattern] ... [--] [command]
+# 
+# run command repeatedly and report changes 
+# (consider e.g. $0 -e FILTER -- netstat -pWn | hlgrep PATTERN > log
+#  instead of depending on watch netstat or a mere netstat -c)
+
+my $version="0.1.1";
+# 20120128 PJ 0.1     initial version jakobi@acm.org
+# 20120129 PJ         added logic for use with waitcond
+#
+# (c) 2012 PJ, placed under GPL v3
+# archive:   http://jakobi.github.com/script-archive-doc/
+
+
+# NOTES:
+# - multiple udp lines can indeed occur with netstat for same process/same port
+
+
+# BUGS:
+# - WONTFIX  numerical sysopen instead of IO::Handle: because of android's sl4a perl's bugs
+# - WONTFIX  some of the excess long options are required to use this script as part
+#            of waitcond expressions
+# - DEL/QQQ  should we sleep/retry on transient errors w/o reducing o_count?
+
+
+use strict;
+use vars;
+use warnings;
+
+# use modifyable, not yet exported as a cli option
+my $o_sort=0;         # set to 1 to always sort line mode output
+my $o_ignore_rc=0;
+my $o_sleep=1;      
+my $o_count=-1;
+my $o_negate=0;
+my $o_pattern=".";
+my $o_highlite="";
+my $o_igncase="";
+my $o_verbose=0;      # print dots; use --verbose twice to report command runs/sleeps
+my $o_diff=undef;
+my $o_mangle="";
+my $o_netstat="";
+my $o_initial_output=undef;
+my $o_close_stderr=0; # if set, close stderr AFTER first run
+my $o_fast_temp=0;    # skip sysopen, do not write both files in diff (more portable & efficient, but introduces race)
+my $o_noprint=0;
+my $o_command="";
+my $o_summary=1;
+my $o_emptyok=0;
+
+
+#
+my $errcnt_max=10;    # max ammount of transient errors of command or diff before abort
+my ($errcnt,$errcntdiff,$errcnttotal)=(0,0,0);
+my $errcnt_redo=1;    # do not change loop count in case of transient errors
+my (@output,%output,@print);
+my ($SO,$SE,$evaloutput,$evalprint,$rc,@oldoutput);
+my (@e,@H);           # regex filter / regex highlite;
+my ($vo);             # print dots on command run (one --verbose)
+my ($t,$ts,@l);
+my (@diffcmd, @diff);
+my ($sort_skip);
+my ($skip_one_sleep,$skip_one_print);
+my ($changes,$changes_run)=(0,0);
+
+# set tempfile
+my $tmpfile="/tmp/watchdelta.$$"; 
+unlink $tmpfile; 
+# android hack to avoid /tmp (no-op if sysopen is broken)
+sysopen(FH, $tmpfile, 01|0200|0100) or sysopen(FH, "/sdcard/watchdelta.$$", 01|0200|0100) and $tmpfile="/sdcard/watchdelta.$$"; close FH;
+my $tmpfile0=$tmpfile.".old";
+
+$|=1;
+
+
+
+while($_=shift @ARGV) {
+   # iteration control
+   /^-s$/o               and do { $o_sleep=shift;    next};
+   /^-n$|^-T$/o          and do { $o_count=shift;    next};
+
+   # grep on output / highlite on reporting
+   /^-e$/o               and do { push @e, shift;    next};
+   /^-v$/o               and do { $o_negate="!";     next};
+   /^-i$/o               and do { $o_igncase="i";    next};
+   /^-H$/o               and do { push @H, shift;    next};
+
+   # mangle/sort command output before computing changes
+   /^-M$/o               and do { $o_mangle=shift;   next};
+   /^-?-sort$/o          and do { $o_sort++; $sort_skip=shift if $ARGV[0]=~/^\d+[bc]?$/; next};
+
+   # compute changes: line by line vs diff section mode 
+   /^-d$/o               and do { $o_diff=shift;     next};
+   
+   /^-?-command$/o       and do { $o_command=shift;        next};
+   /^-?-verbose$/o       and do { $o_verbose++;            next};
+   /^-?-noprint$/o       and do { $o_noprint++;            next};
+   /^-?-()print$/o       and do { $o_noprint=0;            next};
+   /^-?-noemptyok$/o     and do { $o_emptyok=0;            next};
+   /^-?-()emptyok$/o     and do { $o_emptyok=1;            next};
+   /^-?-nostderr$/o      and do { $o_close_stderr=1;       next};
+   /^-?-()stderr$/o      and do { $o_close_stderr=0;       next};
+   /^-?-noinitial$/o     and do { $skip_one_print=1;       next}; 
+   /^-?-()initial$/o     and do { $skip_one_print=0;       next}; 
+   /^-?-nosummary$/o     and do { $o_summary=0;            next}; 
+   /^-?-()summary$/o     and do { $o_summary=1;            next}; 
+   /^-?-norc$/o          and do { $o_ignore_rc=1;          next}; 
+   /^-?-()rc$/o          and do { $o_ignore_rc=0;          next}; 
+   /^-?-te?mpfile2?$/o   and do { $o_fast_temp=1;          next}; 
+   /^-?-reffile$/o       and do { $o_initial_output=shift; next};
+
+   # expand predefined tasks to standard command line options
+   # - netstat output is badly formatted, thus we use separate mangle function
+   #   instead of just a perl expression on the command line, as well as
+   #   special handling inside sortfield(), activated by o_netstat.
+   /^-?-netstat$/o       and do { $o_netstat=1; 
+      unshift @ARGV, qw/-v -e ^unix|^Active|^Proto -M &manglenetstat("") --sort 5 --nostderr --noinitial/;
+      push @ARGV, qw/-- netstat -anpW/ if not grep {/\A--\z/}@ARGV; next};
+   /^-?-netstat-?[lv]$/o and do { $o_netstat=1; 
+      unshift @ARGV, qw/-v -e ^unix|^Active|^Proto -M &manglenetstat("long") --sort 5 --nostderr --noinitial/;
+      push @ARGV, qw/-- netstat -anpW/ if not grep {/\A--\z/}@ARGV; next};
+
+   /^-?-help$/o          and do { &usage;            exit};
+   /^-?-$/o              and do {                    last};
+   unshift @ARGV, $_; last;
+}
+unshift @ARGV, $o_command if $o_command;
+die "!! ERROR: no command specified\n" if not @ARGV;
+open(ERR, ">&", \*STDERR);
+$o_pattern= "(".join(")|(",@e).")" if @e; @e=undef;
+$o_highlite="(".join(")|(",@H).")" if @H; @H=undef;
+$evaloutput="\@output=grep{$o_negate/\$o_pattern/o$o_igncase}\@output\n";
+if ($o_highlite){
+   ($SO, $SE)=(`tput smso 2>/dev/null`,`tput rmso 2>/dev/null`);
+   ($SO, $SE)=("\x1b[0;33m","\x1b[0m") if not $SO; 
+   $evalprint="\@print=grep{s/\$o_highlite/\$SO\$1\$SE/o$o_igncase;1}\@print\n";
+}
+
+
+my $start=$o_count;
+while($o_count--) {
+   @print=();
+   $changes_run=0;
+   $t=time; 
+   @l=localtime; 
+   $ts=sprintf "%04d%02d%02d-%02d%02d%02d",$l[5]+1900,$l[4]+1,@l[3,2,1,0];
+   myexit(43,"!! ERROR: too many command errors in sequence\n") if $errcnt_max < $errcnt+$errcntdiff;
+   
+   # run command OR use captured output as the initial reference output
+   if ($o_initial_output and -f $o_initial_output) {
+      $o_count++; $start++; # we need one more run in total (one-time)
+      print "** READING INITIAL REFFILE\n" if $o_verbose>1;
+      close STDERR if $o_close_stderr;
+      open(FH, "<", $o_initial_output) and @output=<FH> or $o_emptyok or do{myexit(46,"!! ERROR: problem with reading from file $o_initial_output\n")}; 
+      close FH or do{myexit(47,"!! ERROR: cannot use ref file $o_initial_output\n")};
+      $o_initial_output=undef;
+      $skip_one_sleep=1;
+   } else {
+      print "** RUNNING @ARGV\n" if $o_verbose>1;
+      $rc=0;
+      open(FH, "-|", @ARGV) or do{$errcnt++; print "!  ERROR during attempt to run command\n"; close(FH); $rc++};
+      @output=<FH> if not $rc;
+      $errcnt++ if not @output and not $o_emptyok;
+      do{close(FH) or $o_ignore_rc} and do{$errcnttotal+=$errcnt; @output and $errcnt=0; 1} or $errcnt++;
+      $rc=$?>>8 if not $rc;
+   }
+
+   if (not $errcnt) {
+      # capture raw command output for later invocations (e.g. by waitcond)
+      if ($o_initial_output and not -f $o_initial_output) {
+         print "** DUMPING INITIAL REFFILE\n" if $o_verbose>1;
+         $o_count++; $start++; # we need one more run in total (one-time)
+         open(FH, ">", $o_initial_output) and print FH @output or do{myexit(44,"!! ERROR: cannot use ref file $o_initial_output\n")}; 
+         close FH or do{myexit(45,"!! ERROR: cannot use ref file $o_initial_output\n")};
+         $o_initial_output=undef; 
+      }
+
+      # filter output and optionally sort it
+      @output=grep{/./}@output if not defined $o_diff or $o_sort;
+      do{for(@output){eval $o_mangle}} if $o_mangle;
+      eval $evaloutput;
+      @output=sortfield($sort_skip,@output) if $o_sort;
+
+      # compute and report delta acc. to mode
+      if (defined $o_diff) {
+         &diffmode;
+      } else {
+         &linemode;
+      }
+      $changes_run=1 if @print;
+      do{print "."; $vo++;} if 1==$o_verbose and ($o_noprint or $skip_one_print or not @print);
+      do{@print=(); $skip_one_print=undef} if $skip_one_print;
+      push @print, "\n" if @print and $o_count+1 == $start and not $o_noprint;
+      if (@print) {
+         eval $evalprint if $o_highlite;
+         if (not $o_noprint) {
+            do{print "\n"; $vo=0} if $vo;
+            print @print;
+            print "\n" if defined $o_diff;
+         }
+         @print=();
+      }
+   } else {
+      do{print "!"; $vo++;} if 1==$o_verbose;
+   }
+   
+   # first loop - special command sanity handling (also close STDERR now to unclutter display)
+   if ($o_count+1 == $start) {
+      close STDERR if $o_close_stderr;
+      myexit(42, "!! ERROR: errors occured during first execution - aborting ($rc / $errcnt)\n") if $errcnt;
+   } else {
+      # change detected on subsequent run (note: both doing/undoing is a change in this sense)
+      $changes+=$changes_run;
+   }
+   
+   # in case of transient errors, count or not count this as iteration?
+   do{$o_count++; $start+=2} if $errcnt+$errcntdiff and $errcnt_redo; # just increase $start, too to never match again
+
+   # sleep at end of current run
+   if ($skip_one_sleep) {
+      $skip_one_sleep=undef;
+   } else {
+      print "** SLEEP $o_sleep\n" if $o_verbose>1;
+      sleep $o_sleep if $o_sleep;
+   }
+
+}
+
+print "\n" if $vo;
+print $changes ? "Summary: changes occured (@ARGV).\n" : "Summary: no changes (@ARGV).\n" if $o_summary;
+myexit($changes ? 1 : 0);
+exit 48; # cannot be reached;
+
+# ---------------------------------------------------------------------------------------------
+
+sub myexit {
+   my($rc,$rmsg)=@_;
+   unlink $tmpfile, $tmpfile0;
+   print ERR $rmsg if $rmsg;
+   exit $rc if $rc;
+   exit 0;
+   die; # cannot be reacher;
+}
+
+sub usage{
+   print <<EOF
+watch_delta [OPTIONS]                 -- command ...
+watch_delta [OPTIONS] -D "DIFFOPTION" -- command ...
+
+Runs command repeatedly and reports all changed lines with timestamps,
+optionally filtering the output like grep [-v|-i|-e]. Use option -norc
+if  the  command output is still valid in spite of a non-zero  command
+return code.
+
+After the specified number of iterations, watch_delta returns rc=1 for
+changes  detected,  rc=0,  or a high rc in  case  of  severe/permanent
+errors.
+
+The  second  invocation runs the host's diff on  subsequent  command's
+output instead of using the builtin tracking of changed lines.
+
+
+Options:
+ -e RE         ORed REGEX to grep lines from commmand output
+ -i            ignore case for -H and -e options
+ -n N / -T N   limit to / timeout of N iterations                 ($o_count)
+ -s S          sleep S seconds between iterations                  ($o_sleep)
+ -v            invert matching for -e option
+
+
+Advanced options:
+ -d DOPT       instead of tracking line changes, just diff command 
+               output using system diff with options DOPT
+                                                (DOPT: "-wc", "", ...)
+ -H RE         highlight matches when printing       (honors -i, ORed)
+ -M PE         mangle each line using an arbitrary  perl expression PE 
+                                          (before grep; ignores -v/-i)
+ --command C   prefix C when invoking command
+ --(no)emptyok empty command output is (not) ok (default: --noemptyok)
+ --(no)initial store, but do (not) print "changes" from initial run
+ --(no)print   do (not) print changes
+ --(no)rc      (ignore) use command rc as error indication      (--rc)
+ --(no)stderr  (do not) close STDERR after initial run      (--stderr)
+ --reffile F   use F instead of initial command run
+               (if missing: created from initial run)
+ --sort [N] sort command output          (skipping N [c]hars or words)
+ --tempfile2   alternate tempfile handling for diff   (avoids sysopen)
+ --verbose     increase verbosity level 
+
+
+Laziness options / preconfigured tasks:
+ --netstat     run with suitable options for netstat -apnW
+ --netstatl    adds full commandline output to --netstat
+
+
+Notes:
+ - watch_delta REQUIRES the command to produce output on each invocation,
+   otherwise the run is considered a (transient) error
+ - instead of coping with netstat -c or  watch netstat, you  can get a
+   a more useful output by running
+      watch_delta --netstat | tee -a log | cut -b-180
+   (roughly like watch_delta -v -i 'STREAM|DGRAM' -- netstat -anpW;
+    check the source for the actual watch_delta options used) 
+   Note that neither  netstat -c  nore above command are able to catch 
+   short term connections; this might require inotify or worse...
+ - default line mode reports only one line in case of multiple 
+   identical lines
+ - diff output: busybox diff  lacks -c,  and makes a  broken context
+   diff the default, so strip the -c flag from the diff option string
+
+EOF
+}
+
+
+# run system diff on current and previous output,
+# timestamp the results with a prefixed with +/- 
+# from the relevant diff line
+sub diffmode {
+   $rc=0;
+
+   if (not $o_fast_temp) { 
+      # android HACK: O_WRONLY|O_CREAT|O_EXCL;  numeric for android sl4a perl instead of use IO:Handle
+      # non-race HACK: using sysopen
+      unlink $tmpfile0; sysopen(FH, $tmpfile0, 01|0200|0100) or $rc=1; print FH @oldoutput if not $rc; close FH or $rc=1;
+      unlink $tmpfile ; sysopen(FH, $tmpfile,  01|0200|0100) or $rc=1; print FH @output    if not $rc; close FH or $rc=1;
+   } else {
+      # fast, no sysopen, with race condition, increased risk of leftovers
+      unlink $tmpfile0; rename $tmpfile, $tmpfile0;
+      unlink $tmpfile; open(FH, ">", $tmpfile) or $rc=1; print FH @output if not $rc; close FH or $rc=1;
+   }
+
+   do{unlink $tmpfile, $tmpfile0; print ERR "!  ERROR: cannot write tempfiles $tmpfile\{,0}\n"; $errcntdiff++; return} if $rc;
+
+   open(FH, "-|", "diff $o_diff $tmpfile0 $tmpfile");
+   @print=<FH>;
+   close(FH); 
+   $rc=$?>>8;
+   unlink $tmpfile, $tmpfile0;
+   do{ print ERR "!  ERROR: cannot diff\n"; $errcntdiff++; return} if $rc>1;
+   $rc=0; $errcntdiff=0;
+
+   # skip diff -c header / busybox diff header
+   while(@print and $print[0]=~/^(\*\*\*|---|\+\+\+)\s+\Q$tmpfile\E|^\*{7}/o) {
+      shift @print;
+   }
+   
+   if (@print) {
+      my($c,$d);
+      # busybox diff by default (w/o -c) neglects the space after the flag char, sigh
+      @print=grep{s/^(.)/do{$d=$c=$1; $c=" "if not m!^[\+\-\*\<\>\!]! or m!^[\+\-\*\<\>]{2}!;"$c $ts $d"}/e;1}@print;
+   }
+   @oldoutput=@output if not $o_fast_temp;
+}
+
+
+# report changed lines with a +/- prefix
+sub linemode { 
+   my(@newoutput,@deloutput);
+   
+   for(@output){
+      if (not $output{$_}) {
+         push @newoutput, $_;
+      }
+      $output{$_}=$t;
+   };
+   for(keys %output){
+      if ($t != $output{$_}) {
+         delete $output{$_};
+         push @deloutput, $_;
+      }
+   }
+   
+   if (@deloutput or @newoutput) {
+      push @print, grep{s/^/- $ts /} sortfield($sort_skip,@deloutput);
+      push @print, grep{s/^/+ $ts /} sortfield($sort_skip,@newoutput);
+   }
+}
+
+sub sortfield {
+   my($sort_skip)=shift;
+   return(@_) if not $o_sort;
+   return(sort @_) if not $sort_skip;
+   if ($sort_skip=~/^\d+$/) {
+      my $n=$sort_skip;
+      if ($o_netstat and $sort_skip==5) { # don't do this if user changed sort fields
+		 # if we make a mess of this code for the sake of --netstat, then do it properly:
+		 # sort processes acc. to proto-type / name / pid / fullproto / connections 
+         $n-=2;
+         return(sort{my($aa,$bb)=map{my $c=$_; $c=~s/^(...)(..) ((?:\S+\s+){$n})(\d+\s+)(.*)/do{"$1\~\~$5\~\~".(sprintf "%06d",$4)."\~\~$1$2\~\~$3"}/e;chomp $c;"$c"}($a,$b); $aa cmp $bb} @_);
+      } else {
+         return(sort{my($aa,$bb)=map{my $c=$_; $c=~s/^((?:\S+\s+){$n})(.*)/$2\~\~$1/;                        chomp $c;"$c"}($a,$b); $aa cmp $bb} @_);
+	  }
+   } 
+   if ($sort_skip=~/^(\d+)[bc]$/o) {
+      my $n=$1;
+      return(sort { my($aa,$bb)=map{my $c=$_; $c=substr($c,$n)."~~".$c;chomp $c;"$c"}($a,$b); $aa cmp $bb} @_);
+   }
+   return @_; # can't happen
+}
+
+# helpers for laziness / preconfigured tasks :)
+sub manglenetstat {
+   my($opt)=@_;
+   my $l=76; # suitable for net-utils on ubuntu 10.04 / 2012-01
+   $opt="" if not defined $opt; $opt=" ".$opt." ";
+
+   # restore ipv6-formatted ipv4 to conserve space
+   if ($ENV{ANDROID_ROOT}) {
+      # make busybox netstat output a bit shorter
+      s!::ffff:(\S+)!$1       !go; 
+	  s! {31}! !go;
+      $l=72; 
+	  s!State       PID/!State             PID  !o; 
+   }
+   
+   s!(.*) - *$!sprintf "%-${l}s  %6s",$1,"-"!e; # same as below
+
+   # uncomment next line to suppress RECQ and SENDQ values
+   s!^(\S\S\S.. )(\s*\d+\s+\d+\s+)!$1!o and $l=$l-length($2)+3; s!^Proto Recv-Q Send-Q!Proto!;
+
+   # inject long process name and arguments into netstat output
+   s!(.*\S) +(-|\d+/.*)\s*\z!do{
+      my($f,$pc)=($1,$2);
+	  my($p,$c)=($pc,"  -");
+	  ($p,$c)=($1,$2) if $pc=~m/^(\d+)(\/\S+)/o;
+	  # supply a dummy field in case of udp
+      $f=sprintf "%-".($l-12)."s -",$f if length($f)<$l-10 and not $f=~/^tcp/;
+	  sprintf("%-${l}s  %6s%s\n", $f, $p, $c);
+   }!eo;
+   s!(.*\S) +(\d+)(/.*)\s*\z!do{
+      my($f,$p,$c,$c0,$ce,$ca)=($1,$2,$3,"","","");
+      # $ce=readlink("/proc/$p/exe"); $ce="" if not $ce; $ce=~s/\s*\z//o;
+	  if ($opt=~/ long /) {
+         open(F,"<","/proc/$p/cmdline") and $ca=<F> and $ca=~s/\0+/ /go; close F; $ca="" if not $ca; $ca=~s/\s*\z//o; 
+         $c="  $ca" if $ca;
+      } else {
+         open(F,"<","/proc/$p/comm") and $c0=<F>; close F; $c0="" if not $c0; $c0=~s/\s*\z//o; 
+	     $c="  $c0" if $c0;
+	  }
+	  $c=~s/ *$//o;
+	  sprintf("%-${l}s  %6d%s\n", $f, $p, $c);
+   }!eo
+}

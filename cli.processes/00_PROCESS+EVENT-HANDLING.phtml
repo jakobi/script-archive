@@ -21,13 +21,14 @@ events.</p>
        this one also offers boolean expressions, this time on top of a 
        language of tests including
    <ul>
-      <LI>grep in files or command output
-      <LI>successful execution of shell commands
-      <LI>host pinging
       <LI>(dis)appearance of files
       <LI>(dis)appearance of processes in ps output
-      <LI>threshold-based file modification time
+      <LI>threshold-based file modification time (file is recent/idle)
       <LI>threshold-based cpu/net/disk idleness
+      <LI>host pinging
+      <LI>return code of shell commands
+      <LI>grep in files or command output
+      <LI>detect changes in files or command output (needs watch_delta below)
    </ul>
        See waitcond.dbus.README for ideas on using dbus-events with waitcond
        (waiting for events like 'ping', HAL, FUSE, Desktop-Notifications).
@@ -46,7 +47,12 @@ events.</p>
        arbitrary perl (e.g. 'do{}') in the boolean expression.
    <li><b>waitcond.timeout</b> is an extended version of Piotr Roszatycki's script.
        It runs a command and kills it after a period. The
-       timelimit specification allows using a command such as waitcond.
+       timelimit specification allows using a command such as waitcond. (Simple 
+       timeout programs are also available as timeout.dep and in the GNU coreutils).
+  <li><b>watch_delta</b> repeatedly runs a command and continuously report lines 
+       or diff sections. Used to detect command output changes in waitcond, with
+       a special "netstat -c"-style mode to get a really usable continuous output
+       from netstat -apnW augmented with information from /proc.
    <li><b>zap</b> (perl) has come a long way from the its old incarnation in the camel book. 
        Nowadays it lists, nices or kills processes or process trees 
        matching a regex with or without user interaction. Includes ionice support 

@@ -8,7 +8,7 @@ Version 0.33
 
 =cut
 
-our $VERSION="0.33";
+our $VERSION="0.34alpha"; # **** "changed" / watch_delta considered alpha until a bit more testing 
 
 # 20071107 PJ jakobi@acm.org created - wait for processes, tty idle, files, grep in file
 # 20071228 PJ added netidle, diskidle, cpuidle 
@@ -18,11 +18,17 @@ our $VERSION="0.33";
 # 20090917 PJ changes for cpan.org/scripts
 # 20101117 PJ help/examples for negated aliases, fixed ping
 # 20101119 PJ true/false, before/after, looping+shell commands: -l/-ci/-cs/-cfs/-cff
+# 20120129 PJ "changed()": added diff/compare function for command output based on the 
+#             external watch_delta script (also in jakobi.github.com)
 #
-# copyright:  (c)2007-2010, GPL v3 or later
+# copyright:  (c)2007-2012, GPL v3 or later
 # archive:    http://jakobi.github.com/script-archive-doc/ 
 #             [check github.com/jakobi/script-archive/cli.processes 
-#              for some ideas on using waitcond with dbus events]
+#              for some ideas on using waitcond with dbus events and
+#              the watch_delta script]
+
+# NOTES
+# - ...
 
 # TODO
 # - --testsuite TESTSTRING to be embedded in this file, but permitting for 
@@ -30,12 +36,19 @@ our $VERSION="0.33";
 #   (avoiding false errors due to issues like system load on the test machine...) 
 #   sub testtmpfile...
 #   /^1$/ and do {testpre(forkbackgroundflag,perlscrap);$rc=testrun(regex,min,max,arglist);testpost();$rc}
-# - consider setting pscmd as in zap (ps auxww vs. COLUMNS=999 ps -edalf or similar)
 # - CPAN test suite, have dummy scripts call --testsuite...
+#
 # - randomized wait/backoff (thundering herd, anyone...)
-# - print dots while waiting (to avoid idle term)
-# - note idle delay is idle timeout + count * period
-# - note mouse/user-before-keyboard non/idle example...
+# - optionally print dots while waiting (to e.g. keep a connection alive; 
+#   see e.g. watch_delta's $vo variable as example)
+# - consider configure pscmd depending on the system capabilities, from
+#   top -n 1 (android, a bit more acceptable than measly busybox ps -w) to 
+#   ps auxww for some systems to the currently used COLUMNS=999 ps -edalfww
+
+# BUGS
+# - WONTFIX ...
+# - DEL/QQQ ...
+
 
 use warnings;
 use vars;
@@ -48,7 +61,9 @@ my ($rc,$iter,$oldpackagecount,$packagecount,$count)=(0,0,0,0,0);
 my ($cmd_loop,$cmd_failure,$cmd_success,$cmd_iter,$do_loop)=("","","","","");
 my ($sleep,$recent,$cpuidle,$diskidle,$netidle,$bytesnonempty);
 my ($iostat,$ifconfig)=("","");
-my ($countinit,$loopmax);
+my ($countinit,$loopmax,$idelay);
+my ($watchdelta,$watchdeltatmp,@watchdelta,$watchdeltainstance);
+my (@unlinkfiles,%unlinkfiles);
 my ($grepmaxsize,$grepopt,$pscmd,$psout,$psout_generation,$pingcmd, $pingmatch, $tty)=(0,"","","",0,"","","");
 $sleep=5;     # shorten to waitcond -V -C 1 -s 1 in case of debugging
 $recent=300; 
@@ -66,12 +81,15 @@ $pscmd="ps -edalfww";
 $pingcmd="ping -w 6 -c 2 2>&1 "; $pingmatch="2 received"; # ping command and string to match # FIXME language specific
 $tty=`tty`; $tty=~s!(/dev/|\n)!!g; # the part of the pty name that top/ps/... display
 $loopmax=99999; # less than 6 days (assuming 5sec sleep + 0sec cpu usage per iteration)
-
 $countinit=2;  # how many times do we require a true expr value in sequence to finish?
 
+# locate the watch_delta script to use for changed():
+$watchdelta=$0; $watchdelta=~s!/[^/]*$!/watch_delta!; $watchdelta="watch_delta" if not -x $watchdelta;
+$watchdeltatmp="/tmp/waitcond.$$.changed.";
+$watchdeltainstance=0;
+@watchdelta=($watchdelta, qw!-n 1 --noinitial --nosummary --noprint!); # &changed adds --reffile and optionally --command cat
 
 my ($negate,$test,$verbose,$ioargs,$initialsleep)=(0,0,0,0,"",0);
-
 
 # matcher
 my (@file); 
@@ -79,8 +97,9 @@ my ($and,$expr)=("","");
 $and=""; # changed to "and " if an implicit and is possible
 
 
+
 while($_=$ARGV[0]){ # OK
-   /^(-V|-?-verbose)$/o  and do{shift; $verbose=1; next};
+   /^(-V|-?-verbose)$/o  and do{shift; $verbose++; next};
    /^(-v|-?-negate)$/o   and do{shift; $negate=1; next};
    /^-r$/o               and do{shift; $recent=shift; next};
    /^-c$/o               and do{shift; $cpuidle=shift; next};
@@ -95,6 +114,7 @@ while($_=$ARGV[0]){ # OK
    /^-s$/o               and do{shift; $sleep=shift; next};
    /^-l$/o               and do{shift; $do_loop=1; next};
    /^(-t|-?-test)$/o     and do{shift; $test=1; next};
+   /^(-?-i?delay)$/o     and do{shift; $idelay=1; next};
    /^--?ci$/o            and do{shift; $cmd_iter=shift; next};
    /^--?cs$/o            and do{shift; $cmd_loop=shift; next};
    /^--?cff$/o           and do{shift; $cmd_failure=shift; next};
@@ -123,7 +143,7 @@ grep({/^netidle$/}  @ARGV) and do{$initialsleep=$sleep=($sleep>3)?$sleep:3}; # s
 # compile and report boolean expression to wait for
 $expr=compile(@ARGV); @ARGV=();
 my $i=0; 
-&vprint("\n# expression:\n$expr\n\n# files:\n", 
+&vprint("\n# settings: sleep:$sleep recent:$recent (disk:$diskidle|cpu:$cpuidle|netidle:$netidle)\n\n# expression:\n$expr\n\n# files:\n", 
    join("\n",
       map {
          sprintf "%-3s %s", $i++.":", $_
@@ -137,7 +157,19 @@ $rc=eval($expr) ? 1 : 0; # 1st test plus syntax test
 die "# $Me: whatever this is, a boolean expression it ain't\n: $@\n" if $@;
 &vprint("# 1st eval returned " . ( $rc ? "true" : "false" ) . "\n");
 exit( $rc ? 0 : 1 ) if $test;
-sleep $initialsleep if $initialsleep;
+if ($idelay) {
+   my $delay=2;
+   $delay=12            if $recent       and 10      > $delay and $expr=~/\&(diskidle|netidle|cpuidle)\(/;
+   $delay=$recent+2     if $recent       and $recent > $delay and $expr=~/\&recent\(/;
+   $delay=$sleep+2      if $sleep        and $sleep  > $delay;
+   $delay=$initialsleep if $initialsleep and $initialsleep > $delay;
+   warn "# $Me: sleeping initial delay of $delay\n" if $verbose;
+   sleep $delay;
+} else {
+   sleep $initialsleep if $initialsleep;
+}
+
+
 
 while(1) {
    $rc=0;
@@ -179,9 +211,11 @@ while(1) {
       # print main::STDERR "TIMEOUT ABORT: returning rc from previous test\n";
       if ($rc) {
          system($cmd_success) if $cmd_success;
+         unlink @unlinkfiles, keys %unlinkfiles if @unlinkfiles or %unlinkfiles;
          exit 0;
       } else {
          system($cmd_failure) if $cmd_failure; 
+         unlink @unlinkfiles, keys %unlinkfiles if @unlinkfiles or %unlinkfiles;
          exit 1;
       }
    }
@@ -192,6 +226,7 @@ while(1) {
    }
    last; # shouldn't happen
 }
+unlink @unlinkfiles, keys %unlinkfiles if @unlinkfiles or %unlinkfiles;
 exit 20; # shouldn't happen
 
 
@@ -238,40 +273,66 @@ sub newtime { # convert TIMESPEC to epoch; taken from sleepuntil
    $epoch;
 };
 
-sub compile {
+sub fn { # eval time: return $file($1), possibly replaced
+         #         by the 1st file from a successful glob
+   my $f=$file[$_[0]];
+   my @f=();
+   @f=glob($f) if $f=~s/^\*//o;
+   $f=$f[0] if @f;
+   return $f;
+}
+
+sub compile { # the main parser for the booleans; we later
+              # eval the result as string. Filenames
+              # are encapsulated using fn, thus they are
+              # NOT part of the string (in contrast to
+              # e.g. the grep REGEX argument) and not
+              # parsed by eval.
    local($_);
-   my($expr)="";
+   my($expr,$a,@a)=("","",);
    while(@_){
       $_=shift;
-      /^$/o         and do {die "# $Me: illegal operator/argument"};
+      /^$/o          and do {die "# $Me: illegal operator/argument"};
       # aliases
-      /^before$/o   and do {unshift @_, "not", "after";   next};
-      /^idle$/o     and do {unshift @_, "not", "recent";   next};
-      /^empty$/o    and do {unshift @_, "not", "nonempty"; next};
-      /^sh$/o       and do {unshift @_, "grep", "()", shift()."|"; next };
-      /^ping$/o     and do {unshift @_, "grep", $pingmatch, $pingcmd." ".shift()."|"; next};
+      /^before$/o    and do {unshift @_, "not", "after";   next};
+      /^idle$/o      and do {unshift @_, "not", "recent";   next};
+      /^empty$/o     and do {unshift @_, "not", "nonempty"; next};
+      /^sh$/o        and do {unshift @_, "grep", "()", shift()."|"; next };
+      /^ping$/o      and do {unshift @_, "grep", $pingmatch, $pingcmd." ".shift()."|"; next};
       # syntactic sugar
-      /^not$/o      and do {$expr.=$and  ."not ";                                      $and="";     next};
-      /^and$/o      and do {$expr.="and ";                                             $and="";     next};
-      /^or$/o       and do {$expr.="or ";                                              $and="";     next};
-      /^\($/o       and do {$expr.=$and."( ";                                          $and="";     next};
-      /^\)$/o       and do {$expr.=") ";                                               $and="and "; next};
+      /^not$/o       and do {$expr.=$and  ."not ";                                      $and="";     next};
+      /^and$/o       and do {$expr.="and ";                                             $and="";     next};
+      /^or$/o        and do {$expr.="or ";                                              $and="";     next};
+      /^\($/o        and do {$expr.=$and."( ";                                          $and="";     next};
+      /^\)$/o        and do {$expr.=") ";                                               $and="and "; next};
       # functions
-      /^true$/o     and do {$expr.=$and  .'1 ';                                        $and="and "; next };
-      /^false$/o    and do {$expr.=$and  .'0 ';                                        $and="and "; next };
-      /^after$/o    and do {$expr.=$and  .'time >= '.      &newtime(shift).' '; 
-                                                                                       $and="and "; next };
-      /^exists$/o   and do {$expr.=$and  .'-e &fn('.       &newfile(shift).') ';       $and="and "; next };
-      /^cpuidle$/o  and do {$expr.=$and  .'&cpuidle() ';                               $and="and "; next };
-      /^diskidle$/o and do {$expr.=$and  .'&diskidle('."'".        (shift) ."'".') ';  $and="and "; next };
-      /^netidle$/o  and do {$expr.=$and  .'&netidle('."'".         (shift) ."'".') ';  $and="and "; next };
-      /^recent$/o   and do {$expr.=$and  .'&recent(&fn('.  &newfile(shift,"dev").')) ';$and="and "; next };
-      /^ps$/o       and do {$expr.=$and  .'&grep_ps(\''.   shift().'\') ';             $and="and "; next };
-      /^grep$/o     and do {$expr.=$and  .'&grep_file(\''. shift().'\', &fn('.&newfile(shift).')) '; 
-                                                                                       $and="and "; next };
-      /^nonempty$/o and do {$expr.=$and  .'&nonempty(&fn('.&newfile(shift).')) ';      $and="and "; next };
+      /^true$/o      and do {$expr.=$and  .'1 ';                                        $and="and "; next };
+      /^false$/o     and do {$expr.=$and  .'0 ';                                        $and="and "; next };
+      /^after$/o     and do {$expr.=$and  .'time >= '.      &newtime(shift).' ';        $and="and "; next };
+      /^exists$/o    and do {$expr.=$and  .'-e &fn('.       &newfile(shift).') ';       $and="and "; next };
+      /^changed$/o   and do {$expr.=$and  .'&changed('.$watchdeltainstance++.',&fn('. &newfile(shift).'))';
+                                                                                        $and="and "; next };
+      /^cpuidle$/o   and do {$expr.=$and  .'&cpuidle() ';                               $and="and "; next };
+      /^diskidle$/o  and do {$expr.=$and  .'&diskidle('."'".        (shift) ."'".') ';  $and="and "; next };
+      /^netidle$/o   and do {$expr.=$and  .'&netidle('."'".         (shift) ."'".') ';  $and="and "; next };
+      /^recent$/o    and do {$expr.=$and  .'&recent(&fn('.  &newfile(shift,"dev").')) ';$and="and "; next };
+      /^ps$/o        and do {$expr.=$and  .'&grep_ps(\''.   shift().'\') ';             $and="and "; next };
+      /^grep$/o      and do {$expr.=$and  .'&grep_file(\''. shift().'\', &fn('.&newfile(shift).')) '; 
+                                                                                        $and="and "; next };
+      /^nonempty$/o  and do {$expr.=$and  .'&nonempty(&fn('.&newfile(shift).')) ';      $and="and "; next };
+
+      # vararg helper: collect the arguments for registered varargs functions
+      /^((sh|grep|changed)\()$/o and do {my @__=($_,$and); 
+                             @a=();while(@_){$_=shift; last if /^\)$/; push @a,'&fn('.&newfile($_).')'};
+                             die "# $Me: $__[0]...) - vargs do not end (near '$_') - aborting.\n" if not /^\)$/;
+                             ($_,$and)=@__}; # fall thru to next case
+      # vararg functions: append v to word to get function name, collect args until a single closing ')'
+      /^sh\($/o      and do {$expr.=$and  . '&shv(' .join(",",@a).')';                  $and="and "; next };
+      /^grep\($/o    and do {$expr.=$and  . '&grepv(\''. eval(shift(@a)) .'\',' . join(",",@a) .')'; $and="and "; next }; # 1st arg is RE and should be parsed by perl
+      /^changed\($/o and do {$expr.=$and  . '&changedv('.$watchdeltainstance++.",".join(",",@a).')'; 
+                                                                                        $and="and "; next };
       # default
-      1             and do {$expr.=$and.'-e &fn('.&newfile($_).') ';                   $and="and "; next };
+      1              and do {$expr.=$and.'-e &fn('.&newfile($_).') ';                   $and="and "; next };
       # not reached
       next; # never reached
    }
@@ -281,14 +342,63 @@ sub compile {
 }
 
 #-----------------------------------------------------------------------------------------------------------
-sub fn { # eval time: return $file($1), possibly replaced
-         #         by the 1st file from a successful glob
-   my $f=$file[$_[0]];
-   my @f=();
-   @f=glob($f) if $f=~s/^\*//o;
-   $f=$f[0] if @f;
-   return $f;
+
+sub changedv { # vararg version of "changed" for command output
+   my($rc,$t,@cmd)=(0,"");
+   $t=$watchdeltatmp.shift; $unlinkfiles{$t}=1;
+
+   push @cmd, @watchdelta, "--reffile", $t, @_;
+   warn "# $Me: &changedv: ".join(" ",@cmd)."\n" if $verbose;
+   system @cmd;
+   $rc=$?>>8;
+
+   return 1 if 1==$rc;
+   return 0;
 }
+
+sub changed { # single argument form of the "changed" function
+   my($i,$f)=@_;
+   my($rc,$cmd,$t)=(0,"","");
+   $t=$watchdeltatmp.$i; $unlinkfiles{$t}=1;
+
+   $cmd=join(" ",@watchdelta)." --reffile '$t'";
+   $cmd.=" --command cat" if not $f=~s/\|$//o; # emulate the open2 perl idiom of trailing | running commands
+   $cmd.=" ".$f;
+   warn "# $Me: &changed: $cmd\n" if $verbose;
+   system $cmd;
+   $rc=$?>>8;
+
+   return 1 if 1==$rc;
+   return 0;
+}
+
+sub grepv { # vararg variant of grep_file, but only for commands
+   my $expr=shift;
+   my($tmp,$rc)=("",1);
+   warn "# $Me: &grepv for $expr in output of ".join(" ",@_,"\n") if $verbose;
+   
+   $rc=0;
+   open(FH, "-|", @_) and defined read(FH,$tmp,$grepmaxsize,0) and close FH or $rc=256;
+   warn "# $Me: failed open/read for pipe grep $expr ".join(" ",@_)."\n" if $rc and $rc==256;
+   warn "# $Me: rc for pipe grep $expr ".join(" ",@_).": $rc\n"          if $rc and $rc!=256 and $verbose;
+   $rc=$?>>8 if $?;
+   warn "# $Me: &grepv command returns $rc\n" if $verbose;
+   $rc= $rc ? 0 : 1; # switch back to perl semantics for rc
+
+   $rc and do{ eval '$tmp=~m@$expr@'.$grepopt or $rc=0 }; # no o!
+   warn "# $Me: &grepv invalid grep: $@" if $@; 
+   warn "# $Me: &grepv found matches\n" if $rc and $verbose;
+   return($rc);
+}
+
+sub shv { # varargs form of the shell fucntion
+   warn "# $Me: &shv: ".join(" ",@_,"\n") if $verbose;
+   system(@_);
+   $rc=$?>>8;
+   warn "# $Me: &shv: shell rc $rc\n" if $verbose;
+   return $rc ? 0 : 1; 
+}
+
 
 sub recent {
    # return false if file does not exist or file not 
@@ -337,7 +447,6 @@ sub grep_file {
       # ignore failure for this
       open(FH, "<", $file) and read(FH,$tmp,$grepmaxsize,0); close FH;
    }
-warn "READ $tmp\n";
    $rc and do{ eval '$tmp=~m@$expr@'.$grepopt or $rc=0 }; # no o!
    warn "# $Me: invalid grep in file: $@" if $@; 
   
@@ -421,12 +530,19 @@ waitcond [OPTIONS] CONDITION
 version: $VERSION
 
 Wait  for  a  boolean condition expression to evaluate to true  for  a
-minimum number of subsequent iterations (-c N; default $countinit).
+minimum number of sequential iterations (-c N; default $countinit).
 
-The  command exits after the final successful test for CONDITION  with
-exit  code  0,  otherwise with exit code 1  after  time-out  ($loopmax
-iterations).  Option  -t exists immediately with a suitable exit  code
-depending on CONDITION.
+The basic settings for controlling iteration are
+    -r <recent-period>                                          (${recent}s)       
+    -s  <sleep delay during iteration>                            (${sleep}s)
+    -T <max number of iterations>                              ($loopmax)
+In addition, -idelay delays the first iteration suitably acc. to above
+iteration settings and thresholds.
+
+Waitcond exits after the final successful test for CONDITION with exit
+code  0,  otherwise  with  exit code 1  after  time-out  (-T  $loopmax
+iterations). Option -t just runs the test and exits immediately with a
+suitable exit code.
 
 CONDITION  might be as simple as a non-empty list of filenames,  which
 is  expanded  into a perl boolean expression that tests for the  ANDed
@@ -438,6 +554,17 @@ A  sequence of multiple atoms is ANDed. Use ./ or similar if  keywords
 and  filenames  collide. Note that perl's AND actually is  ANDSEQ  and
 thus  stops  early if the condition is obviously false (regardless  of
 remaining sub expressions).
+
+    The  "changed"  function uses the external watch_delta  script  to
+    diff  command  output between subsequent runs. The script must  be
+    placed  in  the  same directory as waitcond OR  somewhere  in  the
+    \$PATH.  It is also available from the same repository as  waitcond
+    (jakobi.github.com).  Options  to watch_delta can be prepended  to
+    the  command/filename:  Of  special interest  are  --norc  (ignore
+    return code of command), --emptyok (empty command output is valid)
+    and  the  grep-style options -i, -v, -e to filter command  output.
+    For more information, invoke watch_delta --help.
+
 
 
 Atoms for building boolean conditions:
@@ -454,25 +581,28 @@ d) functions with a single argument, usually a filename (or the
    first file from a fileglob).
    # You may need to protect the execution of more complex tests with
    # earlier tests for the existence of files - not being able to grep
-   # an error string in the log might be due to an even larger error when
-   # the application died before creating or updating the log...; also 
-   # an issue for ->negated aliases.
-   1)  "exists"        (alias for ->case a)
-   2)  "recent"        (file is recently touched)
-   3)  "nonempty"      (file is of more than negible size -> -b) 
+   # an error string in the log might be due to an even larger error
+   # when the application died before creating or updating the log...; 
+   # also an issue for ->negated aliases.
+   1)  "exists"    F    (alias for ->case a)
+   2)  "recent"    F    (file is recently touched)
+   3)  "nonempty"  F    (file is of more than negible size -> -b) 
    # negated aliases: 4+5 also succeed if the file doesn't exist
-   4)  "idle"          (alias not ->recent)
-   5)  "empty"         (alias for not ->nonempty)
-   6)  "diskidle"      (argument is device basename, e.g. sda; like
-                       cpuidle, it is implemented via iostat and takes
-                       about 30s to get a usable value when using 
-                       iostat 10 3)
-   7)  "netidle"       (argument is device basename, e.g. eth0)
-   8)  "sh"            (run shell command and use its return code; ->grep)
-   9)  "ping"          (ping a host; see \$pingcmd/\$pingmatch; ->grep)
-   10) "after"  TIME   (either EPOCH, a time in the future with +HH:MM(:SS) /
-                        +DDD[hms], or a time string suitable for GNU date -d)
-   11) "before" TIME   (alias not ->after)
+   4)  "idle"      F    (alias not ->recent)
+   5)  "empty"     F    (alias for not ->nonempty)
+   6)  "diskidle"  DEV  (argument is device basename, e.g. sda; like
+                         cpuidle, it is implemented via iostat and takes
+                         about 30s to get a usable value when using 
+                         iostat 10 3)
+   7)  "netidle"   DEV  (argument is device basename, e.g. eth0)
+   8)  "sh"        CMD  (run shell command and use its return code; ->grep)
+   9)  "ping"      HOST (ping a host; see \$pingcmd/\$pingmatch; ->grep)
+   10) "after"     TIME (either EPOCH, a time in the future with +HH:MM(:SS)
+                         / +DDD[hms], or a string suitable for GNU date -d)
+   11) "before"    TIME (alias not ->after)
+   12) "changed"   F    (check content for changes; use "CMD|" to run a
+                         command and check it's output instead; F may
+                         be prefixed with watch_delta options)
 e) functions with a perl regex as first argument (modifiers: $grepopt):
    1) "ps" greps in $pscmd (update \$pscmd if necessary)
    2) "grep" greps in the file given as second argument, allowing
@@ -480,6 +610,11 @@ e) functions with a perl regex as first argument (modifiers: $grepopt):
        run a shell command, test its return code and - ONLY for a zero 
        shell return code - grep the command output. Use a regex like '()' 
        to just use the command's return code.
+f) vararg shell command versions to ease shell quoting issues
+   1) "sh("                                 COMMAND ... ")" 
+   2) "grep("     REGEX                     COMMAND ... ")"
+   3) "changed("  [watch_delta-OPTIONS...]  COMMAND ... ")"
+
 
 
 Options:
@@ -497,6 +632,8 @@ Options:
   -n N       netidle:  if less than N packets per iteration ($netidle)
   -p CMD     ps command to use for ps grep ($pscmd)
   -r SEC     recent(/idle): modified/touched within SEC seconds ($recent)
+  --idelay   sleep a suitable initial delay period to ensure that idle/recent
+             and other tests do not succeed immediately.
 
   # iteration control
   -C N       require the expression to be true for a sequence of N iterations
@@ -522,11 +659,14 @@ Example running a remote upgrade and watching out for hangs / input requests
   term1\$ apt-get dist-upgrade
 
   # iterate with sleep 60s and checking for >= 120s idle time of the pty
-  term2\$ waitcond -l -cs "mpg123 LOUD.mp3" -s 60 -r 120 idle /dev/pts/18
+  term2\$ waitcond -l -cs WHISTLE -s 60 -r 120 idle /dev/pts/18
 
-  # wait for a freshly started command in another pty to finish
-  # (avoid immediately returning non-idle; using 10 instead of ${recent}sec)
-  d=10; sleep \$(( \$d+1 )); waitcond -r \$d not idle pts/10; WHISTLE 
+  # wait for a freshly started command on pty 11 to finish
+  waitcond --idelay -r 10 not idle pts/11 && WHISTLE 
+  (that is: sleep 10; sleep 1; waitcond -r 10 not idle pts/11 && WHISTLE)
+
+  # detect user activity by mouse pointer changes over a 10min interval
+  waitcond -s 10 -T 60 changed "xwarppointer get|" && echo user_is_active
 
 
 For further raw notes and examples, try --examples.
@@ -665,8 +805,6 @@ Examples:
     a suitably modified remote waitcond like e.g.
     waitcond -l -r 60 -cs "touch TIMESTAMP" idle PTY
 
-    
-
   - to kill a program after a time interval or condition, try
     waitcond.timeout                               300 top
     waitcond.timeout -TERM:10:KILL                 300 top
@@ -675,6 +813,20 @@ Examples:
   - watch over a server reboot or service restart, combine conditions:
     waitcond -v ping SRV && waitcond sh "ssh SRV :" # possibly tweak timeouts
     waitcond -v grep ... "lynx -dump ..." && waitcond grep ... "lynx -dump ..."
+
+  - detecting user activity: [amc]times of /dev/input/* and /dev/tty* 
+    are nowadays only reporting the most recent boot, X session start or 
+    login sometime last month. Same goes for who and finger.
+    To check for the presence of the user, the easiest option now is
+    checking for (significant) changes in mouse coordinates, along
+    the lines of
+
+    DISPLAY=:0 waitcond -s 10 -T 60 changed "xwarppointer get|" && \
+    ( sleep 3600; ALERTOSD "TIME FOR A COFFEE_BREAK, DUDE!" )
+
+    Checking recent dbus messages or spawnign of user processes might
+    also help. As would checking /dev/pts files, IFF the user has no 
+    long running processes while he is absent :/.
 
   - to restart, these 'watchdogs' are more suitable
     # to kill/watch/restart a command consider e.g. *ps-watcher*
