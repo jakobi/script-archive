@@ -14,7 +14,7 @@ eval 'exec perl -Sx $0 ${1:+"$@"}'
 # (consider e.g. $0 -e FILTER -- netstat -pWn | hlgrep PATTERN > log
 #  instead of depending on watch netstat or a mere netstat -c)
 
-my $version="0.1.1";
+my $version="0.1.1alpha";
 # 20120128 PJ 0.1     initial version jakobi@acm.org
 # 20120129 PJ         added logic for use with waitcond
 #
