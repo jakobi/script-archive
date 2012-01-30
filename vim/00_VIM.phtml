@@ -34,13 +34,15 @@ vim script file into presentable sections. Don't hold your breath.</p>
             do <i>wait for the end of input</i> from earlier pipe stages. Published as 
             <a href="http://www.vim.org/scripts/script.php?script_id=2769">vimscript#2769</a> .
         <li><b>pipe.vimcolorcat</b> is a small shell wrapper around the 2ansi / 2html macros
-            for use as an intermediate non-interactive pipeline stage. Output is colored using
-            ANSI sequences or HTML according to the file type's vim syntax file. 2html.vim is
-            part of the standard runtime, 2ansi.vim can be found on vim.org as vim2ansi.
-        <li><b>vimless</b> (similar, but for the last stage of a pipe, slightly preconfigured
-            to implement a less-clone capable of syntax highlighting. Like pipe.vim, it can 
-            also be wrapped by e.g. xargs. Simple vim options can also be placed in
-            VIMLESSOPT, e.g. export VIMLESSOPT='-c "set ft=perl"'; note that the standard
+            for use as an intermediate non-interactive pipeline stage. Syntax-highlighing of
+            output is done using either ANSI sequences or colored HTML according to the file
+            type's vim syntax file. 2html.vim is part of the standard runtime, 2ansi.vim can 
+            be found on vim.org as vim2ansi script. For the time being, do <i>not</i> run 
+            pipe.vimcolorcat in parallel; shell-loops and similar are ok.
+        <li><b>vimless</b> is similar to pipe.vim, but for the last stage of a pipe, slightly 
+            preconfigured to implement a less-clone capable of syntax highlighting. Like pipe.vim, 
+            it can also be wrapped by e.g. xargs. Simple vim options can also be placed in
+            VIMLESSOPT, e.g. export VIMLESSOPT='-c "set ft=perl"' (note that the standard
             runtime contains a variant of this in form of macros/less.sh (macros/less.vim))
       </ul>
    <li>vim scripts
