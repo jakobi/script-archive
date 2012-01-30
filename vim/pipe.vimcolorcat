@@ -1,14 +1,15 @@
 #!/bin/bash
 {
-
 # ... | $0 [-html] [VIMARGS] 
 # $0 [-html] [VIMARGS] INPUT > OUTPUT
 #
-# pipe.vimcolorcat - a wrapper for the official 2html syntax converter and
-#                    Rogerz Zhang's vim2ansi script (roughly based on 2html;
-#                    vim2ansi is vim.org/scripts/script.php?script_id=1127.
+# pipe.vimcolorcat - a non-interactive shell wrapper around the official 2html 
+#                    syntax converter and Rogerz Zhang's vim2ansi script 
+#                    (roughly based on 2html; vim2ansi is 
+#                     vim.org/scripts/script.php?script_id=1127)
 #
 # 20120130 PJ initial version jakobi@acm.org
+#             (named and requested way too long ago by Marcel Partap)
 
 # vim requires an explicit output file (i.e. not - or /dev/stdin)
 # furthermore, we redirect messages and console IO line noise to stderr.

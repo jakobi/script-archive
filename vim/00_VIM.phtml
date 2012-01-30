@@ -26,21 +26,26 @@ vim script file into presentable sections. Don't hold your breath.</p>
             the tempfile handling needs fixing (bash; full rewrite of the original vimsh 
             vimscript example). Published as 
             <a href="http://www.vim.org/scripts/script.php?script_id=2768">vimscript#2768</a> ).
-        <li><b>pipe.vim</b> aka <b>vimpipe</b> (interactively use vim within a pipe, 
+        <li><b>pipe.vim</b> aka <b>vimpipe</b>: interactively use vim within a pipe, 
             e.g. for <tt>grep|pipe.vim|Grep.xchange</tt>. It also allow end-of-pipe
             style uses like <tt>find|xargs pipe.vim</tt>, editing all files being 
             passed as arguments from xargs, with help and the contents of stdin 
             available in the last buffer. Note that both pipe.vim and vimless
             do <i>wait for the end of input</i> from earlier pipe stages. Published as 
             <a href="http://www.vim.org/scripts/script.php?script_id=2769">vimscript#2769</a> .
+        <li><b>pipe.vimcolorcat</b> is a small shell wrapper around the 2ansi / 2html macros
+            for use as an intermediate non-interactive pipeline stage. Output is colored using
+            ANSI sequences or HTML according to the file type's vim syntax file. 2html.vim is
+            part of the standard runtime, 2ansi.vim can be found on vim.org as vim2ansi.
         <li><b>vimless</b> (similar, but for the last stage of a pipe, slightly preconfigured
             to implement a less-clone capable of syntax highlighting. Like pipe.vim, it can 
             also be wrapped by e.g. xargs. Simple vim options can also be placed in
-            VIMLESSOPT, e.g. export VIMLESSOPT='-c "set ft=perl"')
+            VIMLESSOPT, e.g. export VIMLESSOPT='-c "set ft=perl"'; note that the standard
+            runtime contains a variant of this in form of macros/less.sh (macros/less.vim))
       </ul>
    <li>vim scripts
       <ul>
-         <li>to be added: configuration files
+         <li>to be added: configuration files (dir.runtime)
          <li>to be added: vimsh with pty3 + urxvt patch (vimsh for interactive commands 
              and improved session subscripts)
          <li>to be added: vim scripts (after a clean up and split of .vimrc and 
