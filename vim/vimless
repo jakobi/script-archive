@@ -1,11 +1,19 @@
 #!/bin/bash
 
-# vi as a less-style pager with syntax highlighting
+# vi as a less-style pager with syntax highlighting e.g. for use with stdin
 #
 # basic vim options options can also be passed with $VIMLESSOPT
 # (e.g. export VIMLESSOPT='-c "set ft=perl"'; but be very careful
 # when quoting)
+#
+# note that this will not fall of the end of the file, but requires a q / :q
+#
+# see also:
+# - vimpipe for implanting vim fully within a pipe (may defeat some ft autodetection)
+# - the official vim script (without the need to press q)
+#   /usr/share/vim/vim72/macros/less.sh (/usr/share/vim/vim72/macros/less.vim)
 
+# an example from a .vimrc
 # " possibly unset shell vars
 # " and in bashrc
 # export PAGER="/bin/sh -c \"unset PAGER;col -b -x | vim -R -c 'set ft=man nomod nolist' -c 'map q :q<CR>' "    -c 'map <SPACE> <C-D>' -c 'map b <C-U>' \ "    -c 'nmap K :Man <C-R>=expand(\\\"<cword>\\\")<CR><CR>' -

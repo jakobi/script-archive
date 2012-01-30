@@ -32,6 +32,7 @@ my $version="0.1.2";
 # even if - is missing, vim still can edit if stdin is guaranteed
 # to be empty. However, that requires a stty sane (possibly
 # to </dev/stderr or </dev/tty) to restore the terminal afterwards.
+# Which in turn will annoy subsequent cbreak/... programs like less...
 #
 # if the file contains arbitrary characters, use Vgf to treat
 # the whole line as the filename to jump to in a new buffer.

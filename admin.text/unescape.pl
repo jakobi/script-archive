@@ -36,6 +36,8 @@
 # further information
 # -> script, scriptreplay, teseq
 # -> http://invisible-island.net/xterm/ctlseqs/ctlseqs.html
+# -> ansiesc.vim (hide/selective highlight some sequences)
+#    http://www.vim.org/scripts/script.php?script_id=302
 
 
 #pj 20090601 jakobi@acm.org

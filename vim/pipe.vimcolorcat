@@ -1,0 +1,81 @@
+#!/bin/bash
+{
+
+# ... | $0 [-html] [VIMARGS] 
+# $0 [-html] [VIMARGS] INPUT > OUTPUT
+#
+# pipe.vimcolorcat - a wrapper for the official 2html syntax converter and
+#                    Rogerz Zhang's vim2ansi script (roughly based on 2html;
+#                    vim2ansi is vim.org/scripts/script.php?script_id=1127.
+#
+# 20120130 PJ initial version jakobi@acm.org
+
+# vim requires an explicit output file (i.e. not - or /dev/stdin)
+# furthermore, we redirect messages and console IO line noise to stderr.
+ 
+# NOTES
+# - marking up using vim syntax
+#   cat IN | { f=`tempfile`; \vim -f +"syn on" +'run! syntax/2html.vim' +'w! '$f +'q!' +'q!' - 1>&2; cat $f; rm $f; } | ...
+#   cat IN | { f=`tempfile`; \vim -f +"syn on" +'TOansi'                +'w! '$f +'q!' +'q!' - 1>&2; cat $f; rm $f; } | ...
+#   # note that these use the syntax and look up coloring rather than say 
+#   # using an additional pty pair or low level vim internals to capture its
+#   # on-screen output (give or take a filter against TERM control sequences),
+#   # which would be the coder-internal or the hard-core versions.
+# - unmarking
+#   cat ... | ...TOansi... | unescape.pl # a half-assed job of stripping escapes. Except for leading spaces, it is
+#                                        # looking way better than I expected from my ancient anti typescript hack.
+#   cat ... | ...TOansi... | w3m | cat                # w3m and lynx don't really want to -dump color with or w/o -T text/html
+#   cat ... | ...2html...  | w3m -T text/html | cat   # aka -force_html. Thus they also work to strip at least some ANSI escapes
+# - see also:
+#   - ton's of lint, reformatters, pretty printers and code "beautifiers"
+#   - formatvim (output to html, also bbcode,yaml,help,tex); also vim.org
+
+# BUGS
+# - Untitled.htm* or similar must NOT be open in vim, as this is used as
+#   the constant buffer name for the output buffer of 2html.
+
+
+
+# select output: ansi (default for pipe usage) or html
+converter=+TOansi
+if [ "$1" = "-html" -o "$1" = "--html" ]; then
+   shift
+   converter=+'run! syntax/2html.vim'
+fi
+
+
+# output file - necessary to dump buffer vim, as - / /dev/stdout are insufficient
+outputfile=`tempfile -p pvclr` || exit 42
+
+
+# select input: default stdin or an explicitly provided LAST argument filename 
+arg=();
+c=$#;
+inputfile=-;
+if [ "$#" != "0" ]; then
+   eval "lastarg=\$$#"
+   if [ -f "$lastarg" -o "-" = "$lastarg" ]; then
+      inputfile="$lastarg"
+      c=$(( $# - 1 ));
+   fi
+fi
+while [[ $c > 0 ]]; do arg=("${arg[@]}" "$1"); shift; let c=c-1; done;
+
+
+[ "$verbose" != "" ] && echo running vim -f +"syn on" $converter ${arg:+"${arg[@]}"} +'w! '$outputfile +'q!' +'q!' $inputfile 1>&2
+                                     vim -f +"syn on" $converter ${arg:+"${arg[@]}"} +'w! '$outputfile +'q!' +'q!' $inputfile 1>&2; rc=$?
+
+
+# a needless stty sane _will_ irritate any subsequent less 
+# (though within less, you can say !stty cbreak to fix this issue)
+[ "$rc" != "0" ] && stty sane </dev/tty >/dev/tty 2>&1 
+
+
+# vim seems to dump \n\n in case of errors - I prefer an empty file instead
+(echo;echo)|cmp $outputfile - >/dev/null 2>&1 && { >$outputfile; }
+
+
+cat $outputfile && rm  $outputfile
+echo 1>&2; echo "# PIPE HINT: in case of tty trouble, type 'stty sane' followed by CTRL-J" 1>&2
+[ "$rc" = "0" ] # set return code by comparison
+}
