@@ -38,6 +38,7 @@
 # -> http://invisible-island.net/xterm/ctlseqs/ctlseqs.html
 # -> ansiesc.vim (hide/selective highlight some sequences)
 #    http://www.vim.org/scripts/script.php?script_id=302
+# -> ... | w3m | ... also does de-ANSI :)
 
 
 #pj 20090601 jakobi@acm.org

@@ -30,6 +30,10 @@ my $version="0.1.1";
 # - WONTFIX  numerical sysopen instead of IO::Handle: because of android's sl4a perl's bugs
 # - WONTFIX  some of the excess long options are required to use this script as part
 #            of waitcond expressions
+# - WONTFIX  as usual, too many hooks and options; then again those 'internal' options
+#            permit reuse by e.g. waitcond and allow short waitcond invocations...
+#            (maybe I should hide them as internal perl variables only for use via -MM?)
+#            (-MM 'no strict...; do{INIT-CODE like $o_sort=0} if $MM++; PER-ITERATION-CODE')
 # - DEL/QQQ  should we sleep/retry on transient errors w/o reducing o_count?
 
 
@@ -42,7 +46,7 @@ my $o_sort=0;         # set to 1 to always sort line mode output
 my $o_ignore_rc=0;
 my $o_sleep=1;      
 my $o_count=-1;
-my $o_negate=0;
+my $o_negate="";
 my $o_pattern=".";
 my $o_highlite="";
 my $o_igncase="";
@@ -57,6 +61,7 @@ my $o_noprint=0;
 my $o_command="";
 my $o_summary=1;
 my $o_emptyok=0;
+my $o_mangle_global="";
 
 
 #
@@ -97,6 +102,7 @@ while($_=shift @ARGV) {
 
    # mangle/sort command output before computing changes
    /^-M$/o               and do { $o_mangle=shift;   next};
+   /^-MM$/o              and do { $o_mangle_global=shift; next};
    /^-?-sort$/o          and do { $o_sort++; $sort_skip=shift if $ARGV[0]=~/^\d+[bc]?$/; next};
 
    # compute changes: line by line vs diff section mode 
@@ -139,11 +145,11 @@ die "!! ERROR: no command specified\n" if not @ARGV;
 open(ERR, ">&", \*STDERR);
 $o_pattern= "(".join(")|(",@e).")" if @e; @e=undef;
 $o_highlite="(".join(")|(",@H).")" if @H; @H=undef;
-$evaloutput="\@output=grep{$o_negate/\$o_pattern/o$o_igncase}\@output\n";
+$evaloutput="\@output=grep{$o_negate/\$o_pattern/o$o_igncase}\@output\n";            # -e
 if ($o_highlite){
    ($SO, $SE)=(`tput smso 2>/dev/null`,`tput rmso 2>/dev/null`);
    ($SO, $SE)=("\x1b[0;33m","\x1b[0m") if not $SO; 
-   $evalprint="\@print=grep{s/\$o_highlite/\$SO\$1\$SE/o$o_igncase;1}\@print\n";
+   $evalprint="\@print=grep{s/\$o_highlite/\$SO\$1\$SE/o$o_igncase;1}\@print\n";     # -H
 }
 
 
@@ -186,9 +192,16 @@ while($o_count--) {
       }
 
       # filter output and optionally sort it
+      do{my @_output=@output;my $__=$_=join("",@output);
+         eval $o_mangle_global; 
+         myexit(50,"!! ERROR for -MM: $@\n") if $@;
+         @output=split(/(?<=\n)/,$_) if $__ ne $_ and join("",@output) eq $__;
+      } if $o_mangle_global;
       @output=grep{/./}@output if not defined $o_diff or $o_sort;
       do{for(@output){eval $o_mangle}} if $o_mangle;
-      eval $evaloutput;
+      myexit(51,"!! ERROR for -M: $@\n") if $o_mangle and $@;
+      eval $evaloutput; 
+      myexit(52,"!! ERROR for -e ($evaloutput): $@\n") if $@;
       @output=sortfield($sort_skip,@output) if $o_sort;
 
       # compute and report delta acc. to mode
@@ -203,6 +216,7 @@ while($o_count--) {
       push @print, "\n" if @print and $o_count+1 == $start and not $o_noprint;
       if (@print) {
          eval $evalprint if $o_highlite;
+         myexit(53,"!! ERROR for -H ($evalprint): $@\n") if $@;
          if (not $o_noprint) {
             do{print "\n"; $vo=0} if $vo;
             print @print;
@@ -258,9 +272,9 @@ watch_delta [OPTIONS]                 -- command ...
 watch_delta [OPTIONS] -D "DIFFOPTION" -- command ...
 
 Runs command repeatedly and reports all changed lines with timestamps,
-optionally filtering the output like grep [-v|-i|-e]. Use option -norc
-if  the  command output is still valid in spite of a non-zero  command
-return code.
+optionally  filtering  the output like grep [-v|-i|-e] or mangling  it
+like  sed/perl  -lpe. Use option -norc if the command output is  still
+valid in spite of a non-zero command return code.
 
 After the specified number of iterations, watch_delta returns rc=1 for
 changes  detected,  rc=0,  or a high rc in  case  of  severe/permanent
@@ -269,9 +283,22 @@ errors.
 The  second  invocation runs the host's diff on  subsequent  command's
 output instead of using the builtin tracking of changed lines.
 
+Invoked  with  "--reffile  FILE  -T 1 COMMAND ..." (as  done  by  e.g.
+waitcond),  watch_delta reports changes relative to the baseline  FILE
+(possibly creating a missing baseline) and quits immediately with rc=1
+on changes just like "diff FILE <(COMMAND ...)" would.
+
+Watch_delta runs the following pipeline stages in each iteration:
+  RUN COMMAND -> -MM global mangling                 -> \\
+                 -M  line-mangling aka line editing  -> \\
+                 -e/-v/-i line (de)selection -> sort -> \\
+                 DETERMINE CHANGES IN OUTPUT         -> \\
+                 (sort) -> -H line highlighting      -> REPORT CHANGES
+
 
 Options:
- -e RE         ORed REGEX to grep lines from commmand output
+ -e RE         One or more perl regular expression to (de)select lines
+               from commmand output             (honors -i, -v, OR-ed)
  -i            ignore case for -H and -e options
  -n N / -T N   limit to / timeout of N iterations                 ($o_count)
  -s S          sleep S seconds between iterations                  ($o_sleep)
@@ -279,12 +306,14 @@ Options:
 
 
 Advanced options:
- -d DOPT       instead of tracking line changes, just diff command 
+ -d  DOPT      instead of tracking line changes, just diff command 
                output using system diff with options DOPT
                                                 (DOPT: "-wc", "", ...)
- -H RE         highlight matches when printing       (honors -i, ORed)
- -M PE         mangle each line using an arbitrary  perl expression PE 
-                                          (before grep; ignores -v/-i)
+ -H  RE        highlight matches when printing       (honors -i, ORed)
+ -M  PE        mangle each line using an arbitrary  perl expression PE 
+                                           (after grep; ignores -v/-i)
+ -MM PE        initial global mangle hook 
+                  (may use \@output or \$_, goes first, ignores -v/-i)
  --command C   prefix C when invoking command
  --(no)emptyok empty command output is (not) ok (default: --noemptyok)
  --(no)initial store, but do (not) print "changes" from initial run

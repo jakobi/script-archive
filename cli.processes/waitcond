@@ -562,8 +562,9 @@ remaining sub expressions).
     (jakobi.github.com).  Options  to watch_delta can be prepended  to
     the  command/filename:  Of  special interest  are  --norc  (ignore
     return code of command), --emptyok (empty command output is valid)
-    and  the  grep-style options -i, -v, -e to filter command  output.
-    For more information, invoke watch_delta --help.
+    and  the  grep-style options -i/-v/-e or -M to filter  resp.  edit
+    command  output before determining changes.  For more information,
+    invoke watch_delta --help.
 
 
 
