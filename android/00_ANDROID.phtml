@@ -34,11 +34,11 @@
    <li><B>android.func</B> (dir.shell): shell functions, incl. ssh, scp, battery status
    <li><B>watch_delta</B> (cli.processes): a script to capture changes in command output. I use it with 
        arguments -netstatl -initial on the android to keep an eye on network connections.
-       It basically runs the loop netstat;sleep 1 (basically the unimplemented -c option in busybox), 
+       It basically runs the loop <i>netstat;sleep 1</i> (basically the unimplemented -c option in busybox), 
        augments the output and summarizes changes between netstat runs; optionally acquiring a wake_lock.
        It's not perfect as it may miss connections, but it still allows me to obtain an overview of 
-       active connections. <i>Drop me a line in case I break it again on android, as I'm normally
-       using it on proper Unix systems</i>.
+       active connections. <i>Drop me a line if I break it again on android, as I mostly
+       use it on proper Unix systems</i>.
 </ul>
 
 
