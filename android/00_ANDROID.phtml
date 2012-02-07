@@ -1,0 +1,40 @@
+[*
+   $ENV{__EMB_EXTRATITLE}="Various Scripts";
+   $ENV{__EMB_EXTRAMETA}="alarm and sleep-until-date, gzip experiments, cd aliasing and filename cleanup, stripping vt100 escape sequences";
+   $ENV{__EMB_COUNT}++; 
+   if (1==$ENV{__EMB_COUNT}) {
+      Execute('base.epl');
+   } else {
+*]
+
+<p>Some scripts for use with android.</p>
+
+<H3>Commands</H3>
+
+<p><a href="http://github.com/jakobi/script-archive/tree/master/android/">Git
+    View of this section / Download</a></p>
+
+
+<ul>
+   <li><B>scrap-bag-of-goodies</B>: other people's scripts to help out with android tasks.
+   <p>
+   <li><B>android.logcat</B> grabs logcat output via ssh and filters out some noise
+   <li><B>android.twlauncher.decode</B> decodes the twlauncher database and keeps also
+       keeps track of apk files outside of twlauncher. More or less required if you
+       prefer to sort your apps according to topics like networking, games, etc, instead
+       of the default (let's call it by its proper name: the default flat more or less
+       random <i>mess</i> of a few hundred packages).
+</ul>
+
+<p>See also:</p>
+<ul>
+   <li><B>***TODO***: (make a tarball or similar of /s and TERMIDE environment available)</B>
+   <p>
+   <li><B>android.func</B> shell functions, incl. ssh, scp, battery status
+   <li><B>watch_delta</B>: a script to capture changes in command output. I use it with 
+       arguments -netstatl -initial to keep an eye on network connections on
+       the android itself (acquires wake_lock and basically runs netstat;sleep 1)
+</ul>
+
+
+[*}*][# MUST BE AT EOF! #]

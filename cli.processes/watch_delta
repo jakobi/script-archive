@@ -24,6 +24,7 @@ my $version="0.1.1alpha";
 
 # NOTES:
 # - multiple udp lines can indeed occur with netstat for same process/same port
+# - wrt netstat -c -> a logging iptables rule would work way better...
 
 
 # BUGS:
@@ -40,6 +41,7 @@ my $version="0.1.1alpha";
 use strict;
 use vars;
 use warnings;
+
 
 # use modifyable, not yet exported as a cli option
 my $o_sort=0;         # set to 1 to always sort line mode output
@@ -63,8 +65,10 @@ my $o_summary=1;
 my $o_emptyok=0;
 my $o_mangle_global="";
 
+# android: protect against suspend 
+my ($wakelock_name,$wakelock_lock,$wakelock_unlock,$wakelock_timeout)=("watch_delta", "/sys/power/wake_lock", "/sys/power/wake_unlock",3700);
+my $o_wakelock=0;
 
-#
 my $errcnt_max=10;    # max ammount of transient errors of command or diff before abort
 my ($errcnt,$errcntdiff,$errcnttotal)=(0,0,0);
 my $errcnt_redo=1;    # do not change loop count in case of transient errors
@@ -104,6 +108,7 @@ while($_=shift @ARGV) {
    /^-M$/o               and do { $o_mangle=shift;   next};
    /^-MM$/o              and do { $o_mangle_global=shift; next};
    /^-?-sort$/o          and do { $o_sort++; $sort_skip=shift if $ARGV[0]=~/^\d+[bc]?$/; next};
+   /^-?-andlock$/o       and do { $o_wakelock++; $wakelock_name=shift if $ARGV[0]!~/^-/; next};
 
    # compute changes: line by line vs diff section mode 
    /^-d$/o               and do { $o_diff=shift;     next};
@@ -151,6 +156,8 @@ if ($o_highlite){
    ($SO, $SE)=("\x1b[0;33m","\x1b[0m") if not $SO; 
    $evalprint="\@print=grep{s/\$o_highlite/\$SO\$1\$SE/o$o_igncase;1}\@print\n";     # -H
 }
+$wakelock_timeout+=$o_sleep if $wakelock_timeout < $o_sleep;
+&wakelock_lock if $o_wakelock;
 
 
 my $start=$o_count;
@@ -245,7 +252,9 @@ while($o_count--) {
       $skip_one_sleep=undef;
    } else {
       print "** SLEEP $o_sleep\n" if $o_verbose>1;
+      &wakelock_unlock if 1==$o_wakelock ;
       sleep $o_sleep if $o_sleep;
+      &wakelock_lock if $o_wakelock;
    }
 
 }
@@ -314,6 +323,8 @@ Advanced options:
                                            (after grep; ignores -v/-i)
  -MM PE        initial global mangle hook 
                   (may use \@output or \$_, goes first, ignores -v/-i)
+ --andlock N   use a wake_lock  N excluding sleep, use twice to always
+               use the wake_lock                             (android)               
  --command C   prefix C when invoking command
  --(no)emptyok empty command output is (not) ok (default: --noemptyok)
  --(no)initial store, but do (not) print "changes" from initial run
@@ -479,4 +490,15 @@ sub manglenetstat {
       $c=~s/ *$//o;
       sprintf("%-${l}s  %6d%s\n", $f, $p, $c);
    }!eo
+}
+
+sub wakelock_lock {
+   if ($o_wakelock) {
+      open(FH,">",$wakelock_lock) and print FH "$wakelock_name ". ($wakelock_timeout * 10**9); close FH;
+   }
+}
+sub wakelock_unlock {
+   if ($o_wakelock) {
+      open(FH,">",$wakelock_unlock) and print FH "$wakelock_name"; close FH;
+   }
 }

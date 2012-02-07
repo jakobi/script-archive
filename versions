@@ -33,7 +33,7 @@
 ./cli.processes/fwait:0.1
 ./cli.processes/waitcond:0.34alpha
 ./cli.processes/watch_delta:0.1.1alpha
-./cli.processes/zap:0.5.3
+./cli.processes/zap:0.5.4
 ./cli.various/ALARM:0.1
 ./cli.various/WHISTLE:0.2
 ./cli.various/append.p:0.2

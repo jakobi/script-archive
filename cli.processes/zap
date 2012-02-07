@@ -4,7 +4,7 @@ eval 'exec perl -Sx $0 ${1:+"$@"}'
    if 0;
 
 
-my $version="0.5.3";
+my $version="0.5.4";
 # --.--.94 <user> <latest change>
 # 05.09.94 domke      (From "Programming Perl", L.Wall, R.Schwartz)
 # ........ pj   0.2   various small changes to make it work on hpux,aix,bsd,linux,sunos and solaris
@@ -19,10 +19,13 @@ my $version="0.5.3";
 # (c) perl artistic licence
 
 # snice/skill is a 1999-era interactive C variant of this theme
+# see also the more recent non-interactive pgrep/pkill
 
 # TODO
 # - maybe for higher zap nice values, consider using schedtool -D
 #   or even echo the PID to a suitable cpu and memory limiting cgroup
+# - maybe also permit creating and moving of high nice value target
+#   to special cgroups to further limit their e.g. buffering effects
 
 #========================================================= Variables 1
 
@@ -171,6 +174,7 @@ See also:
                               trickle -d D -u U APP [KB/s])
   - kill, killall, killproc, pgrep/pkill, skill/snice
   - ps, gps/qps/xzap, ps (-edalf|aux) -H*, pstree
+  - wrapcgroup
 
 USAGE
 }
@@ -236,7 +240,7 @@ $title=<PS>;
 &parsetitle($title);
 $title=~s/^ // or $title=~s/ //;
 $title=~s/\^// if $anchor;
-print STDERR '#'.$title if not $yes or $yes and $is_list; 
+$printtitle='#'.$title if not $yes or $yes and $is_list; 
 while(<PS>) {
    next if defined $user and  not +(split)[$uididx] =~ /$user/o;
    push @PS, $_;
@@ -277,7 +281,7 @@ if ($child or $parent) {
 
 
 # prepare tty for interactive input
-if (not $yes) {
+if (@PS and not $yes) {
    $TTYin=$TTYout=$TTY="/dev/tty";
    $TTYCMD=`which tty 2>/dev/null`; chomp $TTYCMD;
    $TTYCMD="/usr/bin/tty" if not $TTYCMD;
@@ -334,10 +338,14 @@ foreach $cand (@PS) {
 
   next if (!$found);
   next if ($parent and ( 1 != $ancestor{$parent,$pid} ) );
-
+  
   if (not $already_warned and $is_kill and not $yes) {
-     print main::STDERR "\n### ATTN ### PERSONALITY IS ZAP/KILL\n\n";
+     print main::STDERR "#ATTN      >>> PERSONALITY IS ZAP/KILL <<<\n";
      $already_warned=1;
+  }
+  if ($printtitle) {
+     print STDERR $printtitle; 
+     $printtitle="";
   }
 
   @pidlist=($pid);
@@ -375,7 +383,10 @@ print STDERR "# you might wish to run zap cpulimit if you previously\n# used zap
    if $is_nice and $cpulimitreminder;
 print STDERR "# selected pids are:\n" if @selected_pids and (not $yes or $is_list);
 @set=(); foreach(sort {$a<=>$b} @selected_pids) { next if $last==$_; push @set, $_; $last=$_ }; # sort -u -n
-@selected_pids ? print join(" ", @set), "\n" : print "\n";
+
+if (not $printtitle) { # we had actual screen output
+   @selected_pids ? print join(" ", @set), "\n" : print "\n";
+}
 
 
 exit 1 if $yes and $is_list and not @selected_pids;

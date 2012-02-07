@@ -53,7 +53,7 @@ export i FORCE job job1;
 
 for i in $default "$@"; do
    test "$i" = "" && continue
-   # job is the job title
+   # job is the job title for ALL files of this run
    # missing: smash UTF-8 if any, add unique-mid-fix (but that's better done by Label=1 in /etc/cups/cups-pdf.conf)
    job1="$i$(LANG=en_US.utf8 ls -l -- "$i" 2>/dev/null|awk '{print "   ("$6" "$7")"}')"; # LANG-depending word format
 

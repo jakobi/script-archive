@@ -105,8 +105,10 @@ if      (not @ARGV and $no_data) { # 2 -       no data - none (or -ip: just head
    print $_ if $print; exit 0;
 } else {                           # 1 -  cmd  data    - pipe data to cmd                     - cmd rc
    if (defined $o_tmpfile) {
-      $tmpfile=`tempfile -p pipx.`; $tmpfile=~s/\s*\z//;                   # safe and official or
-      do{$tmpfile="/tmp/pipeexec.$$";unlink $tmpfile} if not $tmpfile;     # home cooking if no debianutils
+      $tmpfile=`tempfile -p pipx.`; $tmpfile=~s/\s*\z//;                   # safe and official (unless sb replaces it below me - we've still a race) or
+      do{$tmpfile="/tmp/pipeexec.$$";unlink $tmpfile} if not $tmpfile;     # home cooking if no debianutils (actually I still need sysopen O_EXCL|O_CREAT, 
+                                                                           # but I can use a normal open on the same file and immediately compare 
+                                                                           # fsys#/inode# to be idx and only then seek/trunc. (/usr/include/bits/fcntl.h)
       die "# pipe.exec: cannot get tempfile - dying.\n" if $? or not $tmpfile;
       $cmd=shift @ARGV; map{s!$o_tmpfile!$tmpfile!go and $cnt++,$_}@ARGV; unshift @ARGV,$cmd;
       die join(" ","# pipe.exec: cannot substitute $o_tmpfile patterns for command", @ARGV, "- dying.\n") if not $cnt;

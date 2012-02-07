@@ -32,8 +32,18 @@
 #   - formatvim (output to html, also bbcode,yaml,help,tex); also vim.org
 
 # BUGS
-# - Untitled.htm* or similar must NOT be open in vim, as this is used as
-#   the constant buffer name for the output buffer of 2html.
+# - DEL/... Untitled.htm* or similar must NOT be open in vim, as this is used as
+#           the constant buffer name for the output buffer of 2html.
+#           (might be as simple to fix as unsetting swap/info files; would allow
+#           parellel invocations)
+# - WONTFIX this is still at minimum an editor based on cbreak and terminals, and it may require
+#           a controlling terminal or some remnants of an xterm: if so use screen or
+#           similar to provide a pty/terminal for the editor session or at least
+#           set suitable TERM and other variables (just setting TERM=xterm is enough 
+#           to create TOansi output; 2html requires more coaxing and prints nothing,
+#           as '+run! syntax/2html.vim' won't even permit input files w/o terminal;
+#           it might also be worthwile to check non-markup related settings differing
+#           between 2html and TOansi...).
 
 
 
@@ -62,14 +72,14 @@ if [ "$#" != "0" ]; then
 fi
 while [[ $c > 0 ]]; do arg=("${arg[@]}" "$1"); shift; let c=c-1; done;
 
-
+verbose=1;
 [ "$verbose" != "" ] && echo running vim -f +"syn on" $converter ${arg:+"${arg[@]}"} +'w! '$outputfile +'q!' +'q!' $inputfile 1>&2
                                      vim -f +"syn on" $converter ${arg:+"${arg[@]}"} +'w! '$outputfile +'q!' +'q!' $inputfile 1>&2; rc=$?
 
 
 # a needless stty sane _will_ irritate any subsequent less 
 # (though within less, you can say !stty cbreak to fix this issue)
-[ "$rc" != "0" ] && stty sane </dev/tty >/dev/tty 2>&1 
+[ "$rc" != "0" ] && tty && stty sane </dev/tty >/dev/tty 2>&1 
 
 
 # vim seems to dump \n\n in case of errors - I prefer an empty file instead

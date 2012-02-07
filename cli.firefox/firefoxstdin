@@ -152,7 +152,7 @@ sub argv2url {
    foreach(@_){
       my($tmp);
       if (open(FH, "<",$_)) {
-         while(read FH, $tmp, 10) {
+         while(read FH, $tmp, 100) {
             $urls.=$tmp;
          }
          close FH;
@@ -168,16 +168,21 @@ sub argv2url {
 s@[\r\n]+@\n@go; # sanitize crlf
 
 
-my($tmp,$org,$i);
+my($tmp,$tmp1,$tmp2,$org,$i);
 # try correcting mail-provided multi-line urls 
 s@((^.*=\n)+.*\n)@do{
    $org=$tmp=$1; $tmp=~s%=\n%%go; 
    "$tmp\n$org"
 }@mgoe;
 # ditto with \n+ type splits 
+s@(^firefox (.*\n\+)+.*\n)@do{
+   $org=$tmp=$1; $tmp=~s%\n\+% %go;
+   "$tmp"
+}@mgoe;
+# the user should take more care in pasting...
 s@(^(.*\n\+)+.*\n)@do{
-   $org=$tmp=$1; $tmp=~s%\n\+%%go;
-   "$tmp\n$org"
+   $org=$tmp1=$tmp2=$1; $tmp1=~s%\n\+%%go; $tmp2=~s%\n\+% %go;
+   "$tmp1\n$tmp2\n$org"
 }@mgoe;
 # infamous punctuation at EOL; ordinarily it could be
 # stripped, but some servers return other pages ...
@@ -187,6 +192,16 @@ s@(^.*[\.,:;]\n)@do{
 }@mgoe;
 # <url>
 s@^\s*<(.*)>(\s.*$|$)@$1 $2@mgo;
+
+
+# if prefixed with firefox, strip it and make each subsequent url 
+# into a single line
+s@^[\t ]*firefox[\t ]+(.*)@do{
+   $tmp=$1;
+   $tmp=~s! !\n!go;
+   "$tmp";
+}@mgeo;
+
 
 
 # extra text filtering if input is a just a pasted demimed email

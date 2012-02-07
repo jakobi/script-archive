@@ -1,0 +1,70 @@
+#!/bin/bash
+. ~/.bashrc.pj
+
+echo "say LOGGER STOPLOG for host $(tty) in another shell" 1>&2
+echo do not forget to run 1>&2
+echo notessh bash -c '"pkill f bash.-c.logcat; pkill -f sh.-c.logcat; pkill -f -P 1 logcat'"  1>&2
+echo 1>&2
+
+sub mytrap {
+echo 1>&2
+echo do not forget to run 1>&2
+echo notessh bash -c '"pkill f bash.-c.logcat; pkill -f sh.-c.logcat; pkill -f -P 1 logcat'"  1>&2
+echo 1>&2
+exit 0
+}
+trap mytrap 2 15 
+
+notessh -n sh -c "'sleep 5 ; LOGGER STARTLOG $(date) for host $(tty)'" &
+
+# for the standard format (not the time-stamped multiline -v long format)
+notessh -n logcat ${1:+"$@"} | perl -lne '
+   BEGIN{
+      @m=qw!
+         ALSAModule 
+         APPTrafficLogic 
+         Alarmmanager
+         AndroidNlpServiceThread 
+         AudioPolicyService
+         AudioService
+         AudioSink 
+         AudioTrack 
+         Audiopolicymanager
+         AwesomePlayer
+         BatteryService
+         Celllocator
+         CircleMissedEventWidget
+         Launcher. 
+         LightsService
+         MediaExtractor 
+         MediaPlayerService 
+         OMXCodec
+         OrientationDebug
+         PowerManagerService
+         StagefrightPlayer 
+         Statusbarpolicy
+         ThermistorObserver
+         UiModeManager 
+         VoldCmdListener
+         WifiStateTracker
+         Wifilocator 
+         WindowOrientationListener
+         androidnetworkloc
+         clientreporter
+         clipboardqueue 
+         locationmanagerservice 
+         wpa_supplicant 
+         yamaha::media
+      !;
+      @mm=qw!
+         I/Debug.*twlaunch
+         I/Launcher
+         D/TAG\s+\(\d+\):.*r.count.=.0,.count.=.0
+         All.of.the.cookie
+      !;
+      foreach(@m){$m.="|"if$m;$m.="^./\Q$_\E";};
+      foreach(@mm){$m.="|"if$m;$m.="$_"}
+   };
+   print if not /$m/mio;
+'
+

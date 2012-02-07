@@ -12,16 +12,28 @@ typeset|grep -e '^typeset -a cdsx$'        -e '^integer cdsx$'        > /dev/nul
 #                                        bash and att ksh (NOT PD-KSH!)
 #                                        cdto sed extension
 
+# BUGS: 
+# - consider using <<<$() to remove some of the bash-ism and differences
+#   between shells and thus simplify this script
+
+
+# input redirection and forks in bash and ksh93
+# - ... | while ... is run in a fork in bash, while the last pipeline
+#   stage is run in current context for the real ksh (ast ksh93).
+# - <(command) is supported in both shells, < <(command) however leads
+#   to a syntax error ok ast ksh93
+#   NOTE that questionable look-alikes like pdksh supports NEITHER SYNTAX
+# * <<<"$(command)" - a here document with shell word expansion works
+#   in BOTH bash and ksh WITHOUT FORKING THE RIGHT-SIDE COMMAND, and 
+#   could be used below to get rid of cdpipe and a few evals and shell
+#   differences
+
 # bash-isms
 # - skipped pushd for bash by default - bash already has a magic DIRSTACK
 #   plus popd/pushd/dirs, lacking only rightd. DIRSTACK supports assigns,
 #   but adding/removing entries requires use of popd/pushd. Do not unset.
 # - shopts -s extglob required to allow "regular" matches like +(...) 
-# - end of pipe is a subprocess instead of sharing the environment, 
-#   thus < <(), possibly with exec is required -> rewritten using
-#   cdpipe which switches according to shell, or restructured to use $().
 #   NOTE: local variable semantics differ - !!AVOID!!
-#   NOTE that pdksh supports NEITHER SYNTAX
 # - print replaced by echo or printf if unsafe.
 # - unset array / typeset -a array / array=() is ok for bash,
 #   but ksh seems treats this like a parent-function-local-array.

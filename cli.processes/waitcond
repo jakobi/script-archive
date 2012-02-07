@@ -827,7 +827,9 @@ Examples:
 
     Checking recent dbus messages or spawnign of user processes might
     also help. As would checking /dev/pts files, IFF the user has no 
-    long running processes while he is absent :/.
+    long running processes while he is absent :/. The shell's
+    PROMPTCOMMAND is another option, if there's no type-ahead and
+    still-running jobs DO NOT end while the user's gone...
 
   - to restart, these 'watchdogs' are more suitable
     # to kill/watch/restart a command consider e.g. *ps-watcher*

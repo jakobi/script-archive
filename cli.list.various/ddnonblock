@@ -6,7 +6,7 @@
 use Fcntl; 
 $basename=$0; $basename=~s@.*/@@o;
 
-$bufsize=262144;
+$bufsize=2621440;
 $o_maxstretch=100; # max stretch of consecutive blocks printed per file
                    # w/o checking other files
 $o_sleep=1;        # sleep time

@@ -1,8 +1,3 @@
-To view the rendered HTML
--------------------------
-
-* [android/00_ANDROID.html](http://jakobi.github.com/script-archive-doc/android/00_ANDROID.html)
-
 
 See also
 --------

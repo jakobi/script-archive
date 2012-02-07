@@ -37,6 +37,9 @@ unset  MOZ_DISABLE_IMAGE_OPTIMIZE
 #   displayed at all - same effect on reload
 # - still trunk's way better wrt memory
 
+# DO create .firefox-trunk and .firefox-standard symlinks to .mozilla/.../*default
+#    this script will switch the profile symlinks on starting -t / normal firefox
+
 ### Q: have it assume -t automatically (-trunk) if there's a trunk
 ###    but no other running firefox? (obviates changing firefoxstdin et al
 ###    for a new switch)
@@ -194,7 +197,19 @@ function checkfirefox {
 function _f {
    [ "$firefox_to_start" = "-1" ] && checkfirefox
    if [ "$firefox_to_start" = "1" ]; then
-# BUG rotates wrong profile for seamonkey, trunk and profile use
+
+# BUG rotates wrong profile for seamonkey
+
+      if [ "$f" == "$ft" ]; then
+         [ ! -L ~/.firefox-default -a -L ~/.firefox ] && mv ~/.firefox ~/.firefox-default
+         [ -L ~/.firefox-trunk -a ! -L ~/.firefox ]   && mv ~/.firefox-trunk ~/.firefox
+      else
+         [ ! -L ~/.firefox-trunk -a -L ~/.firefox ] && mv ~/.firefox ~/.firefox-trunk
+         [ -L ~/.firefox-default -a ! -L ~/.firefox ]   && mv ~/.firefox-default ~/.firefox
+      fi
+
+      [ ! -L ~/.firefox ] && echo "no profile" && exit 42
+
       export P=$PROF/prefs.js; export B=$PROF/places.sqlite; export S1=$PROF/session.rdf; export S2=$PROF/sessionstore.js;
       cp -f  $B.1  $B.2 2>/dev/null; cp -f  $B  $B.1  # bookmark backup
       cp -f  $P.1  $P.2 2>/dev/null; cp -f  $P  $P.1  # prefs backup
@@ -205,6 +220,7 @@ function _f {
       echo    $f '"'"${1:+$@}"'"'
 # removed -no-remote (seems to disable remote access incl. ping, ... from version 9 onwards)
       ( (echo; date) >> $fl.url; $nice $f ${1:+"$@"} > $fl 2>&1 </dev/null ) & # start firefox
+
 echo "#START  $f ${1:+$@}"
       _sleep 8; _ping $f; _sleep 4
    else

@@ -1,0 +1,43 @@
+# created     PJ 2011XXXX jakobi@acm.org
+# copyright:  (c) 2011 jakobi@acm.org, GPL v3 or later
+# archive:    http://jakobi.github.com/script-archive-doc/
+
+# - 192.168.2.114 is the WLAN IP of the android, and 192.168.11.34 the
+#   VPN IP (currently just a shared-secret-pair configuration)
+# - the android is configured via tasker to automatically
+#   enable/disable WLAN based on location
+
+function inote {
+   ssh -o "ConnectTimeout 8" root@192.168.2.114 : 2>/dev/null && _NOTE_IP_=192.168.2.114 || \
+      ssh -o "ConnectTimeout 8" root@192.168.11.34 : 2>/dev/null 2>/dev/null && \
+      _NOTE_IP_=192.168.11.34 || \
+      echo cannot find note on wlan or openvpn 
+   echo "# IP chosen: $_NOTE_IP_"
+
+   # call with -n to avoid querying the user for a pw (and possibly skip sudo)
+   export ANDROID_SDK=/disk-WRK/proj/milestone/android-sdk-linux_86
+   export ANDROID_BAK=/disk2/automated-backup/compact/host.note/rsync/0/
+   export ANDROID_APKG=/disk-WRK/proj/milestone/GALAXYNOTE/fs/twlaunch
+   export ANDROID_PRJ=/disk-WRK/proj/milestone/GALAXYNOTE/
+   export PATH=$SDK/tools:$PATH
+   # optionally fix the block device settings for kernel flash access sanity / stability (if mounting via usb)
+   # with option -n we try and fail silently if sudo rejects, w/o -n we ask for the password in case of failure
+   sudo $1 bash /disk-WRK/proj/milestone/GALAXYNOTE/fs/FIX-block-dev.host >/dev/null 2>&1
+}
+function notessh {
+   ssh root@${_NOTE_IP_:-192.168.2.114} ${1:+"$@"}
+}
+function notescp {
+   perl -e 'foreach(@ARGV){s/note:/root\@'${_NOTE_IP_:-192.168.2.114}':/g}; exec "/usr/bin/scp",@ARGV' -- "$@";
+}
+function notewake { # [-t timeout] [: | ssh arguments and command]
+   typeset _t=1200 # 20min default
+   if [ "$1" = "-t" ]; then
+      shift;$_t=$1; shift
+   fi
+   notessh -n WAKELOCK -n compact.ssh -t "$_t" >/dev/null 2>&1
+   notessh ${1:+"$@"}
+}
+function notebatt {
+   notessh -n cat /proc/batt_info_proc | sed 's/,/ /g;s/^[^ ][^ ]*  *//g;s/ .*//'
+}

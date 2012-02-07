@@ -1,6 +1,16 @@
 #!/usr/bin/perl -w
 
-# hack to extract twlauncher 'folder' notion and help me in mapping app titles to packages
+# hack to extract twlauncher 'folder' notion and help me in mapping 
+# app titles to packages as listed in the database.
+#
+# to get apk name as probably installed in /*/app, try stripping /.* from 
+# column 3 to get the basename of the package, then append .apk, maybe
+# with a -number prefix)
+
+# note that this will MISS some apk files incl. e.g. widgets!
+
+# see the shell scrap at EOF for an example of filtering things to 
+# check installed apps, their paths and the like
 
 my $version="0.1";
 # 20120110 PJ   0.1  jakobi@acm.org initial version based on android 2.3 gingerbread / galaxy note 7000
@@ -13,6 +23,8 @@ use strict 'vars';
 use Data::Dumper;
 use Encode;
 $|=1;
+
+print "# to sort by apk name in vim, use :2,$!sort -t : -k 5\n";
 
 my($file,$verbose);
 
@@ -74,3 +86,56 @@ foreach (sort keys %{apps::apps->{menu_item}}) { # the get other items and print
       print encode("UTF-8",sprintf $format,  ($f{$c->{parent_id}} ? $f{$c->{parent_id}} : ""), decode("UTF-8",$c->{title}), $c->{component_name})
    }
 }
+
+__END__
+
+
+PS1="#"; . ~jakobi/.bashrc.pj
+
+cd /disk-WRK/projects/milestone/GALAXYNOTE/fs/ARC.TWLAUNCH-TITLE-MAPPING || exit 42
+
+notessh -n tail /data/system/uiderrors.txt
+echo "# uiderrors ok?"
+echo
+
+# get various package lists and massage them
+notescp -p note:/data/data/com.sec.android.app.twlauncher/databases/* .
+notescp -p note:/data/system/packages* .
+notessh -n pm list packages -f > find.pm # ok, not find ...
+notessh -n find /*/app /*/framework/*.apk /mnt/asec/*/*.apk |  egrep -v '^/data/app$|^/system/app$|^/system/framkework|^/mnt/asec$'   | sed -r 's! ->.*!!;s!(-[0-9][0-9]*)?(/pkg)?\.apk$!!' | egrep -v '^\.drm$' | grep . | sort -u > find.app
+notessh -n find /*/data |  egrep -v '^/data/data$|^/system/data$' | sed -r 's! ->.*!!;s!(^/[^/]*/[^/]*/[^/]*)/.*!\1!;s!-[0-9][0-9]*\.apk|\.apk!!' | egrep -v '^\.drm$' | grep . | sort -u > find.data
+
+echo "Generating lists (check HIDDEN once in while)"
+
+cat find.pm | sed -r 's/^package://;s!=.*!!;s!-[0-9][0-9]*(/pkg)?\.apk$|(/pkg)?\.apk$!!;s!^/data/|^/system/|^/mnt/asec/!!;s!^data/|^app/|^framework/!!' |sort > packages.pm
+cat find.app  | sed -r 's!^/data/|^/system/|^/mnt/asec/!!; s!^data/|^app/!!' | sed -r 's!-[0-9][0-9]*/pkg.apk|/pkg.apk!!' | sort -u > packages.app
+cat find.data | sed -r 's!^/data/|^/system/!!; s!^data/|^app/!!' | sort -u > packages.data
+
+# get the packages seen by twlauncher
+android.twlauncher.decode    launcher.db > LISTING
+android.twlauncher.decode -v launcher.db > VLISTING
+cat LISTING | sed 's!.*::!!;s!/.*!!' | sort -u | grep -v '^#' > packages.twlaunch
+
+# replace java package names with package file names as per pm list packages -f
+perl -e '@h=`cat packages.twlaunch`; @p=`cat find.pm`;
+   for $h (@h){$h=~s/\n//;
+      @g=();
+      @g=grep{m!=\Q$h\E$! and s!^package:!! and s!=.*!!}@p if not @g;      
+      @g=grep{s!(-\d+)?(/pkg)?\.apk$!!;s!.*/!!;1}@g if @g;
+      if(@g){print @g}else{warn "!! twlaunch not in pm list packages: >>$h<<\n"}};
+' | sort -u > packages.twlaunch2
+
+# and dump the packages NOT shown by twlaunch - useful to clean up once in a while
+# this should be old plugins, keys for paid apps, things just offering a receiver
+# (like that share-via-http helper) and the like
+cat packages.pm packages.app | sort -u > packages.all
+cat packages.twlaunch2 packages.all | sort | uniq -u > packages.hidden
+perl -e '@h=`cat packages.hidden`; @f=`cat find.app`; @p=`cat find.pm`;
+   for $h (@h){$h=~s/\n//;
+      @g=();
+      @g=grep{m!=\Q$h\E$! and s!^package:!! and s!=.*!!}@p if not @g;      
+      @g=grep{m!/\Q$h\E(-\d+)?(\.apk)?$!}@f if not @g;
+      @g=grep{s!(-\d+)?\.apk$!!;1}@g if @g;
+      if(@g){print @g }else{print "!! not found: >>$h<<\n"}};
+' | sort -u > HIDDEN_OR_SYSTEM_INTERNAL
+
