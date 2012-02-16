@@ -1,4 +1,7 @@
 #   echo "# to clear OSD: (1) ALERTOSD or osdctl -s ' ' / zap osdsh or"
 osdctl -S ~/.osdsh0 -s "" >/dev/null 2>&1
+# NOTE that the display also does stop by itself with a timeout, leading
+#      to redisplay of old messages due to $0 not being used to "undisplay"
+#      alert messages - maybe a cron on 12h old /tmp/osd_log to append \n\n?
 #   echo "#               (2) perl -e 'print qq@\n@x3' >>$l / zap osd_cat"
 perl -e 'print qq@\n@x3' >>/tmp/osd_log

@@ -154,6 +154,7 @@ our $changetrackcmd='changetrack';
 # - Q make sfre see the vi -r flag and skip changetrack those entries?
 #       (but the readonly state can be changed - I'd rather only use the
 #       previous trick !?)
+# - Q skip files r/o unless root or files owned, skip on r/o fs
 #      
 # Ultimate wishlist:
 #

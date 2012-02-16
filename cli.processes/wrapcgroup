@@ -40,7 +40,7 @@ while [ "$1" != "" ]; do
       -std)  T=std;   L=$(( $P * 3 / 4 * 1024 * 1024 ));               shift; ;;  # 75% of physical memory, as above
       -name) N=".$2";                                          shift;  shift; ;;  # use/create a named subgroup: $T.NAME
 
-      -h|-help|--help) sed -ne 's/^# //; 2,/^$/{/./p}' < $0;                   exit 1; ;;
+      -h|-help|--help) sed -ne 's/^# //; 2,/^$/{/./p}' < $0;          exit 1; ;;
       * )                                                              break; ;;
    esac
 done

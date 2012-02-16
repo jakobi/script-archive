@@ -17,6 +17,8 @@ eval 'exec perl -Sx $0 ${1:+"$@"}'
 my $version="0.1.1alpha";
 # 20120128 PJ 0.1     initial version jakobi@acm.org
 # 20120129 PJ         added logic for use with waitcond
+# 20120212 PJ         added -delta option
+# 20120213 PJ         sketch wrt low end one-shot monitoring usability
 #
 # (c) 2012 PJ, placed under GPL v3
 # archive:   http://jakobi.github.com/script-archive-doc/
@@ -36,6 +38,68 @@ my $version="0.1.1alpha";
 #            (maybe I should hide them as internal perl variables only for use via -MM?)
 #            (-MM 'no strict...; do{INIT-CODE like $o_sort=0} if $MM++; PER-ITERATION-CODE')
 # - DEL/QQQ  should we sleep/retry on transient errors w/o reducing o_count?
+#
+#
+# - NOTE     the following TODOs sketch the medium term goal - to make it a bit more 
+#            powerful usable as a monitoring backend wrt "reporting" aka line-selection:
+#            suppression of events, threshold suppression state/memory of events, consider
+#            only part of event as relevant for suppression/threshold computation, etc.
+#            maybe simplify the various mangle options into a single rule option and
+#            a simple way to keep state/set a slew of rules at once be an eval expr
+#            or a file to do once / do on each run.
+#
+# - TODO     a mangle example to turn par-based stuff into single lines, with an
+#            optional undo / replacement to original format on print
+# - TODO     change-detect-local-mangle: a set of filters to suppress configurable line parts from
+#            the -/+ consideration, with its restoration on @print to one or moe
+#            matching lines --> USE UNIQ-MANGLE-REPLACEMENT-STRINGS and later
+#            UNMANGLE. (using an option different from the original normal mangle)
+# - TODO     permit mangle to be a filename that is {sourced and evald} before each execution
+#            or at least show a note on how to use that trick, with the --config below
+#            setting the variables to either just s/// or to e.g a do FILE as part of the eval
+#            incl. the omission of the o in m//*o* s///*o*
+# - TODO     permit detected changes to be suppressed for a bit of time
+#            (basically a 5 elem array: [+/-seconds] [+-SH]i COUNT THRESH eval)
+#            with COUNT being saved between invocations WHEN a certain VARIABLE is set to a FILE
+#            (a la reffile; actually, this could remove the reffile need from --delta)
+#            --> these ideas should be enough to turn $0 into a usable monitoring backend
+# - TODO     pattern triggered actions on also @PRINT, say email sending
+#            --> yet another class of (PRINT)MANGLE rules
+# - TODO     example/permit swatch-style use following a file [filename + line no
+#            instead of command, implied use of @PREVIOUS-STATE to come before 
+#            the new lines]. Might be as simple as using cat as command or
+#            using a command that reads a number of lines with tail -f 
+#            and timeout. Or have an external program tail -f/timeout
+#            a number of lines and invoke a single run of watchdelta on that.
+#            Have an option to assume OLDSTATE to have appeared
+#            in output before the new stuff. sort's ok later on.
+#            Either way somewhat inefficient, but no reason to 
+#            consider it an non-usage example for $0.
+# - TODO     rewrite --delta to use a proper statefile instead of dumping out output
+#            --> incl. the timestamps of lines
+# - TODO     the thresh counters etc could add a timelimit to old stuff to consider,
+#            so don't increase count but count by maintaining a hash.
+# - TODO     --> use data dumper as state if available? 
+#            (but permit oldstyle --reffile/--delta use without!)
+#
+# - RECONS   interface to using mangle as string, maybe just add a 
+#            -config/-perl/-rcfile option 
+# - RECONS   above we have the original mangle stage and 2 new stages that could
+#            we run as part of the same eval, but might be kept apart, plus one
+#            UNMANGLE, that might be executed as part of the PRINTMANGLE, but also
+#            is something different semantically. How to keep these visibly
+#            apart wrt user options...; what are options, what are internal variables
+#            only settable from say --rcfile
+#            add a silent CLASS-COOKIE at the beginning of mangle/printmangle
+#            options to collect classes of mangle and keep them separate,
+#            incl. say the timebased printmangle...
+# 
+# - RECONS   is there anything else I ever used/hacked into a monitoring tool backend?
+#            (I think that should cover all the stuff I ever hacked into
+#             swatch / check)
+#
+# - DEL/QQQ  -D DOPT -- implement the time-based suppression also for -d -- 
+#            but this requires a parser for whatever diff format the user DOPT throws at us.
 
 
 use strict;
@@ -81,6 +145,8 @@ my (@diffcmd, @diff);
 my ($sort_skip);
 my ($skip_one_sleep,$skip_one_print);
 my ($changes,$changes_run)=(0,0);
+my ($o_delta);
+my ($iter)=(0);
 
 # set tempfile
 my $tmpfile="/tmp/watchdelta.$$"; 
@@ -111,7 +177,7 @@ while($_=shift @ARGV) {
    /^-?-andlock$/o       and do { $o_wakelock++; $wakelock_name=shift if $ARGV[0]!~/^-/; next};
 
    # compute changes: line by line vs diff section mode 
-   /^-d$/o               and do { $o_diff=shift;     next};
+   /^-?-d(iff)?$/o       and do { $o_diff=shift;     next};
    
    /^-?-command$/o       and do { $o_command=shift;        next};
    /^-?-verbose$/o       and do { $o_verbose++;            next};
@@ -133,7 +199,8 @@ while($_=shift @ARGV) {
    # expand predefined tasks to standard command line options
    # - netstat output is badly formatted, thus we use separate mangle function
    #   instead of just a perl expression on the command line, as well as
-   #   special handling inside sortfield(), activated by o_netstat.
+   #   spe cial handling inside sortfield(), activated by o_netstat.
+   /^-?-delta$/o         and do { $o_delta++; unshift @ARGV, qw/--norc --emptyok -T 1 --reffile/; next;};
    /^-?-netstat$/o       and do { $o_netstat=1; 
       unshift @ARGV, qw/-v -e ^unix|^Active|^Proto -M &manglenetstat("") --sort 5 --nostderr --noinitial/;
       push @ARGV, qw/-- netstat -anpW/ if not grep {/\A--\z/}@ARGV; next};
@@ -147,6 +214,7 @@ while($_=shift @ARGV) {
 }
 unshift @ARGV, $o_command if $o_command;
 die "!! ERROR: no command specified\n" if not @ARGV;
+$o_delta=$o_initial_output if $o_delta;
 open(ERR, ">&", \*STDERR);
 $o_pattern= "(".join(")|(",@e).")" if @e; @e=undef;
 $o_highlite="(".join(")|(",@H).")" if @H; @H=undef;
@@ -164,22 +232,21 @@ my $start=$o_count;
 while($o_count--) {
    @print=();
    $changes_run=0;
-   $t=time; 
-   @l=localtime; 
-   $ts=sprintf "%04d%02d%02d-%02d%02d%02d",$l[5]+1900,$l[4]+1,@l[3,2,1,0];
    myexit(43,"!! ERROR: too many command errors in sequence\n") if $errcnt_max < $errcnt+$errcntdiff;
    
    # run command OR use captured output as the initial reference output
-   if ($o_initial_output and -f $o_initial_output) {
+   if ($o_initial_output and -f $o_initial_output and not -z $o_initial_output) {
       $o_count++; $start++; # we need one more run in total (one-time)
       print "** READING INITIAL REFFILE\n" if $o_verbose>1;
       close STDERR if $o_close_stderr;
       open(FH, "<", $o_initial_output) and @output=<FH> or $o_emptyok or do{myexit(46,"!! ERROR: problem with reading from file $o_initial_output\n")}; 
+      $t=(stat FH)[9]; # use reffile mtime instead of time()
       close FH or do{myexit(47,"!! ERROR: cannot use ref file $o_initial_output\n")};
       $o_initial_output=undef;
       $skip_one_sleep=1;
    } else {
       print "** RUNNING @ARGV\n" if $o_verbose>1;
+      $t=time; 
       $rc=0;
       open(FH, "-|", @ARGV) or do{$errcnt++; print "!  ERROR during attempt to run command\n"; close(FH); $rc++};
       @output=<FH> if not $rc;
@@ -187,15 +254,23 @@ while($o_count--) {
       do{close(FH) or $o_ignore_rc} and do{$errcnttotal+=$errcnt; @output and $errcnt=0; 1} or $errcnt++;
       $rc=$?>>8 if not $rc;
    }
+   @l=localtime($t);
+   $t.=".".$iter;
+   $ts=sprintf "%04d%02d%02d-%02d%02d%02d",$l[5]+1900,$l[4]+1,@l[3,2,1,0];
 
    if (not $errcnt) {
       # capture raw command output for later invocations (e.g. by waitcond)
-      if ($o_initial_output and not -f $o_initial_output) {
+      if ($o_initial_output and (not -f $o_initial_output or -z $o_initial_output ) ) {
          print "** DUMPING INITIAL REFFILE\n" if $o_verbose>1;
-         $o_count++; $start++; # we need one more run in total (one-time)
-         open(FH, ">", $o_initial_output) and print FH @output or do{myexit(44,"!! ERROR: cannot use ref file $o_initial_output\n")}; 
+         $o_count++; $start++;    # we need one more run in total (one-time)
+         open(FH, ">", $o_initial_output) and print FH @output or do{myexit(44, "!! ERROR: cannot use ref file $o_initial_output\n")}; 
          close FH or do{myexit(45,"!! ERROR: cannot use ref file $o_initial_output\n")};
          $o_initial_output=undef; 
+      } elsif ($o_delta) {
+         # same as above, but updating after each run / non-fatal (o_delta is initialized with the value of o_initial_output)
+         print "** DUMPING REFFILE\n" if $o_verbose>1;
+         open(FH, ">", $o_delta) and print FH @output or do{print ERR "!  WARNING: cannot update ref file $o_delta\n"}; 
+         close FH or do{print ERR "! WARNING: cannot update ref file $o_delta\n"};
       }
 
       # filter output and optionally sort it
@@ -218,9 +293,11 @@ while($o_count--) {
          &linemode;
       }
       $changes_run=1 if @print;
+
       do{print "."; $vo++;} if 1==$o_verbose and ($o_noprint or $skip_one_print or not @print);
       do{@print=(); $skip_one_print=undef} if $skip_one_print;
       push @print, "\n" if @print and $o_count+1 == $start and not $o_noprint;
+
       if (@print) {
          eval $evalprint if $o_highlite;
          myexit(53,"!! ERROR for -H ($evalprint): $@\n") if $@;
@@ -316,8 +393,8 @@ Options:
 
 Advanced options:
  -d  DOPT      instead of tracking line changes, just diff command 
-               output using system diff with options DOPT
-                                                (DOPT: "-wc", "", ...)
+               output using system diff with options DOPT. 
+                                          (DOPT: "-c", "-u", "-wc"...)
  -H  RE        highlight matches when printing       (honors -i, ORed)
  -M  PE        mangle each line using an arbitrary  perl expression PE 
                                            (after grep; ignores -v/-i)
@@ -339,6 +416,10 @@ Advanced options:
 
 
 Laziness options / preconfigured tasks:
+ --delta F     run command once and report changes against a  previous
+               watch_delta invocation     
+               (assumes --emptyok --norc;  state is kept in reffile F)
+ --diff DOPT   synonym for -d DOPT
  --netstat     run with suitable options for netstat -apnW
  --netstatl    adds full commandline output to --netstat
 
@@ -357,6 +438,13 @@ Notes:
    identical lines
  - diff output: busybox diff  lacks -c,  and makes a  broken context
    diff the default, so strip the -c flag from the diff option string
+ - use -delta with or without -noinitial to capture command output
+   changes in repeat situation like a cron job checking for recent
+   modifications, with mailing a report listing the changes in output,
+   depending on watch_delta return code, at 5 in the morning:
+   * 5 * * *  o="\$(watch_delta --delta ssh -n HOST CHECK-CMD)" || \\
+      (echo To: RCPT; echo Subject: Changes; echo; echo "\$o")   | \\
+      /usr/lib/sendmail -ti
 
 EOF
 }
@@ -380,6 +468,8 @@ sub diffmode {
    }
 
    do{unlink $tmpfile, $tmpfile0; print ERR "!  ERROR: cannot write tempfiles $tmpfile\{,0}\n"; $errcntdiff++; return} if $rc;
+
+   print ERR "# diff $o_diff $tmpfile0 $tmpfile\n" if $o_verbose>1;
 
    open(FH, "-|", "diff $o_diff $tmpfile0 $tmpfile");
    @print=<FH>;
@@ -410,6 +500,8 @@ sub linemode {
    for(@output){
       if (not $output{$_}) {
          push @newoutput, $_;
+      } else {
+         ;
       }
       $output{$_}=$t;
    };
@@ -417,6 +509,8 @@ sub linemode {
       if ($t != $output{$_}) {
          delete $output{$_};
          push @deloutput, $_;
+      } else {
+         ;
       }
    }
    
