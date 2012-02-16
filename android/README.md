@@ -1,3 +1,5 @@
+You might also be interested in the * [android articlesl](http://jakobi.github.com/android-section/).
+
 To view the rendered HTML
 -------------------------
 
