@@ -1,4 +1,6 @@
-You might also be interested in the * [android articlesl](http://jakobi.github.com/android-section/).
+The tarball contains a snapshot of the files mentioned in the [android articles](http://jakobi.github.com/android-section/).
+
+---
 
 To view the rendered HTML
 -------------------------
