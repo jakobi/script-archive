@@ -560,8 +560,8 @@ Ooptions for locking and versioning
   
 Accessing journal and versions (if pathes are set within config
 files, consider providing -u and --domain as well)
-  --cat       [S]        -- both commands use RCS co with S being either
-  --diff      [S]           -d<DATE> or -r<revision number or name>
+  --cat       [S]        -- both commands use RCS co with S being used as arg
+  --diff      [S]           for co -dS or -rS as a date or revision name/number
   --echo                 -- print the RCS file name (not checked out)
   --echod(ir)            -- print changetrack's backupdir
   --echoh(istory)        -- print changetrack's .history filename

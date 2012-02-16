@@ -24,13 +24,20 @@
    <li><B>android.twlauncher.decode</B> decodes the twlauncher database. Useful to
        match apk files with classes and topics if you keep your apps in topical directories 
        like networking, office, etc.
+   <li><a href="http://github.com/jakobi/script-archive/tree/master/raw/android/android-setup-example-files.tgz"><B>android-setup-example-files.tgz</B></a> 
+       is a one-time snapshot of a working
+       android gingerbread setup for chroot and shell use (incl. a small collection
+       of static armel binaries), plus configuration and files used
+       for remote backup and monitoring. It is intended to illustrate the
+       android section mentioned below.
 </ul>
 
 <p>See also:</p>
 <ul>
-   <li><B>***TODO*WHEN*STABLE***: (make a tarball or similar of /s and TERMIDE environment available; place stuff like TOP outside the tarball as well/instead? binaries like strace?)</B>
-   <li><B>***TODO*WHEN*STABLE***: ADD LINK TO SUMMARY OF COPING-WITH-ANDROID)</B>
-   <p>
+   <li>the <a href="/android-section/"><b>article series in the android section</b></a> about setting up a sane
+       unix environment, a chroot, and some observations on privacy, security, and 
+       assumptions seemingly made about and against users of modern smartphones. The
+       above example files tarball contains the configuration, scripts, etc mentioned.
    <li><B>android.func</B> (dir.shell): shell functions, incl. ssh, scp, battery status
    <li><B>watch_delta</B> (cli.processes): a script to capture changes in command output. I use it with 
        arguments -netstatl -initial on the android to keep an eye on network connections.
