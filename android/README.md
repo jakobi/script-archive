@@ -1,4 +1,6 @@
-The tarball contains a snapshot of the files mentioned in the [android articles](http://jakobi.github.com/android-section/).
+The  android-setup-example-files tarball contains a one-time
+snapshot of       the      files      mentioned      in      the
+[android articles](http://jakobi.github.com/android-section/).
 
 ---
 
