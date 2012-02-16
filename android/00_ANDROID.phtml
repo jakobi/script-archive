@@ -7,7 +7,9 @@
    } else {
 *]
 
-<p>Some scripts for coping with Android.</p>
+<p>Some scripts and examples for coping with Android.</p>
+
+<p>See also <a href="/android-section/">my articles and howto on android (topics include a unix-ish setup/chroot/X11/automation, security/privacy issues)</a>.
 
 <H3>Commands</H3>
 
@@ -22,23 +24,17 @@
    <li><B>android.logcat</B> grabs logcat output via ssh and filters out some noise
    <li><B>android.twlauncher.decode</B> decodes the twlauncher database. Useful to
        match apk files with classes and topics if you keep your apps in topical directories 
-       like networking, office, etc.
+       like networking, office, etc. It's used as part of the <a href="/android-section/02_twlauncher.html">second android article</a>.
    <li><a href="http://github.com/jakobi/script-archive/raw/master/android/android-setup-example-files.tgz"><B>android-setup-example-files.tgz</B></a> 
-       is a one-time snapshot of a working
-       android gingerbread setup for chroot and shell use (incl. a small collection
-       of static armel binaries), plus configuration and files used
-       for remote backup and monitoring. It is intended to illustrate the
-       android section mentioned below.
+       is a mothballed snapshot of a working android gingerbread setup for chroot and shell use (incl. a small collection
+       of static armel binaries), plus configuration and files used for remote backup and monitoring. It is intended to illustrate the
+       <a href="/android-section/">android article series</a>.
 </ul>
 
 <p>See also:</p>
 <ul>
-   <li>the <a href="/android-section/"><b>article series in the android section</b></a> about setting up a sane
-       unix environment, a chroot, and some observations on privacy, security, and 
-       assumptions seemingly made about and against users of modern smartphones. The
-       above example files tarball contains the configuration, scripts, etc mentioned.
-   <li><B>android.func</B> (dir.shell): shell functions for using android devices, incl. ssh, scp, battery status
-   <li><B>watch_delta</B> (cli.processes): a script to capture changes in command output. I use it with 
+   <li><B>android.func</B> (-&gt; dir.shell): shell functions for using android devices, incl. ssh, scp, battery status
+   <li><B>watch_delta</B> (-&gt; cli.processes): a script to capture changes in command output. I use it with 
        arguments -netstatl -initial on the android to keep an eye on network connections.
        It basically runs the loop <i>netstat;sleep 1</i> (basically the unimplemented -c option in busybox), 
        augments the output and summarizes changes between netstat runs; optionally acquiring a wake_lock.
