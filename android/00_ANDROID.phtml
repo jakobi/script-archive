@@ -19,12 +19,11 @@
    <li><B>dir.scrap-bag-of-goodies</B>: a selection of copies of other people's scripts 
                                     and efforts to help out with android tasks as 
                                     found in my ~/bin directory.
-   <p>
    <li><B>android.logcat</B> grabs logcat output via ssh and filters out some noise
    <li><B>android.twlauncher.decode</B> decodes the twlauncher database. Useful to
        match apk files with classes and topics if you keep your apps in topical directories 
        like networking, office, etc.
-   <li><a href="http://github.com/jakobi/script-archive/tree/master/raw/android/android-setup-example-files.tgz"><B>android-setup-example-files.tgz</B></a> 
+   <li><a href="http://github.com/jakobi/script-archive/raw/master/android/android-setup-example-files.tgz"><B>android-setup-example-files.tgz</B></a> 
        is a one-time snapshot of a working
        android gingerbread setup for chroot and shell use (incl. a small collection
        of static armel binaries), plus configuration and files used
@@ -38,7 +37,7 @@
        unix environment, a chroot, and some observations on privacy, security, and 
        assumptions seemingly made about and against users of modern smartphones. The
        above example files tarball contains the configuration, scripts, etc mentioned.
-   <li><B>android.func</B> (dir.shell): shell functions, incl. ssh, scp, battery status
+   <li><B>android.func</B> (dir.shell): shell functions for using android devices, incl. ssh, scp, battery status
    <li><B>watch_delta</B> (cli.processes): a script to capture changes in command output. I use it with 
        arguments -netstatl -initial on the android to keep an eye on network connections.
        It basically runs the loop <i>netstat;sleep 1</i> (basically the unimplemented -c option in busybox), 
