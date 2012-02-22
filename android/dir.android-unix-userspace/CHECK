@@ -1,0 +1,54 @@
+#!/bin/bash
+
+export PATH="/root/bin:/bin:/sbin:/usr/local/bin:/usr/bin:/usr/sbin:$PATH"
+WAKELOCK -n compact.check -t 100 >/dev/null
+
+
+
+exec 7>&1 ; exec 8>&2
+exec >/t/CHECK.out 2>&1
+
+
+
+# do we have the usually silent nice little chroot filesystem failure without even syslog - gee thanx google!
+msg="$( mount | grep -e 'mmcblk1p. .*ro,' -e 'mmcblk0p10 .*ro,' | sed 's/.* on  //;s! type.*!!;s!/x/a!!' | sort -u )"
+if [ "$msg" != "" ] && echo '!! filesystem write errors - restart chroot required: $msg'; then
+   fsck -p /dev/block/mmcblk1p2 
+   # mount -oro,remount /mnt/sdcard/external_sd; mount -oro,remount /a/mnt/sdcard/external_sd;
+   # both msdos fsck reenable some read-without-errors, but even removing files remains BORKED
+   # sync;sleep 2;sync;echo 3 > /proc/sys/vm/drop_caches # urgently before such games
+   # umount /dev/block/vold/179:17; umount /dev/block/vold/179:17; 
+   # umount /dev/block/mmcblk1p1; umount /dev/block/mmcblk1p1
+   # echo 3 > /proc/sys/vm/drop_caches
+   # MANUAL fsck_msdos /dev/block/mmcblk1p1;fsck_msdos /dev/block/mmcblk1p1; 
+   # fsck -p /dev/block/mmcblk1p1
+fi
+
+# check local mail - we want to handle mail on LAN-side or on ANDROID side only, 
+# but currently not within the chroot
+msg="$(ls -l /var/mail/* | egrep -v -e ' 0 ' | sed 's/^/!  /')"
+[ "$msg" != "" ] && echo "!  please check host mail" && echo "$msg"
+
+# report on battery < 15%
+msg=$(cat /proc/batt_info_proc); msg=${msg#* }; msg=${msg%%[, ]*}
+[[ "$msg" -le 15 ]] && echo "!  low battery, please connect charger"
+
+# mismatched uids - gee thanx, google!
+msg="$(grep has.mismatched.uid /data/system/uiderrors.txt 2>/dev/null)"
+[[ "$msg" != "" ]] && echo '!! mismatched userid issue - please Fix IMMEDIATELY and clear uiderrors.txt'
+
+# this should do the trick for the most common error type (changes still untested):
+# edit and sort -u the errors, then feed them perl and > /data/system/uiderrors.txt afterwards
+# cat X | perl -nle 'if(($ENV{p},$ENV{id1},$ENV{id2})=m@(\S+) has mismatched uid: (\d+) on disk, (\d+) in settings@){system q@/usr/bin/find /data/data/$p -uid $id1 -exec chown $id2.$id2 {} \;@}else{warn "?? $_"}'
+
+
+
+## probably we should have watch_delta mangle the file a bit, e.g. 
+## truncing anything after ### for diffing, but restoring these bits 
+## in output. 
+
+
+
+exec 1>&7 7>&- ; exec 2>&8 8>&-
+sync;sleep 2;cat /t/CHECK.out
+WAKELOCK -n compact.check -u >/dev/null
