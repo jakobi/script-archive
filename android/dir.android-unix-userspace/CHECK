@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# 201201XX PJ   0.1  jakobi@acm.org initial version
+#
+# copyright:  (c)2012 PJ, GPL v3 or later
+# archive:    http://jakobi.github.com/android-section/
+  
+# basic status check script for android problems
+
+
 export PATH="/root/bin:/bin:/sbin:/usr/local/bin:/usr/bin:/usr/sbin:$PATH"
 WAKELOCK -n compact.check -t 100 >/dev/null
 
