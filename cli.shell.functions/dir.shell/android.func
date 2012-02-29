@@ -7,6 +7,9 @@
 # - the android is configured via tasker to automatically
 # enable/disable WLAN based on location
 
+# see also also: mt_?dir note ...
+alias mt_note='cd /disk-WRK/proj/milestone/GALAXYNOTE/; ls'
+alias mt_notebak='cd /disk2/automated-backup/compact/host.note/rsync/0/'
 function inote {
    ssh -o "ConnectTimeout 8" root@192.168.2.114 : 2>/dev/null && _NOTE_IP_=192.168.2.114 || \
       ssh -o "ConnectTimeout 8" root@192.168.11.34 : 2>/dev/null 2>/dev/null && \

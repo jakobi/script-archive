@@ -1,6 +1,7 @@
 ./admin.text/selectlines:0.2
 ./admin.text/sfre:0.1.1
 ./android/android.twlauncher.decode:0.1
+./android/dir.android-unix-userspace/FW:0.1
 ./cli.HTML/COLLECT:0.2
 ./cli.HTML/DIFF:0.2
 ./cli.HTML/DIFFTREE:0.2
@@ -37,6 +38,7 @@
 ./cli.various/ALARM:0.1
 ./cli.various/WHISTLE:0.2
 ./cli.various/append.p:0.2
+./cli.various/date.before:0.2a
 ./cli.various/mt_dir:0.1
 ./cli.various/rr:0.1.2
 ./cli.various/sleepuntil:0.1

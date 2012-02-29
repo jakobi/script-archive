@@ -1,0 +1,1 @@
+wrapper to simplify using wake_locks, incl. timeout in seconds, default timeout

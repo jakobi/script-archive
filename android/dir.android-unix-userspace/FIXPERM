@@ -1,0 +1,34 @@
+
+# root required
+
+e=/data/system/uiderrors.txt
+cat $e
+echo
+echo "press c to continue IFF the errors lists are all from the"
+echo "same system_server pass (otherwise remove dupes and rerun)"
+read ans
+[ "$ans" != "c" ] && exit 2
+
+
+
+echo=""
+# change ownership errors (excluding a few things like lib by insisting 
+# on files actually having the reported old/disk id)
+cat $e | while read d1 d2 d3 package p has mismatched uid idold on disk idnew in settings; do
+   echo -n "$p $idold -> $idnew: " 
+   echo -n "$(find /data/data/$p -user $idold -print | wc -l) "
+   find /data/data/$p -user $idold -exec $echo chown $idnew {} \; -exec $echo chgrp $idnew {} \;
+   c=$(find /data/data/$p -user $idold -print | wc -l)
+   [ "$c" != "0" ] && echo -n " *** failed to rename: $c *** "
+   echo
+done
+
+
+
+# clear log
+echo
+echo "press c to clear $e (suggested if above didn't report failures)"
+read ans
+[ "$ans" != "c" ] && exit 1
+echo clearing log
+> $e

@@ -1,1 +1,1 @@
-date.before,date.after: return true/false on comparing dates (shell)
+date.before,date.after - guarded cron job execution: return true/false on 1) comparing dates / date ranges or 2) on last day of month, last week of month, second monday in month, etc (shell)

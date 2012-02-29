@@ -1,0 +1,136 @@
+#!/system/xbin/sh
+
+# psg [-m]         [egrep args] # short                   ps format
+# psg [-m] [-w|-l] [egrep args] # extended version, top -n 1 format 
+# psg                           # list non standard unix-side userspace
+#                               # (with shells first to stderr)
+#
+# the standard ps -edalf|egrep -i alias, slowed down 
+# and adapted to android / busybox constraints. with
+# -m, we show type and pty as the first two columns.
+#
+# jakobi@acm.org, android gingerbread
+
+
+
+# NOTES:
+# - see also pgrep/pkill
+
+
+export PATH="/sbin:/vendor/bin:/system/sbin:/system/xbin:$PATH" # insist on busybox versions
+WAKELOCK -n compact.psg -t 20 >/dev/null
+
+
+
+MARK= ; 
+export LINES COLUMNS
+export COLUMNS=${COLUMNS:-80}
+export LINES=${LINES:-24}
+c0="/system/xbin/busybox ps"
+c1="/system/xbin/busybox cat"
+while [ "$1" != "" ]; do
+    [ "$1" = "-m" ] && { MARK=1; shift; continue; }
+    [ "$1" = "-l" -o "$1" = "-w" ] && { shift; COLUMNS=9999; LINES=9999; 
+       c0="/system/xbin/busybox top -n1"
+       c1="/system/xbin/busybox tail +5"
+       continue; }
+    break
+done
+
+if [ "$1" = "" ]; then
+   # if no argument is given, list non-standard unix-side userspace
+   # (first listing (login) shells on STDERR)
+   WAKELOCK -n compact.psg2 -t 20 >/dev/null
+   m="$(/system/bin/sh $0 -m -l .)"
+   echo "$m" | /system/xbin/busybox grep -e '[0-9] -\?sh$' \
+                                           -e '[0-9] /bin/bash$' \
+                                           -e '[0-9] bash$' \
+                                           -e '[0-9] sh -$' \
+                                           -e '[0-9] /data/data/com.spartacusrex.spartacuside/files/system/bin/bash' | \
+/system/xbin/busybox sort -k 1,1 -s 1>&2
+   # - the sh - is a titanium artefact and hangs until notification is cleared
+   # - BUG the above should only list the lowest child shell per pty
+   # - BUG the sshdroid busybox is buggy wrt normal regex-? (/system/xbin/busybox is ok)
+
+   echo 1>&2
+   echo "$m" | /system/xbin/busybox grep -v -e '^K' \
+                                           -e '^A' \
+                                           -e '[0-9] \[gp2a_wq\]' \
+                                           -e '[0-9] /system/bin/\([^ ]*$\|dhcpcd\|wpa_supplicant\|dbus-daemon\|keystore\|gpsd\)' \
+                                           -e '[0-9] \(com.lookout\|/data/data/com.lbe.security.lite/lib/libloader.so\)$' \
+                                           -e '[0-9] \(/init\|system_server\|zygote /bin/app_process -Xzygote.*\)$' \
+                                           -e '[0-9] \(/sbin/adbd\|/sbin/ueventd\|android.tts\|com.smlds\|com.wssyncmldm\)$' \
+                                           -e '[0-9] \(com.fsck.k9\|ds.cpuoverlay\|com.adengappa\)$' \
+                                           -e '[0-9] logcat -v time SearchDialog:I.*' \
+                                           -e '/system/xbin/bash /system/xbin/mc' \
+                                           -e '/system/bin/sh /system/xbin/mc.real2' \
+                                           -e '[0-9] /system/xbin/mc.real' \
+                                           -e '[0-9] bash -rcfile \.mc/bashrc$' \
+                                           -e '[0-9] bash -rcfile \.bashrc$' \
+                                           -e '[0-9] mc$' \
+                                           -e '[0-9] -\?sh$' \
+                                           -e '[0-9] /bin/bash$' \
+                                           -e '[0-9] bash$' \
+                                           -e '[0-9] sh -$' \
+                                           -e '^R.*[0-9] /usr/bin/mc -a$' \
+                                           -e '^R.*[0-9] /usr/sbin/\(atd\|cron\)$' \
+                                           -e '[0-9] /data/data/com.spartacusrex.spartacuside/files/system/bin/bash' \
+                                           -e '[0-9] /data/data/berserker.android.apps.sshdroid/dropbear/dropbear' | \
+   /system/xbin/busybox sort -k 1,1 -s | \
+   /system/xbin/busybox grep -E -i .
+   rc=$?
+   WAKELOCK -n compact.psg -u >/dev/null
+   WAKELOCK -n compact.psg2 -u >/dev/null
+   exit $rc
+fi
+
+c2="/system/xbin/busybox cat - ; :"
+[ "$2" = "" -a "${1##[(\\^]}" = "$1" ] && c2="/system/xbin/busybox grep"
+
+$c0 | $c1 | \
+   /system/xbin/busybox grep -v -e "/system/xbin/busybox grep -E -i" \
+                                -e "/system/xbin/busybox grep -v -e" \
+                                -e "/system/xbin/busybox ps\$" \
+                                -e "/system/xbin/busybox cat\$" \
+                                -e "/system/xbin/busybox catv -vet\$" \
+                                -e "/system/xbin/busybox cut -b" \
+                                -e "/system/xbin/busybox tail +5\$" \
+                                -e "/system/xbin/busybox sort -n\$" \
+                                -e "/system/xbin/busybox top -n1\$" \
+                                -e "/system/xbin/busybox sed " \
+                                -e "\(/system/x\?bin/\)\?sh \(/s\)\?/system/xbin/psg" | \
+   { eval "$c2"' -E -i ${1:+"$@"}' ;} | \
+   /system/xbin/busybox cut -b-$COLUMNS | \
+   /system/xbin/busybox sort -n | \
+   { 
+      if [ "$MARK" != "" ]; then
+         /system/xbin/busybox sed 's/^/. /' | \
+         while read a; do
+            a=${a#. }
+            b=" rootfs "
+            PID=${a# }; PID=${PID# }; PID=${PID# }; PID=${PID# }; PID=${PID# }; PID=${PID# }; PID=${PID%% *}
+            p=":"
+            t=
+            test -f /proc/$PID/mountinfo && read b < /proc/$PID/mountinfo; 
+            [ "${b##* rootfs *}" = "$b" ] && p="R"
+            t=$(readlink /proc/$PID/fd/2)  # use stderr - 
+            t=${t##/dev/}
+            [ "${t##pts/}" = "$t" -o "${t%% *}" != "$t" ] && t=
+            [ "$t" = "" ] && t="-      "
+            [ "${t#?????}" = "" ] && t="$t "
+            [ "${t#??????}" = "" ] && t="$t "
+            [ -e /d/binder/proc/$PID ] && p="A"
+            [ -f /proc/$PID/exe -a "$PID" != "1" ] || p="K" # kernel or questionable
+            [ "$PID" = "PID" ] && { p="#" t="       " ;}
+            echo "$p $t  $a"
+         done
+      else
+         cat
+      fi
+   } | \
+   /system/xbin/busybox grep -E -i ${1:+"$@"} 
+   rc=$?
+   
+
+WAKELOCK -n compact.psg -u >/dev/null
+exit $rc

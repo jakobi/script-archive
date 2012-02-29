@@ -1,0 +1,48 @@
+#!/system/xbin/sh
+
+export PATH="/sbin:/vendor/bin:/system/sbin:/system/xbin:$PATH" # insist on busybox version
+[ ! -w /sys/power/wake_lock ] && exit 1
+
+name=compact.shell
+lockpath=/sys/power/wake_lock
+timeout=1800
+unlock=0
+while [ "$1" != "" ]; do # /system/bin/sh doesn't know -z
+   [ "$1" = "-n" ] && { shift; name=$1; shift; continue; }
+   [ "$1" = "-u" ] && { unlock=1; shift; continue; }
+   [ "$1" = "-t" ] && { shift; timeout=$1; shift; continue; }
+   [ "$1" = "-l" ] && { shift; perl -lne '
+         BEGIN{
+            $b=shift if $ARGV[0] eq "-b";
+            print STDERR "# times changed to second since boot"
+         };
+         s/"//g;s/\t/ /g;@_=split(/ +/,$_);
+         push @w,$_[0] if $_[4]>0;
+         for(4 .. 8){do{$_[$_]=$1?$1:1} if $_[$_]=~/^(\d+?)(\d{1,9})$/}; 
+         printf "%-20s %12s %12s %12s %12s %12s %12s %12s %12s\n",@_;
+         END{
+            print STDERR "# uptime[s]/idletime[cpu_s]: ".`cat /proc/uptime`;
+            if ($b) {
+               print STDERR "# trying to break active wakelocks (probably only working for\n# shell-created suspend-locks; try reboot hard or soft otherwise)";
+               foreach(@w) { print STDERR "$_"; open(FH,">","/sys/power/wake_unlock"); print FH $_; close FH; }
+            } else {
+                print STDERR "# active wakelocks (consider echo > /sys/power/wake_unlock):\n# ".join(" ",@w)."";
+            }
+         }
+      '  -- ${1:+"$@"} /proc/wakelocks; exit; }
+   [ "$1" = "-h" -o "$1" = "-help" -o "$1" = "--help" ] &&
+                      { echo "# $0 [-l] [-n name($name)] [-u] [-t timeout[s]/0/''($timeout)] -- wake list/lock/unlock"; exit; }
+
+   echo "!  unknown argument $1 - ignoring";
+   shift;
+done
+
+if [ "$timeout" = "0" -o "$timeout" = "" -o "$unlock" = "1" ]; then
+   timeout=
+else
+   timeout=$timeout"000000000"
+fi
+[ "$unlock" = "1" ] && lockpath=/sys/power/wake_unlock
+
+echo "# WAKELOCK: echo $name $timeout | sudo tee -a $lockpath"
+echo $name $timeout > $lockpath

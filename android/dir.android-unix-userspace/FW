@@ -1,0 +1,344 @@
+#!/system/bin/sh
+
+version="0.1";
+# 20120207 PJ   0.1  jakobi@acm.org initial version roughly based on ubuntu 10.04 ufw rules
+#
+# copyright:  (c)2012 PJ, GPL v3 or later
+# archive:    http://jakobi.github.com/script-archive-doc/
+
+# FW [on|off|fixdrop|add...]
+# simple real firewall script implementing a basic host-based inbound firewall
+
+
+# NOTES:
+# -         the idea is to keep the firewall out of everyone's hair and permit apps
+#           like LBE still to work (provided we MOVE the DROP rule after LBE
+#           changed things)
+# -         VPN / NAT settings are done in VPN and not part of this script
+#           (excepting the not-yet-implemented BUG below, the two script shouldn't 
+#            touch/mess with each other)            
+# -         for a gui, consider e.g. droidwall, however that seems
+#           to lack proper predefined rule sets. For a thread concerning 
+#           droidwall and manually adding iptables rules using the shell, see
+#           forum.xda-developers.com/archive/index.php/t-541380.html
+#
+# BUG/WRKA  accessing the LOG target output: Currently I cannot access the kernel log
+#           other than with looping dmesg: Invoke >>FW log<< to view the output.
+#           -> drop me a line if you've a managed to have a working syslog on android.
+# CHK       add a background daemon to file-log LOG target output?
+#
+# CHK       should the usual QoS(/mangle?) settings be done in this script?
+#
+# CHK       do we still need to enforce artificial rate limit against brown-outs of upload/acks?
+#
+# CHK       protect ssh/port 22 with a rate limit?
+#
+# ! BUG/DEL somehow permit some configurability wrt c-f use of ip range to forward
+#           depending on the exact interfaces and stuff in use when running as AP or usb tether
+#   *CURRENTLY COMMENTED OUT UNTIL I NEED TETHERING THE NEXT TIME*
+#           [currently we would use the VPN's range, but that should be changed
+#            to include tethering etc; as we probably won't be using the VPN
+#            range in ap more or similar; rules are bound to be rom-specific]
+
+
+
+export PATH="/sbin:/vendor/bin:/system/sbin:/system/xbin:$PATH" # insist on busybox versions
+
+
+
+# iptables command to use - currently a function because of old bionic noise bug
+ipt="_ipt -t filter" 
+
+
+
+setup_rules() {  # *** SETUP THE CORE RULES OF THE FIREWALL ***
+# The comments list the intended rules as taken and simplified
+# from a running ufw setup on ubuntu 10.04 incl. basic VPN forwarding. 
+#
+# Furthermore we want to keep our real host-based firewall 
+# independend of the rules created by "personal firewalls" 
+# as included e.g. in the LBE android application (whose rules
+# are also listed in the comments below; esp. as those rules
+# must be corrected on each reboot as the framework packaging
+# may change uids).
+#
+# ------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------
+# 
+# Chain INPUT (policy ACCEPT 46753 packets, 6212K bytes)
+#  pkts bytes target     prot opt in     out     source               destination         
+# 
+# !  CHANGE POLICY TO DROP # can we do this AFTERWARDS?
+# !  at least remove global drop and reinsert it at END
+# !  0  0     c-i        all  --  *      *       0.0.0.0/0            0.0.0.0/0
+# !  0  0     DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0
+# 
+# Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)
+#  pkts bytes target     prot opt in     out     source               destination         
+# 
+# !  CHANGE POLICY TO DROP # can we do this AFTERWARDS?
+# !  at least remove global drop and reinsert it at END
+# !  0  0     c-f        all  --  *      *       0.0.0.0/0            0.0.0.0/0
+# !  0  0     DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0
+# 
+# 
+# Chain OUTPUT (policy ACCEPT 49551 packets, 32M bytes)
+#  pkts bytes target     prot opt in     out     source               destination         
+#  188K  115M LBESEC_SINK  all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+#    
+# !  CHANGE POLICY TO DROP # can we do this AFTERWARDS?
+# !  at least remove global drop and reinsert it at END
+# !  0  0     c-o        all  --  *      *       0.0.0.0/0            0.0.0.0/0
+# !  0  0     DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0
+# 
+# Chain LBESEC_CELLULAR (7 references)
+#  pkts bytes target     prot opt in     out     source               destination         
+#     0     0 LBESEC_REJECT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           owner UID match 10028 
+#     0     0 LBESEC_REJECT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           owner UID match 10039 
+#     0     0 LBESEC_REJECT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           owner UID match 10049 
+#     0     0 LBESEC_REJECT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           owner UID match 10065 
+#     0     0 LBESEC_REJECT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           owner UID match 10078 
+#     0     0 LBESEC_REJECT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           owner UID match 10038 
+#     0     0 LBESEC_REJECT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           owner UID match 10120 
+# 
+# Chain LBESEC_REJECT (14 references)
+#  pkts bytes target     prot opt in     out     source               destination         
+#     8   536 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+# 
+# Chain LBESEC_SINK (1 references)
+#  pkts bytes target     prot opt in     out     source               destination         
+#     0     0 LBESEC_CELLULAR  all  --  *      rmnet+  0.0.0.0/0            0.0.0.0/0           
+#  2948  303K LBESEC_CELLULAR  all  --  *      pdp+    0.0.0.0/0            0.0.0.0/0           
+#     0     0 LBESEC_CELLULAR  all  --  *      ppp+    0.0.0.0/0            0.0.0.0/0           
+#     0     0 LBESEC_CELLULAR  all  --  *      uwbr+   0.0.0.0/0            0.0.0.0/0           
+#     0     0 LBESEC_CELLULAR  all  --  *      wimax+  0.0.0.0/0            0.0.0.0/0           
+#     0     0 LBESEC_CELLULAR  all  --  *      vsnet+  0.0.0.0/0            0.0.0.0/0           
+#     0     0 LBESEC_CELLULAR  all  --  *      ccinet+  0.0.0.0/0            0.0.0.0/0           
+#     0     0 LBESEC_WIFI  all  --  *      tiwlan+  0.0.0.0/0            0.0.0.0/0           
+#     0     0 LBESEC_WIFI  all  --  *      wlan+   0.0.0.0/0            0.0.0.0/0           
+#  185K  114M LBESEC_WIFI  all  --  *      eth+    0.0.0.0/0            0.0.0.0/0           
+#     0     0 LBESEC_WIFI  all  --  *      ra+     0.0.0.0/0            0.0.0.0/0           
+#     0     0 LBESEC_WIFI  all  --  *      mlan+   0.0.0.0/0            0.0.0.0/0           
+# 
+# Chain LBESEC_WIFI (5 references)
+#  pkts bytes target     prot opt in     out     source               destination         
+#     0     0 LBESEC_REJECT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           owner UID match 10028 
+#     0     0 LBESEC_REJECT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           owner UID match 10039 
+#     0     0 LBESEC_REJECT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           owner UID match 10049 
+#     0     0 LBESEC_REJECT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           owner UID match 10065 
+#     0     0 LBESEC_REJECT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           owner UID match 10078 
+#     0     0 LBESEC_REJECT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           owner UID match 10038 
+#     8   536 LBESEC_REJECT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           owner UID match 10120 
+# 
+# ----------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------
+#
+# *** NOTE ON CHAIN SETUP ***
+#
+# here go our changes: 3 main chains of c-i, c-o and c-f and their 
+# helpers (same prefix as master chain) plus generic helpers below
+# like the c-log* chains.
+# 
+# Chain c-i  (for INPUT; idea is policy DROP 29 packets, 4050 bytes)
+#  pkts bytes target     prot opt in     out     source               destination         
+# 52402   79M ACCEPT     all  --  lo     *       0.0.0.0/0            0.0.0.0/0           
+#   14M 5653M ACCEPT     all  --  *      *       0.0.0.0/0            0.0.0.0/0           state RELATED,ESTABLISHED 
+#  1032 43432 c-logdeny  all  --  *      *       0.0.0.0/0            0.0.0.0/0           state INVALID 
+#  1032 43432 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0           state INVALID 
+#     0     0 ACCEPT     icmp --  *      *       0.0.0.0/0            0.0.0.0/0           icmp type 3 
+#     0     0 ACCEPT     icmp --  *      *       0.0.0.0/0            0.0.0.0/0           icmp type 4 
+#     0     0 ACCEPT     icmp --  *      *       0.0.0.0/0            0.0.0.0/0           icmp type 11 
+#     0     0 ACCEPT     icmp --  *      *       0.0.0.0/0            0.0.0.0/0           icmp type 12 
+#     0     0 ACCEPT     icmp --  *      *       0.0.0.0/0            0.0.0.0/0           icmp type 8 
+#     8  4608 ACCEPT     udp  --  *      *       0.0.0.0/0            0.0.0.0/0           udp spt:67 dpt:68 
+# 81976   15M c-iremote  all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+#     0     0 ACCEPT     all  --  *      *       224.0.0.0/4          0.0.0.0/0           
+#  3130  113K ACCEPT     all  --  *      *       0.0.0.0/0            224.0.0.0/4         
+# 78846   15M c-iuser    all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+#     0     0 DROP       udp  --  *      *       0.0.0.0/0            0.0.0.0/0           udp dpt:137 
+#  3248  814K DROP       udp  --  *      *       0.0.0.0/0            0.0.0.0/0           udp dpt:138 
+#     0     0 DROP       tcp  --  *      *       0.0.0.0/0            0.0.0.0/0           tcp dpt:139 
+#     0     0 DROP       tcp  --  *      *       0.0.0.0/0            0.0.0.0/0           tcp dpt:445 
+#     8  2624 DROP       udp  --  *      *       0.0.0.0/0            0.0.0.0/0           udp dpt:67 
+#     0     0 DROP       udp  --  *      *       0.0.0.0/0            0.0.0.0/0           udp dpt:68 
+#     0     0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0           ADDRTYPE match dst-type BROADCAST 
+#    29  4050 LOG        all  --  *      *       0.0.0.0/0            0.0.0.0/0           limit: avg 3/min burst 10 LOG flags 0 level 4 prefix '[C BLOCK] ' 
+# 
+
+for i in \
+"-o lo -j ACCEPT" \
+"-s 127.0.0.1 -d 127.0.0.1 -j ACCEPT" \
+"-m state --state RELATED,ESTABLISHED -j ACCEPT" \
+"-m state --state INVALID -j c-logdeny" \
+"-m state --state INVALID -j DROP" \
+"-p icmp -m icmp --icmp-type 3 -j ACCEPT" \
+"-p icmp -m icmp --icmp-type 4 -j ACCEPT" \
+"-p icmp -m icmp --icmp-type 11 -j ACCEPT" \
+"-p icmp -m icmp --icmp-type 12 -j ACCEPT" \
+"-p icmp -m icmp --icmp-type 8 -j ACCEPT" \
+"-p udp -m udp --sport 67 --dport 68 -j ACCEPT" \
+"-s 224.0.0.0/4 -j ACCEPT" \
+"-d 224.0.0.0/4 -j ACCEPT" \
+"-j c-iremote" \
+"-j c-iuser" \
+"-p udp -m udp --dport 137 -j DROP" \
+"-p udp -m udp --dport 138 -j DROP" \
+"-p tcp -m tcp --dport 139 -j DROP" \
+"-p tcp -m tcp --dport 445 -j DROP" \
+"-p udp -m udp --dport 67 -j DROP" \
+"-p udp -m udp --dport 68 -j DROP" \
+"-m addrtype --dst-type BROADCAST -j DROP" \
+"-m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix C-I-BLOCK: "
+do $ipt -A c-i $i; done
+ 
+# --------------------------------------------------------------------------------------------------------------------------------
+# 
+# Chain c-iuser (1 references)
+#  pkts bytes target     prot opt in     out     source               destination         
+#     0     0 ACCEPT     tcp  --  *      *       0.0.0.0/0            0.0.0.0/0           tcp dpt:22 /* 'dapp_OpenSSH' */ 
+# 
+# Chain c-iremote (1 references)
+#  pkts bytes target     prot opt in     out     source               destination         
+#    62  6124 RETURN     all  --  *      *       0.0.0.0/0            0.0.0.0/0           ADDRTYPE match dst-type LOCAL 
+#  3130  113K RETURN     all  --  *      *       0.0.0.0/0            0.0.0.0/0           ADDRTYPE match dst-type MULTICAST 
+# 78784   15M RETURN     all  --  *      *       0.0.0.0/0            0.0.0.0/0           ADDRTYPE match dst-type BROADCAST 
+#     0     0 c-logdeny  all  --  *      *       0.0.0.0/0            0.0.0.0/0           limit: avg 3/min burst 10 
+#     0     0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+# 
+
+for i in \
+"-p tcp -m tcp --dport 22 -m comment --comment "\'dapp_OpenSSH\'" -j ACCEPT" \
+"-p tcp -m tcp --dport 815 -m comment --comment "\'dapp_OpenSSH_ALT\'" -j ACCEPT"
+do $ipt -A c-iuser $i; done
+for i in \
+"-m addrtype --dst-type LOCAL -j RETURN" \
+"-m addrtype --dst-type MULTICAST -j RETURN" \
+"-m addrtype --dst-type BROADCAST -j RETURN" \
+"-m limit --limit 3/min --limit-burst 10 -j c-logdeny" \
+"-j DROP"
+do $ipt -A c-iremote $i; done
+
+# --------------------------------------------------------------------------------------------------------------------------------
+# 
+# Chain c-f (for FORWARD, idea is policy DROP 0 packets, 0 bytes)
+#  pkts bytes target     prot opt in     out     source               destination         
+#  1129  126K ACCEPT     all  --  *      *       192.168.11.0/24      0.0.0.0/0           
+#   954  627K ACCEPT     all  --  *      *       0.0.0.0/0            192.168.11.0/24     
+#     0     0 c-logdeny  all  --  *      *       0.0.0.0/0            0.0.0.0/0
+# 
+
+
+# as used on linux for OPENVPN serverside forwarding
+# "-s 192.168.11.0/24 -j ACCEPT" \
+# "-d 192.168.11.0/24 -j ACCEPT" \
+#
+
+for i in \
+"-j c-logdeny"
+do $ipt -A c-f $i; done
+
+# --------------------------------------------------------------------------------------------------------------------------------
+# 
+# Chain c-o (for OUTPUT, idea is policy DROP 11937 packets, 856K bytes)
+#  pkts bytes target     prot opt in     out     source               destination         
+# 52402   79M ACCEPT     all  --  *      lo      0.0.0.0/0            0.0.0.0/0           
+#   13M 5724M ACCEPT     all  --  *      *       0.0.0.0/0            0.0.0.0/0           state RELATED,ESTABLISHED 
+# 15161  910K ACCEPT     tcp  --  *      *       0.0.0.0/0            0.0.0.0/0           state NEW 
+#  110K   16M ACCEPT     udp  --  *      *       0.0.0.0/0            0.0.0.0/0           state NEW 
+#     0     0 c-logdeny  all  --  *      *       0.0.0.0/0            0.0.0.0/0
+# 
+
+for i in \
+"-o lo -j ACCEPT" \
+"-m state --state RELATED,ESTABLISHED -j ACCEPT" \
+"-p tcp -m state --state NEW -j ACCEPT" \
+"-p udp -m state --state NEW -j ACCEPT" \
+"-j c-logdeny"
+do $ipt -A c-o $i; done
+
+# --------------------------------------------------------------------------------------------------------------------------------
+# 
+# Chain c-logok (0 references)
+#  pkts bytes target     prot opt in     out     source               destination         
+#     0     0 LOG        all  --  *      *       0.0.0.0/0            0.0.0.0/0           limit: avg 3/min burst 10 LOG flags 0 level 4 prefix '[C ALLOW] ' 
+# 
+# Chain c-logdeny (2 references)
+#  pkts bytes target     prot opt in     out     source               destination         
+#  1012 42632 RETURN     all  --  *      *       0.0.0.0/0            0.0.0.0/0           state INVALID limit: avg 3/min burst 10 
+#    16   640 LOG        all  --  *      *       0.0.0.0/0            0.0.0.0/0           limit: avg 3/min burst 10 LOG flags 0 level 4 prefix '[C BLOCK] '
+#
+
+for i in \
+"-m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix C-ALLOW: "
+do $ipt -A c-logok $i; done
+for i in \
+"-m state --state INVALID -m limit --limit 3/min --limit-burst 10 -j RETURN" \
+"-m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix C-BLOCK: "
+do $ipt -A c-logdeny $i; done
+# --------------------------------------------------------------------------------------------------------------------------------
+}
+
+
+
+fw_off() {      # turn off firewall
+   echo "turning firewall off and flushing/removing chains"
+   $ipt -D INPUT   -j c-i >/dev/null 2>&1
+   $ipt -D FORWARD -j c-f >/dev/null 2>&1
+   $ipt -D OUTPUT  -j c-o >/dev/null 2>&1
+   for i in INPUT FORWARD OUTPUT; do $ipt -D $i -j DROP >/dev/null 2>&1; done
+   for i in c-i c-iuser c-iremote c-f c-o c-logok c-logdeny; do $ipt -F $i >/dev/null 2>&1; $ipt -X $i >/dev/null 2>&1; done
+}
+
+
+fw_on() {       # turn on firewall (first off, then rebuild), unsafe-while-rebuilding
+   fw_off
+   echo "turning firewall on"
+   for i in c-i c-iuser c-iremote c-f c-o c-logok c-logdeny; do $ipt -N $i; done
+   setup_rules
+   $ipt -A INPUT   -j c-i 
+   $ipt -A FORWARD -j c-f
+   $ipt -A OUTPUT  -j c-o 
+   for i in INPUT FORWARD OUTPUT; do $ipt -A $i -j DROP; done
+}
+
+
+fw_fixdrop() {  # move DROP target to end of chain
+   for i in INPUT FORWARD OUTPUT; do $ipt -D $i -j DROP; $ipt -A $i -j DROP; done
+}
+
+
+fw_log() {      # workaround to tail the LOG target
+   while true; do dmesg -c|egrep -e '\] C(-I)?-?(BLOCK|ALLOW)'; sleep 1; done
+}
+
+
+add_tmp_rule() { # add a temporary custom rule 
+   $ipt -A c-iuser ${1:+"$@"}
+}
+
+_ipt() {         # work-around for the darn bionic noise
+   iptables ${1:+"$@"} 2>&1 | fgrep -v "FIX ME! implement getprotobyname() bionic/libc/bionic/stubs.c"; true 
+}
+
+# --------------------------------------------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------------------------------
+
+echo "# Usage: FW [on|off|add (ci-user-ruleargs)|fixdrop|list|listother|logtail]"
+while [ "$1" != "" ]; do
+   [ "$1" = "on" ]         && { fw_on; exit;}
+   [ "$1" = "off" ]        && { fw_off; exit;}
+   [ "$1" = "logtail" ]    && { fw_log; exit;}
+   [ "$1" = "list" ]       && { iptables -t filter -L -n -v; exit;}
+   [ "$1" = "listother" ]  && { iptables -t mangle -L -n -v; echo; iptables -t nat -L -n -v; exit;}
+   [ "$1" = "fixdrop" ]    && { fw_fixdrop; exit;}
+   [ "$1" = "add" ]        && { shift; add_tmp_rule ${1:+"$@"}; exit;}
+done
+
+echo
+echo "# hey dude, this world is a flat script, and you're at the very edge of it."
+echo "# Hey, STOP going there!"
+echo "# Don't fall ooooofffffff..."
+echo "# (Looking after you as you're falling down into the fiery well, sighing)"
+echo "# Some guys are just hopeless." 
+exit 42
+

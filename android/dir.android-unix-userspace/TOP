@@ -1,0 +1,118 @@
+#!/system/bin/sh
+
+# eval `resize`; $0                      # display current iteration and clear pty
+# $0 [-n NUM_OF_ITERATIONS] > logfile    # dump full content, no cursor control
+#
+# non-interactive top main display slightly enhanced with free space
+# of filesystems, cpu number/frequency and battery status
+# 
+# jakobi@acm.org, android gingerbread
+
+
+
+# NOTES:
+# - q use tput ... to re-highlight top column headers and save one more line?
+# - df output may skip longish mountpoint paths with df|grep. This is OK.
+# - allow for upto 5 cores for now in collecting cpu frequencies
+#   (5th as a low power core e.g. announced by nvidia?)
+# - we only exclude top from top -n1 output, as running top is a bit expensive.
+
+export PATH="/system/xbin:$PATH" # insist on busybox versions
+
+export LINES COLUMS c f ldf
+s=5              # sleep interval
+n=-1             # number of iterations
+e="$(echo;echo)" # loop start string
+ldf=6            # number of lines for df|grep output: system,data,2*sdcards,usb,chroot
+
+# change these settings to customize some warnings / flags in line#1
+# e.g. checking state and disk free for a debian chroot filesystem
+CHROOTDEV=/dev/block/mmcblk1p2
+TOP_FSWARN="$CHROOTDEV.*ro," # print a flag is this matches mount output
+TOP_FILWRN='test ! -s /x/var/mail/mail'  # print a flag on false
+TOP_FILWRN_STRING="M"
+                 
+
+
+if [ "$1" = "-n" ]; then
+   # batch
+   n=$2
+   COLUMNS=999
+   LINES=999
+else 
+   # interactive; assume vt100 if nothing set by e.g. by eval `resize`
+   COLUMNS=${COLUMNS:-80}
+   LINES=${LINES:-24}
+   e="$(clear)"  
+fi
+
+
+
+# terminal size default: 22 LINES: 24 - safety reserve of 2 for tmux
+# we further reduce this to allow for 5 lines of df, one of battery/cpu freq
+# and two blank lines, one of which is inserted into top output.
+l=$(( ${LINES:-22} - $ldf - 2 - 1 )) 
+
+
+
+[ "$n" = "-1" ] && printf "%s" $e
+while true; do
+   WAKELOCK -n compact.top -t 10 >/dev/null
+   
+   # NOTES on /proc/batt_info_proc: 
+   # module sec_battery* acc to the darkweb accident in google cache:
+   # 
+   # http://webcache.googleusercontent.com/search?q=cache:CLenriPLUWIJ:sgsii.z4mb0.net/Kernels/Ninphetamine/ninphetamine/drivers/power/sec_battery_kor.c+batt_info_proc&cd=3
+   # as well as sec_battery, but the contents don't quite agree and are LOCALE DEPENDING !?
+   # battery_sec.c non-NA locale might be the correct one:
+   # 15338, 100, 100, 4172, 4137500, 0, 0, 0, 0, 0, 1016, 1, 2, 0, 1, 0, 0 [disconnected]
+   # *cur_time.tv_sec(s,time since boot), batt_raw_soc, **batt_soc(% full), *batt_vfocv(mV), batt_vcell[microV]
+   #    further on things go questionable again. something also thinks the 1033 value is the time
+   #    to fully charge, but a similar sized value (~1000s) is displayed on both charging or when full...
+   #    then the counts?
+   # batt_current_adc(504,0 if disc) batt_full_status(1) charging_int_full_count(0) charging_adc_full_count(0)
+   # recharging_status(0) batt_temp_adc(1033) batt_health(1) charging_status(4,2:disconnected/dischrg) 
+   # batt_tmu_status(0norm,1tripped,2throttled,3warn) 
+   # present(1, i have battery) *cable_type(1;0,1usb,2ac,3shrugging) charging_passed_time(0)
+   # 
+   # recharging time granularity: 10m; 
+   # temp -30 to 460/710 as way too high (those temp_adc values, whatever it is?)
+   # what is adc? active discharging current related value? or just indic. 'analog-do-digital conv' output
+   # but near that, there's power supply overheating / health and a value in 1/10 degree of whatever
+   # 1033/10F is about 40C, which would sound sane (incl. an idle battery being heated by cpu heat :))
+   #
+   c="$(cat /sys/devices/system/cpu/online)"
+   f="$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_cur_freq \
+            /sys/devices/system/cpu/cpu1/cpufreq/cpuinfo_cur_freq \
+            /sys/devices/system/cpu/cpu2/cpufreq/cpuinfo_cur_freq \
+            /sys/devices/system/cpu/cpu3/cpufreq/cpuinfo_cur_freq \
+            /sys/devices/system/cpu/cpu4/cpufreq/cpuinfo_cur_freq 2>/dev/null)"
+   # check one specific filesystem mount state as well...
+   FSWARN=$(mount | grep -e "$TOP_FSWARN" | sed 's/^.*$/FS!/')
+   FILWRN=$($TOP_FILWRN >/dev/null 2>&1 || echo "$TOP_FILWRN_STRING")
+   UIDWRN=$(grep has.mismatched.uid /data/system/uiderrors.txt >/dev/null && echo "U!")
+   WRN="$FSWARN"
+   [ "$FILWRN" != "" -a "$WRN" != "" ] && { [ "${WRN%!}" = "$WRN" ] && WRN="$WRN:";}
+   WRN="$WRN$FILWRN"
+   [ "$UIDWRN" != "" -a "$WRN" != "" ] && { [ "${WRN%!}" = "$WRN" ] && WRN="$WRN:";}
+   WRN="$WRN$UIDWRN"
+   
+
+   # sed twice is enough to wake up one cpu upto 1.4MHz for a
+   # short while and the subsequent top isn't much better
+   printf "%sBAT: %-9s CPU: %-20s %20s %s\n%s\n\n%s" "$e" \
+          $(sed 's/[^ ]* [^ ]*, \([^ ]*\), [^ ]*, [^ ]*, [^ ]*, [^ ]*, [^ ]*, [^ ]*, [^ ]*, [^ ]*, [^ ]*, [^ ]*, [^ ]*, [^ ]*, \([^ ]*\), .*/\1:\2/; s/:1/(usb)/; s/:2/(ac)/; s/:0/(disc)/' /proc/batt_info_proc) \
+		  $c$(echo $f | sed 's!^! !;s!$! !;s! !  !g;s![0-9][0-9][0-9][0-9][0-9] ! !g;s! \([0-9]\) ! 0.\1 !g;s! \([0-9]\)\([0-9]\) ! \1.\2 !g;s!  *!,!g;s![, ]*$!!;s!^[, ]*!(!;s![, ]*$!)!;s!,!:!' ) \
+        "$WRN $( ((echo $(ifconfig eth0);  echo $(ifconfig pdp0))|sed -n 's!.*inet addr: *\([^ ]*\) .* UP .*!\1!p';printf "%s" "-")|head -1)" \
+		  "$(date +%Y%m%d-%H:%M:%S)" \
+		  "$(/system/xbin/busybox top -b -n 1|/system/xbin/busybox grep -v '/system/xbin/busybox \(top\|head -\|cut -b\|sed -e\)'|/system/xbin/busybox head -$l|/system/xbin/busybox cut -b-$COLUMNS|/system/xbin/busybox sed -e 's/^\( *PID.*\)/\n\1/')" \
+		  "$(df -k 2>/dev/null| grep -v -e asec -e android_secure | grep -e ' /mnt/sdcard' -e ' /system' -e ' /data' -e "$CHROOTDEV" |head -$ldf)"
+   n=$(( $n - 1 ))
+   WAKELOCK -n compact.top -u >/dev/null
+   [ "$n" = "0" ] && break
+   sleep $s
+done
+
+
+
+exit

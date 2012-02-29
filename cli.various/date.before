@@ -1,40 +1,271 @@
 #!/bin/bash
 
+# $0 - date specific cron rule guard
 
-if [ "$1" = "" -o "$1" = "-help" -o "$1" = "--help" ]; then
+version="0.2a";
+# 20XX     PJ 0.1     initial version jakobi@acm.org
+# 20120227 PJ 0.2     added nth/last XXXday of month; needs some more testing
+#
+# (c) 2012 PJ, placed under GPL v3
+# archive:   http://jakobi.github.com/script-archive-doc/
+
+
+# NOTES:
+
+# BUGS
+# ? what to print on stdout for script reuse (as done for DAY)
+# ? DAY printout when capped: skip or print a capped date as currently done
+
+
+function help {
    cat <<EOF
-date.before  DATE
-date.before  DATE  DATE_TO_USE_INSTEAD_OF_now
+date.{before,after}  [-v|-i|-e REGEX]   TIMESPEC1     [TIMESPEC2:-now]
+<any name>           [-v|-i|-e REGEX]   [WEEK|DAY]N   [TIMESPEC2:-now]
 
-RC is the result of comparing DATE to 'now', using
-the EPOCH representation in seconds for both DATESPECS.
-Use date.before DATE" 0" "now 0"
+Date specific guard for cron jobs: the command exit code is the result
+of  comparing TIMESPEC1 to either "now" or TIMESPEC2, using the  EPOCH
+representation  in  seconds  for  both TIMESPECS.  The  comparison  is
+numerical    less-then   if   invoked   as   date.before,    otherwise
+greater-equal. RC={0,1}.
 
-examples: 
+You  may  need  to append a zero to force comparison  to  times  since
+midnight,  e.g.  using "now 0" as the second argument instead  of  the
+default "now".
+
+The  second  invocation with prefix WEEK/week returns true during  the
+specified  full  week  of month, with N = (+)1 .. (+)5, and  e.g.  N=1
+requesting the week of 1st to 7th day of month. For negative values -5
+..  -1 counting starts from end of month. first argument. This permits
+easy  cron  rules to specify e.g. to run on the last friday of  month.
+For  days, use the day/DAY prefix and +/- 1..31 instead: DAY-1 returns
+true  on  the  last  day of month, DAY-30  returns  always  false  for
+February. RC={0,2}.
+
+You  can  optionally  use  -e  to  first  match  an  extended  regular
+expression    against    the    output   of   'date    -d    TIMESPEC2
+"+#\%w#\%u#\%a#\%A#";date  -d TIMESPEC2'. In case of a single digit  REGEX
+of  0 to 7, surrounding hash marks are added automatically. Use -v  to
+invert  match and -i to ignore case as usual. This allows use of  e.g.
+-e  '1' to test for mondays in a shell script, just as you would do by
+placing a 1 in the fifth field when using cron. RC=3 on mismatch.
+
+If  reusable, the referenced date is printed as "+\%Y-\%m-\%d" (currently
+only for DAY; capped to first resp. last day).
+
+
+Examples: 
  - date.before 'feb 3 2009'   # now is before DATE
-   return true until and incl. the end of the 2nd february
- - date.after  '12:00'        # now is (on or) after DATE
- - run CMD2 iff CMD1 finishes before midnight:
+   return true until/excl. the start of the 3rd February
+ - date.after  '12:00'        # after (or equal) 12:00:00
+ - run CMD2 IFF CMD1 finishes before midnight:
    t=\$(date -d 'tomorrow 0'); CMD1; date.before "\$t" && CMD2 
+ - run on the last friday of month (regardless of script name)
+   0 0 * * 5 date.before WEEK-1 && echo running # cron, or
+   date.before    -e 5   WEEK-1 && echo running
+ - run on the last day of month
+   0 0 * * * date.before DAY-1  && echo running # cron, or
+   date.after            DAY-1  && echo running
+ - run ls on last weekday of month (see source for honoring holidays ex.) 
+   D=date.after;\$D -e '#[1-5]#' DAY-1||\$D -e 5 DAY-2||\$D -e 5 DAY-3&&ls
+ - use with date -r for timestamp file modification times as TIMESPEC:
+   date.before "\$(date -r FUTURETIMESTAMP)" && echo "not yet"
 
-time of day examples and further DATE examples:
+Examples and notes regarding use of current time vs midnight:
  - to limit comparisons to whole days instead of epoch values
-   including time of day, append " 0" to both DATE specs.
+   including time of day, append " 0" to both DATE specs:
+      date.before DATE" 0" "now 0"
  - now, today, 'this day', tomorrow include current times
  - in contrast 'dec 10', 'next monday' return midnight times
  - '00:00' or just 0 ensures midnight time values, so
-   'tomorrow 0' is the next midnight / begin of the next
-   day or simply 'tomorrow 00:00'
+   'tomorrow 0' is the next midnight / begin of the next day.
+
 EOF
-   exit 1;
+   exit 26;
+}
+
+# last work day (mon-fri) honoring holidays (*raw* sketch, errors included; 
+# replace $0 with the script name, add some niceties and test it, 
+# use a 0700+$LOGNAME-owned directory for the timestamps, ...)
+#
+# this is has a nice horner-style triangle structure
+# (lookahead, invoked daily, just guarded commands;
+#  5 is permitting for a sequence of weekend plus 2 holidays, with
+#  432001 being the lock timeout of 5days + 1 second)
+# 0 0 * * * $0 DAY-5 && rm LOCK; $0 -e '#[1-5]#' DAY-5 &&                            { $0 -v -e '#[1-5]#' DAY-4 $($0 DAY-4) || grep $($0 DAY-4) holidays; } && ... 3 ... && ... 2 ... && ... 1 ... && { touch LOCK; CMD; } #            run today, as -4..-1 are free
+# 0 0 * * *                      $0 -e '#[1-5]#' DAY-4 && lockfile -l 432001 LOCK && { $0 -v -e '#[1-5]#' DAY-3 $($0 DAY-3) || grep $($0 DAY-3) holidays; } && ... 2 ... && ... 1 ... && { touch LOCK; CMD; }              # otherwise, run today, as -3..-1 are free
+# 0 0 * * *                      $0 -e '#[1-5]#' DAY-3 && lockfile -l 432001 LOCK && { $0 -v -e '#[1-5]#' DAY-2 $($0 DAY-2) || grep $($0 DAY-2) holidays; } && ... 1 ... && { touch LOCK; CMD; }                           # ...
+# 0 0 * * *                      $0 -e '#[1-5]#' DAY-2 && lockfile -l 432001 LOCK && { $0 -v -e '#[1-5]#' DAY-1 $($0 DAY-1) || grep $($0 DAY-1) holidays; } && { touch LOCK; CMD; }                                        # ...
+# 0 0 * * *                      $0 -e '#[1-5]#' DAY-1 && lockfile -l 432001 LOCK && { touch LOCK; CMD; }                                                                                                                  # ...
+#
+# which we should be able to rewrite w/o state as a single cron rule, with while-forever-break capturing the state/lock semantics and thus avoiding to have to multiply out all terms:
+# 0 0 * * * while :; do          $0 -e '#[1-5]#' DAY-5 $($0 DAY-5) &&                { $0 -v -e '#[1-5]#' DAY-4 $($0 DAY-4) || grep $($0 DAY-4) holidays; } && ... 3 ... && ... 2 ... && ... 1 ... && { $0 DAY-5 && CMD; break; }; \
+#                                $0 -e '#[1-5]#' DAY-4 $($0 DAY-4) &&                { $0 -v -e '#[1-5]#' DAY-3 $($0 DAY-3) || grep $($0 DAY-3) holidays; } && ... 2 ... && ... 1 ... && { $0 DAY-4 && CMD; break; }; \
+#                                $0 -e '#[1-5]#' DAY-3 $($0 DAY-3) &&                { $0 -v -e '#[1-5]#' DAY-2 $($0 DAY-2) || grep $($0 DAY-2) holidays; } && ... 1 ... && { $0 DAY-3 && CMD; break; }; \
+#                                $0 -e '#[1-5]#' DAY-2 $($0 DAY-2) &&                { $0 -v -e '#[1-5]#' DAY-1 $($0 DAY-1) || grep $($0 DAY-1) holidays; } && { $0 DAY-2 && CMD; break; }; \
+#                                $0 -e '#[1-5]#' DAY-1 $($0 DAY-1) &&                { $0 DAY-1 && CMD; break; }; \
+#                                echo cannot happen; done
+#
+# [ idiom "$0 -e '#[1-5]#' DAY-5 $($0 DAY-5)" short-circuits $0 to just test DAY-5 on being a weekday, 
+#   regardless of the current day (and the overall inefficiency):
+#   "$0 -e '#[1-5]#' DAY-5" == "$0 -e '#[1-5]#' DAY-5 $($0 DAY-5) && $0 -e DAY-5" ]
+#
+# approach 1 can be rewritten when reading from bottom to top and just scheduling for separated-out execution
+# 0 0 * * * d=$($0 DAY-5) && { rm TIMESTAMP 2>/dev/null; touch -d $d TIMESTAMP1; } && for i in 1 2 3 4; do d=$($0 -e '#[1-5]#' DAY-$i $(0 DAY-$i)) && ! grep $d holidays && touch -d $d TIMESTAMP1 && break; true; done; mv TIMESTAMP1 TIMESTAMP 
+# 0 1 * * * test -f TIMESTAMP && touch NOW && [ NOW -nt TIMESTAMP ] && { rm TIMESTAMP; CMD; }
+#
+# first work day in month is similar in structure.
+#
+# [ a general standalone script solution would be to extend $0 with W5DAY, W6DAY, ...
+#   variants, which check from start-of-count downto/upto {current_n:-n} days for weekend
+#   (saturday?, friday-or-sunday?) and holidays-from-a-file and increment current_n for each
+#   such day, maybe preloading weekend days and holiday file into a hash for the given month ]
+
+
+week=
+grep=
+grepi=
+grepv=
+
+while [ "$1" != "" ]; do
+   [ "$1" = "-i" ] && { grepi="-i"; shift; continue; }
+   [ "$1" = "-v" ] && { grepv="-v"; shift; continue; }
+   [ "$1" = "-e" ] && { grep="$2"; shift; shift; continue; }
+   [ "$1" = "-h" -o "$1" = "--help" -o "$1" = "-help" ] && { help; }
+   break;
+done
+[ "$1" = "" ] && help;
+
+echo "X$grep" | egrep -e '^X[0-7]$' >/dev/null && grep="#$grep#"
+[ "$grep" != "" ] && { echo "" | egrep -v -e "$grep" || { echo GREP ERROR; exit 20; }; }
+
+# arg2 = optional TIMESPEC2
+now="${2:-now}"
+date -d "$now +1week" >/dev/null || { echo "DATE2 ERROR"; exit 22; }
+
+# arg1 = DAY EXOR WEEK EXOR TIMESPEC1, required
+week=${1##WEEK}; week=${week##week}; [ "$week" = "$1" ] && week=
+day=${1##DAY};   day=${day##day};    [ "$day"  = "$1" ] && day=
+[ "$day" = "" -a "$week" = "" ] && { date -d   "$1 +1week" >/dev/null || { echo "DATE1 ERROR"; exit 21; }; }
+
+
+
+##
+## -e: grep against formatted TIMESPEC2
+##
+if [ "$grep" != "" ]; then
+   ( date -d "$now" "+#%w#%u#%a#%A#";date -d "$now" ) | egrep $grepi $grepv -e "$grep" >/dev/null
+   rc=$?; [ "$rc" != "0" ] && exit 3; : continue
 fi
 
 
-now="${2:-now}"
+
+##
+## invocation form 2: test requested for week/day N of the current month 
+## (week/day count starts with 1 on first EXOR last day of month)
+##
+if [ "$week" != "" ]; then 
+   n="${week##+}"; n="${n##-}"; echo "X$n" | egrep '^X[1-5]$' >/dev/null || exit 24
+   if [ "${week##-}" != "$week" ]; then
+      # week of month, but start from end of month (last week := {last day of month, ..., last ... -6})
+      d=$(date -d "$now" +%d)                              # d   current day
+      d=${d##0}                                            #     (avoid octal interpretation in [[]])
+      m=$(date -d "$now" +%m)                              # m   current month
+      snm=$(date -d "$now +1month" +%Y-%m-01)              # snm start of next month
+
+      s=$(date -d "-$n week              $snm 0" +%m%d)    # s   MM<day-of-month for first day of requested week>
+      [ "$m" = "${s:0:2}" ] || s="${m}00"                  #     use 00 if invalid / day is in previous month
+      s=${s:2:2}                                           #     strip MM
+      s=${s##0}                                            #     
+
+      e=$(date -d "-$n week +1week -1day $snm 0" +%m%d)    # e   same as s, but for last day of requested week
+      [ "$m" = "${e:0:2}" ] || e="${m}00"
+      e=${e:2:2}
+      e=${e##0}
+
+#echo "$s $d $e"
+      [[ $e -eq 0 ]] && exit 2                             # no such week for this month (month too short)
+      [[ $s -le $d && $d -le $e ]]                         # day in day range for requested week?
+   else 
+      # week of month, counted from beginning of month (week1 := 1..7, etc)
+      d=$(date -d "$now" +%d)
+      d=${d##0}
+      [[ $(( ( $d  / 7 ) + 1 )) -eq $n ]]                  # requested week number?
+   fi
+   rc=$?; [ "$rc" != "0" ] && exit 2; exit 0
+
+elif [ "$day" != "" ]; then
+
+   n="${day##+}"; n="${n##-}"; n="${n##0}"; echo "X$n" | egrep -e '^X([1-9]|[12][0-9]|3[01])$' > /dev/null || exit 25
+   if [ "${day##-}" != "$day" ]; then
+      # day count from end of month
+      d=$(date -d "$now" +%d)                              # d   current day
+      d=${d##0}                                            #     (avoid octal interpretation in [[]])
+      m=$(date -d "$now" +%m)                              # m   current month
+      snm=$(date -d "$now +1month" +%Y-%m-01)              # snm start of next month
+      
+      e=$(date -d "-$n day $snm 0" +%m%d)                  # e   MM<day-of-month for requested day>
+      [ "$m" = "${e:0:2}" ] || e="${m}00"                  #     use 00 if invalid / day is in previous month
+      e=${e:2:2}                                           #     strip MM
+
+      # permit reuse of the DAY-N for scripting, but cap
+      f=$e; [ "$f" = "00" ] && f="01" 
+      date -d "-$n day $snm 0" "+%Y-%m-$e"                       
+
+      e=${e##0}                                            #     
+      
+#echo "$e $d - $n"
+      [[ $e -eq 0 ]] && exit 2                             # no such day for this month
+      [[ $e -eq $d ]]                                      # requested day number?
+   else 
+      # day count from beginning of month - trivial case: date +%d / field 3 of cron
+      snm=$(date -d "$now +1month" +%Y-%m-01)              # snm start of next month
+      
+      # permit reuse of the DAY+N for scripting, but cap
+      e=$(date -d "-1 day $snm 0" +%d)                   
+      [[ $n -lt $e ]] && $e=$n
+      date -d "$now" "+%Y-%m-$(printf "%02d\n" $e)"                       
+
+      d=$(date -d "$now" +%d)
+      d=${d##0}
+      [[ $d -eq $n ]]                                      # requested day number?
+   fi
+   rc=$?; [ "$rc" != "0" ] && exit 2; exit 0
+fi
 
 
-if echo "./$0" | grep /date.before >/dev/null; then
-   [[ $(date -d "$now" +%s) -lt $(date -d "$1" +%s) ]]
-else
-   [[ $(date -d "$now" +%s) -ge $(date -d "$1" +%s) ]]
-fi 
+
+##
+## invocation form 1: compare dates, direction as per $0
+##
+if :; then
+   dn=$(date -d "$now" +%s);
+   dt=$(date -d "$1" +%s);
+   if echo "./$0" | grep /date.before >/dev/null; then
+      [[ $dn -lt $dt ]]  # before
+   else
+      [[ $dn -ge $dt ]]  # afterwards (or equal)
+   fi 
+   rc=$?; [ "$rc" != "0" ] && exit 1; exit 0
+fi
+
+
+
+exit 26
+
+
+
+# RAW NOTES:
+#
+# date -d -1month +%Y-%m-%d // date -d 'last month' +%Y-%m-%d
+# also tomorrow
+# also last week, last day (sensu previous, unsupported)
+# also first==next 
+# (not usable: first/last monday of february...)
+# date -d "-1 second $(date -d +1month +%Y-%m-01) 0"                # end of month, e.g. Wed Feb 29 23:59:59 CET 2012
+# date -d "-1 week $(date -d +1month +%Y-%m-01) 0"                  # end of month, e.g. Thu Feb 23 00:00:00 CET 2012
+# 
+# date.after "$(date -d "-1 week $(date -d +1month +%Y-%m-01) 0")"  # for use in last FRIDAY of month in CRON style rules, incl. midnight
+#                                                                   # probably usable only is bash invoked by cron...
+# n=2; d="week $(date -d now +%Y-%m-01) 0"; date.before "$(date -d "$n $d")" && date.after "$(date -d "$(($n -1)) $d")" && { echo "week $n of month" }
+# -> note that n=5 isn't able to substitute for the previous rule (though it would make a nice and confusing short notation)
+# -> a saner way: n=2; [ $(( ( $(date +%d) / 7 ) + 1 )) = $n ] && echo true
