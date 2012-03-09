@@ -1,5 +1,10 @@
 #!/system/xbin/sh
 
+# 201201XX PJ   0.1  jakobi@acm.org initial version
+#
+# copyright:  (c)2012 PJ, GPL v3 or later
+# archive:    http://jakobi.github.com/android-section/
+
 # psg [-m]         [egrep args] # short                   ps format
 # psg [-m] [-w|-l] [egrep args] # extended version, top -n 1 format 
 # psg                           # list non standard unix-side userspace

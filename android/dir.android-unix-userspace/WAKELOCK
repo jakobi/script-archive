@@ -1,7 +1,28 @@
 #!/system/xbin/sh
 
+# 201201XX PJ   0.1  jakobi@acm.org initial version
+#
+# copyright:  (c)2012 PJ, GPL v3 or later
+# archive:    http://jakobi.github.com/android-section/
+
+# small wake lock wrapper
+# $0                       -- lock with name compact.shell for 30m
+# $0 -n NAME [-t TIME]     -- lock with NAME for TIME / 30m
+# $0 -l                    -- list / attempt to break with -l -b
+# $0 -U                    -- unlock all locks with prefix shell, compact, chroot
+# $0 -U NAME...            -- unlock multiple locks
+# $0 -u -n NAME            -- unlock NAME
+
+# BUGS
+# DELAY/Q  breaks on lock names with spaces (hopefully illegal:)
+# WONTFIX  -l should not depend on perl
+
+
+
 export PATH="/sbin:/vendor/bin:/system/sbin:/system/xbin:$PATH" # insist on busybox version
 [ ! -w /sys/power/wake_lock ] && exit 1
+
+
 
 name=compact.shell
 lockpath=/sys/power/wake_lock
@@ -10,11 +31,24 @@ unlock=0
 while [ "$1" != "" ]; do # /system/bin/sh doesn't know -z
    [ "$1" = "-n" ] && { shift; name=$1; shift; continue; }
    [ "$1" = "-u" ] && { unlock=1; shift; continue; }
+   [ "$1" = "-U" ] && { unlock=1; shift; name=""; 
+      # list of locks follows
+      while [ "$1" != "" ]; do name="$name$1 "; shift; done; 
+      # otherwise just unlock everything active for >= 1s starting with shell|compact|chroot
+      # (roughly similar to contents of /sys/power/wake_lock -> /sys/power/wake_unlock) 
+      if [ "$name" = "" ]; then
+         while read lock x0 x1 x2 active x3; do
+            lock=${lock##\"}; lock=${lock%%\"};
+            echo $lock | grep -i -e ^shell -e ^compact -e ^chroot >/dev/null || active=0
+            [ "$active" != "0" ] && name="$name$lock "
+         done < /proc/wakelocks
+      fi
+      continue ; }
    [ "$1" = "-t" ] && { shift; timeout=$1; shift; continue; }
    [ "$1" = "-l" ] && { shift; perl -lne '
          BEGIN{
             $b=shift if $ARGV[0] eq "-b";
-            print STDERR "# times changed to second since boot"
+            print STDERR "# times changed to seconds since boot"
          };
          s/"//g;s/\t/ /g;@_=split(/ +/,$_);
          push @w,$_[0] if $_[4]>0;
@@ -26,16 +60,18 @@ while [ "$1" != "" ]; do # /system/bin/sh doesn't know -z
                print STDERR "# trying to break active wakelocks (probably only working for\n# shell-created suspend-locks; try reboot hard or soft otherwise)";
                foreach(@w) { print STDERR "$_"; open(FH,">","/sys/power/wake_unlock"); print FH $_; close FH; }
             } else {
-                print STDERR "# active wakelocks (consider echo > /sys/power/wake_unlock):\n# ".join(" ",@w)."";
+                print STDERR "# active wakelocks (consider echo ... > /sys/power/wake_unlock):\n# ".join(" ",@w)."";
             }
          }
       '  -- ${1:+"$@"} /proc/wakelocks; exit; }
    [ "$1" = "-h" -o "$1" = "-help" -o "$1" = "--help" ] &&
-                      { echo "# $0 [-l] [-n name($name)] [-u] [-t timeout[s]/0/''($timeout)] -- wake list/lock/unlock"; exit; }
+                      { echo "# $0 [-l [-b]] [-n name($name)] [-t timeout[s]/0/''($timeout)] [-u] [-U [name ...]] -- wake list/lock/unlock"; exit; }
 
    echo "!  unknown argument $1 - ignoring";
    shift;
 done
+
+
 
 if [ "$timeout" = "0" -o "$timeout" = "" -o "$unlock" = "1" ]; then
    timeout=
@@ -44,5 +80,9 @@ else
 fi
 [ "$unlock" = "1" ] && lockpath=/sys/power/wake_unlock
 
-echo "# WAKELOCK: echo $name $timeout | sudo tee -a $lockpath"
-echo $name $timeout > $lockpath
+
+
+for i in $name; do
+   echo "# WAKELOCK: echo $i $timeout | sudo tee -a $lockpath"
+   echo $i $timeout > $lockpath
+done

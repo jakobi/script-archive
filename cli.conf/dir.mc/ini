@@ -94,7 +94,7 @@ filepos_max_saved_entries=1024
 
 [Layout]
 equal_split=1
-first_panel_size=106
+first_panel_size=104
 message_visible=1
 keybar_visible=1
 xterm_title=1

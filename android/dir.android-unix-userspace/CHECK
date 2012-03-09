@@ -1,27 +1,59 @@
-#!/bin/bash
+#!/system/xbin/sh
 
 # 201201XX PJ   0.1  jakobi@acm.org initial version
 #
 # copyright:  (c)2012 PJ, GPL v3 or later
 # archive:    http://jakobi.github.com/android-section/
   
-# basic status check script for android problems
+# basic status check script for android problems I commonly encounter
+
+# NOTE: 
+# - note that some of these tests are also contained in TOP :)
+# - this should be callable also from outside the chroot.
+#   -> use x prefix for in-chroot-paths
+# ? move it to /system/xbin, with a symlink in abin ? [when stable?]
 
 
 export PATH="/root/bin:/bin:/sbin:/usr/local/bin:/usr/bin:/usr/sbin:$PATH"
-WAKELOCK -n compact.check -t 100 >/dev/null
+TMP=/t; test ! -d $TMP && TMP=/mnt/sdcard
+
+WAKELOCK -n compact.check -t 100 >/dev/null 2>&1
 
 
 
 exec 7>&1 ; exec 8>&2
-exec >/t/CHECK.out 2>&1
+exec >$TMP/CHECK.out 2>&1
+# echo CHECKING.
 
 
 
-# do we have the usually silent nice little chroot filesystem failure without even syslog - gee thanx google!
+# / or /system is writable, but on stock it shouldn't be
+msg="$( mount | grep -e 'rootfs .*rw,' -e 'mmcblk0p9 .*rw,' | sed 's/.* on  //;s! type.*!!;s!/x/a!!' | sort -u )"
+if [ "$msg" != "" ]; then
+   echo ':  filesystem / or /system still writable - please mount -oremount,ro'; echo '' '$msg';
+fi
+
+
+
+# do we have the usually silent nice little chroot filesystem failure without even syslog,
+# so we won't even notice the issue - gee thanx google!
+#
+# note that switching from LEXAR/TRANSCEND to SANDISK should fix most of this nonsense of
+# the kernel giving up way too early on writes.
 msg="$( mount | grep -e 'mmcblk1p. .*ro,' -e 'mmcblk0p10 .*ro,' | sed 's/.* on  //;s! type.*!!;s!/x/a!!' | sort -u )"
-if [ "$msg" != "" ] && echo '!! filesystem write errors - restart chroot required: $msg'; then
-   fsck -p /dev/block/mmcblk1p2 
+if [ "$msg" != "" ]; then
+   echo '!! filesystem write errors - check (consider replacing flash)'; echo '' '$msg';
+   msg="$(echo "$msg" | grep -e 'mmcblk1p.')"
+   if [ "$msg" != "" ]; then
+      echo '!! chroot needs to be killed/restarted';
+      # note that we run fsck needlessly on every invocation on the ro filesystem
+      # normally, only the first replays the journal. Note that for gingerbread Note stock,
+      # we do not have a fsck for ext4, so only do this when inside the chroot.
+      #
+      # --> comment out the first line if you have a full fsck available outside the chroot
+      grep ' rootfs ' /proc/self/mountinfo >/dev/null || \
+      { echo '   running fsck'; fsck -p /dev/block/mmcblk1p2; }
+   fi
    # mount -oro,remount /mnt/sdcard/external_sd; mount -oro,remount /a/mnt/sdcard/external_sd;
    # both msdos fsck reenable some read-without-errors, but even removing files remains BORKED
    # sync;sleep 2;sync;echo 3 > /proc/sys/vm/drop_caches # urgently before such games
@@ -32,18 +64,24 @@ if [ "$msg" != "" ] && echo '!! filesystem write errors - restart chroot require
    # fsck -p /dev/block/mmcblk1p1
 fi
 
-# check local mail - we want to handle mail on LAN-side or on ANDROID side only, 
+
+
+# check chroot local mail - we want to handle mail on LAN-side or on ANDROID side only, 
 # but currently not within the chroot
-msg="$(ls -l /var/mail/* | egrep -v -e ' 0 ' | sed 's/^/!  /')"
+msg="$(ls -l /x/var/mail/* 2>/dev/null | egrep -v -e ' 0 ' | sed 's/^/!  /')"
 [ "$msg" != "" ] && echo "!  please check host mail" && echo "$msg"
+
+
 
 # report on battery < 15%
 msg=$(cat /proc/batt_info_proc); msg=${msg#* }; msg=${msg%%[, ]*}
 [[ "$msg" -le 15 ]] && echo "!  low battery, please connect charger"
 
+
+
 # mismatched uids - gee thanx, google!
 msg="$(grep has.mismatched.uid /data/system/uiderrors.txt 2>/dev/null)"
-[[ "$msg" != "" ]] && echo '!! mismatched userid issue - please Fix IMMEDIATELY and clear uiderrors.txt'
+[[ "$msg" != "" ]] && echo '!! mismatched userid issue - please run FIXMPERM IMMEDIATELY and then clear uiderrors.txt'
 
 # this should do the trick for the most common error type (changes still untested):
 # edit and sort -u the errors, then feed them perl and > /data/system/uiderrors.txt afterwards
@@ -51,12 +89,12 @@ msg="$(grep has.mismatched.uid /data/system/uiderrors.txt 2>/dev/null)"
 
 
 
-## probably we should have watch_delta mangle the file a bit, e.g. 
+## probably we should have watch_delta mangle our output a bit, e.g. 
 ## truncing anything after ### for diffing, but restoring these bits 
 ## in output. 
 
 
 
 exec 1>&7 7>&- ; exec 2>&8 8>&-
-sync;sleep 2;cat /t/CHECK.out
-WAKELOCK -n compact.check -u >/dev/null
+sync;sleep 2;cat $TMP/CHECK.out
+WAKELOCK -n compact.check -u >/dev/null 2>&1

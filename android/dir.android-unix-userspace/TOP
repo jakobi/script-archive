@@ -1,5 +1,13 @@
 #!/system/bin/sh
 
+# 201201XX PJ   0.1  jakobi@acm.org initial version
+#
+# copyright:  (c)2012 PJ, GPL v3 or later
+# archive:    http://jakobi.github.com/android-section/
+
+# augmented android top with some basic monitoring thrown in
+
+
 # eval `resize`; $0                      # display current iteration and clear pty
 # $0 [-n NUM_OF_ITERATIONS] > logfile    # dump full content, no cursor control
 #

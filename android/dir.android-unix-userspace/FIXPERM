@@ -1,19 +1,47 @@
 
-# root required
+# 201201XX PJ   0.1  jakobi@acm.org initial version
+#
+# copyright:  (c)2012 PJ, GPL v3 or later
+# archive:    http://jakobi.github.com/android-section/
+
+# deal with standard android gingerbread uid/gid errors - root required
+
+# BUGS
+# DELAY/?   should try to parse dates to get the current list from the end
+#           of file, thus ignoring earlier, now invalid errors. Given the
+#           'moves' and 'growth' of messed-up IDs during multiple reboots,
+#           I don't dare to assume that executing the changes in sequence
+#           will actually rename do anything sane or at least fail without
+#           increasing google's mess-up.
 
 e=/data/system/uiderrors.txt
 cat $e
-echo
-echo "press c to continue IFF the errors lists are all from the"
-echo "same system_server pass (otherwise remove dupes and rerun)"
+cat <<EOF
+This script will repair disk-vs-settings errors. Enter [c] to continue IFF
+the errors listed are all from the same system_server pass (otherwise edit
+/data/system/uiderrors.txt to remove earlier errors or say [R] to clear
+and recreate the file by a (soft)reboot; then rerun this script)
+EOF
+
+
+
 read ans
-[ "$ans" != "c" ] && exit 2
+[ "$ans" = "R" ] && { > $e; exec pkill system_server; } # to be reinvoked by user
+[ "$ans" != "c" ] && exit 2                             # user bail out
 
 
 
-echo=""
+# shall we debug find / no-exec?
+echo="" 
+# echo="$echo"
+
+
+
 # change ownership errors (excluding a few things like lib by insisting 
 # on files actually having the reported old/disk id)
+# NOTE: a report of 0 (files changed) indicates that the list may contain
+#       errors from an earlier pass or that this script was already
+#       run successfully on the same list of uiderrors.
 cat $e | while read d1 d2 d3 package p has mismatched uid idold on disk idnew in settings; do
    echo -n "$p $idold -> $idnew: " 
    echo -n "$(find /data/data/$p -user $idold -print | wc -l) "
@@ -25,9 +53,9 @@ done
 
 
 
-# clear log
+# shall we clear the log as well
 echo
-echo "press c to clear $e (suggested if above didn't report failures)"
+echo "Enter [c] to clear $e (suggested if above didn't report any failures)"
 read ans
 [ "$ans" != "c" ] && exit 1
 echo clearing log
