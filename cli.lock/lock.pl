@@ -23,6 +23,8 @@ my $version="0.2.1";
 #   is much better when the stuck previous owner starts reviving 
 #   and suddenly rmdirs the lock. rename LOCK LOCK.broken?
 
+# cf. also -> sem_open!!
+
 
 use strict;
 use warnings;
