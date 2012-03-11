@@ -1,1 +1,0 @@
-lock.pl - locking using either atomic mkdir or perl-flock (REQ Flock.pm; for other file locking tools, see e.g. dotlock, lockfile in various mail-related packages)

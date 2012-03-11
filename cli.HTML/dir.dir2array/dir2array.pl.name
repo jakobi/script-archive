@@ -1,1 +1,0 @@
-dir2html.pl replacement dir2array.pl: just the hash creation from the dirtree (honoring .leaf/.name/.skip)

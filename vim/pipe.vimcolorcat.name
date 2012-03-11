@@ -1,1 +1,0 @@
-within a pipe, non-interactively syntax-highlighting input text according to the matching vim syntax file. Output is ANSI (using vim.org's 2ansi.vim) or optionally colored HTML markup (using runtime's 2html.vim)

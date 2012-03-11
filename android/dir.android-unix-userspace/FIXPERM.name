@@ -1,1 +1,0 @@
-fixes the most common id/gid permission issue created by android forgetting assign package ids (/data/system/uiderrors.txt)

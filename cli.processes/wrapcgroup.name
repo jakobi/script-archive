@@ -1,1 +1,0 @@
-small nice-style wrapper to exec a program in an 75% physmem or in a 256MB cgroup, optionally with nice/ionice

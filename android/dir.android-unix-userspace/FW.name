@@ -1,1 +1,0 @@
-FW script implementing a real firewall against outside attacks and scans (Android apps only offer personal firewalls against accessing the internet - but nothing protects against scans and outbound access - esp. necessary for public WLAN use in combination with a VPN)

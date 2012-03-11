@@ -1,1 +1,0 @@
-ps -ef|grep variant for busybox: with -l abusing top to get long ps output, with -m marking processes as kernel/android/chroot
